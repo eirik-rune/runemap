@@ -1,9 +1,9 @@
-# singapore  (103.8198,1.3521)  local 2026-07-29 18:24  UTC+8
-now: CLOUDY  temp 29C  humidity 71%  wind 9km/h  precip 0.00
+# singapore  (103.8198,1.3521)  local 2026-07-30 00:06  UTC+8
+now: CLOUDY  temp 27C  humidity 88%  wind 6km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):       ▁ █▆▂   ▂  ▁▁  ▅▃▇  peak 1.8
-next 24h temp 26..30C: ▇▅▄▃▃▃▃▂▂▂▁▁▁ ▁▃▅▆▇█████
-sky: +0h:CLOUDY +1h:PARTLY_CLOUDY_NIGHT +2h:CLOUDY +6h:LIGHT_RAIN +7h:CLOUDY +8h:MODERATE_RAIN
-keypoint: 您东边11公里正在下小雨哦
+next 24h precip (mm/h):   █▇▂   ▂  ▁▁  ▆▃█▂       peak 1.6
+next 24h temp 26..30C: ▃▂▂▂▁▁▁ ▁▃▅▆▇██████▇▅▄▄▄
+sky: +0h:CLOUDY +2h:MODERATE_RAIN +4h:LIGHT_RAIN +5h:CLOUDY +8h:LIGHT_RAIN +9h:CLOUDY
+keypoint: 最近的降雨带在北边78公里外呢
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
