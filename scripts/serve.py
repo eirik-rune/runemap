@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_at as SA          # installs the radar cache layer on render_scene._get
 import render_scene as R
+import geo as G
 
 TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
@@ -33,19 +34,29 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path not in ("/scene", "/"):
             return self._send(404, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
-        try:
-            lat = float(q["lat"][0]); lon = float(q["lon"][0])
-        except Exception:
-            return self._send(400, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
+        place = None
+        if q.get("q"):
+            place = G.lookup(q["q"][0])
+            if not place:
+                return self._send(404, "place not found: %s\n" % q["q"][0][:60])
+            lat, lon = place["lat"], place["lon"]
+        else:
+            try:
+                lat = float(q["lat"][0]); lon = float(q["lon"][0])
+            except Exception:
+                return self._send(400, "usage: /scene?q=bangkok  OR  /scene?lat=13.75&lon=100.50 [&lang=en|zh]\n")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return self._send(400, "lat/lon out of range\n")
         lang = (q.get("lang", ["en"])[0] or "en").lower()
         lang = lang if lang in ("en", "zh") else "en"
-        label = q.get("label", [None])[0] or ("%.4f,%.4f" % (lon, lat))
+        label = q.get("label", [None])[0]
+        if not label:
+            near = place or G.rlookup(lat, lon)
+            label = near["label"] if near else ("%.4f,%.4f" % (lon, lat))
         try:
             tzh = float(q["tz"][0])
         except Exception:
-            tzh = round(lon / 15.0)
+            tzh = round(lon / 15.0)   # TODO: use IANA tz from geonames
         code = ((q.get("code", ["><"])[0]) + "><")[:2]
         try:
             wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
