@@ -12,6 +12,15 @@ from runemap.render import ascii_radar
 import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
 from cities import CITIES
+
+def _load_motion():
+    try:
+        m = json.load(open("live/motion.json"))
+        if time.time() - m.get("_ts", 0) < 1800:
+            return m
+    except Exception:
+        pass
+    return {}
 SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591a\u4e91","PARTLY_CLOUDY_NIGHT":"\u591a\u4e91",
 "CLOUDY":"\u9634","LIGHT_HAZE":"\u8f7b\u96fe\u973e","MODERATE_HAZE":"\u4e2d\u96fe\u973e","HEAVY_HAZE":"\u91cd\u96fe\u973e",
 "LIGHT_RAIN":"\u5c0f\u96e8","MODERATE_RAIN":"\u4e2d\u96e8","HEAVY_RAIN":"\u5927\u96e8","STORM_RAIN":"\u66b4\u96e8",
@@ -53,7 +62,7 @@ def radar_art(code, lng, lat, token):
     finally:
         os.unlink(p)
 
-def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
+def build(lang, name, code, zh, lng, lat, tzh, wx, rb, mo=None):
     rt = wx["realtime"]
     kp = (wx.get("forecast_keypoint") or wx.get("minutely", {}).get("description", "")).strip()
     p2h = wx.get("minutely", {}).get("precipitation_2h", [])[:120]
@@ -89,10 +98,18 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
             L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name))
             L.append(art)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
+            if mo and mo.get("kind") == "moving":
+                L.append("echo motion (radar obs, last 1h): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
+            elif mo and mo.get("kind") == "stationary":
+                L.append("echo motion (radar obs, last 1h): quasi-stationary (<5 km/h)")
         else:
             L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh))
             L.append(art)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
+            if mo and mo.get("kind") == "moving":
+                L.append("\u56de\u6ce2\u79fb\u52a8(\u96f7\u8fbe\u8fd11h\u5b9e\u6d4b): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
+            elif mo and mo.get("kind") == "stationary":
+                L.append("\u56de\u6ce2\u79fb\u52a8(\u96f7\u8fbe\u8fd11h\u5b9e\u6d4b): \u51c6\u9759\u6b62(<5 km/h)")
     else:
         L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"
                  else "\u96f7\u8fbe: \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
@@ -104,6 +121,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
 def main():
     token = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
     only = sys.argv[1] if len(sys.argv) > 1 else None
+    _motion = _load_motion()
     ok = 0
     for name, code, zh, lng, lat, tzh in CITIES:
         if only and name != only:
@@ -113,8 +131,8 @@ def main():
             wx_zh = weather(lng, lat, token, "zh_CN")
             rb = radar_art(code, lng, lat, token)
             os.makedirs("live/%s" % name, exist_ok=True)
-            open("live/%s/en" % name, "w").write(build("en", name, code, zh, lng, lat, tzh, wx_en, rb))
-            open("live/%s/zh" % name, "w").write(build("zh", name, code, zh, lng, lat, tzh, wx_zh, rb))
+            open("live/%s/en" % name, "w").write(build("en", name, code, zh, lng, lat, tzh, wx_en, rb, _motion.get(name)))
+            open("live/%s/zh" % name, "w").write(build("zh", name, code, zh, lng, lat, tzh, wx_zh, rb, _motion.get(name)))
             ok += 1; print("%s ok" % name)
         except Exception as e:
             print("%s FAIL %r" % (name, e))

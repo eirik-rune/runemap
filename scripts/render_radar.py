@@ -12,6 +12,7 @@ import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
 from cities import CITIES as _ALL
 from echo_motion import echo_motion
+MOTION = {}
 CITIES = [(n, lng, lat, tz) for (n, _c, _z, lng, lat, tz) in _ALL]
 
 def _get(url, timeout=25):
@@ -90,6 +91,7 @@ def city_radar(name, lng, lat, token, tzh=8):
         mo = echo_motion(obs)
     except Exception:
         mo = {"kind": None}
+    MOTION[name] = mo
     L = [f"# {name} radar  center=({lng},{lat}) marked '+'  48x24 ascii, ~{km:.1f}km/col",
          f"# local {time.strftime('%Y-%m-%d %H:%M', time.gmtime(now + tz))}  axes: left=lat deg, bottom=lon deg",
          f"# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill"]
@@ -133,6 +135,12 @@ def main():
             else:
                 print(f"{name} FAIL {e}")
         time.sleep(0.3)
+    try:
+        out = {k: v for k, v in MOTION.items() if v.get("kind")}
+        out["_ts"] = time.time()
+        open("live/motion.json", "w").write(json.dumps(out, ensure_ascii=False))
+    except Exception as e:
+        print("motion.json write fail", e)
     if ok == 0: sys.exit(1)
 
 if __name__ == "__main__":
