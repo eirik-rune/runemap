@@ -1,8 +1,8 @@
-# runemap live — text weather for agents  (updated 2026-07-29 10:23 UTC)
+# runemap live — text weather for agents  (updated 2026-07-29 10:24 UTC)
 
 beijing    now: CLOUDY  temp 33C  humidity 57%  wind 9km/h  precip 0.00
 shanghai   now: CLEAR_DAY  temp 33C  humidity 56%  wind 5km/h  precip 0.00
-guangzhou  now: LIGHT_RAIN  temp 29C  humidity 84%  wind 11km/h  precip 0.16
+guangzhou  now: LIGHT_RAIN  temp 29C  humidity 84%  wind 11km/h  precip 0.18
 london     now: PARTLY_CLOUDY_DAY  temp 28C  humidity 32%  wind 6km/h  precip 0.00
 newyork    now: CLOUDY  temp 22C  humidity 96%  wind 5km/h  precip 0.00
 singapore  now: CLOUDY  temp 29C  humidity 71%  wind 9km/h  precip 0.00
