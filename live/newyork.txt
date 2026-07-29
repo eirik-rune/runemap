@@ -1,9 +1,9 @@
-# newyork  (-74.006,40.7128)  local 2026-07-29 12:07  UTC-4
-now: PARTLY_CLOUDY_DAY  temp 27C  humidity 73%  wind 12km/h  precip 0.00
-next 2h rain (per min, max=0.07):                        ▆
-rain probability 30min bins: 0% 0% 0% 19%
-next 24h precip (mm/h):   ▂█  ▂   ▁▂          ▃▂  peak 0.5
-next 24h temp 20..30C: ▆▇████▆▆▄▄▃▂▂▂▁▁▁ ▁▁▁▁▂▂
-sky: +0h:PARTLY_CLOUDY_DAY +2h:LIGHT_RAIN +4h:PARTLY_CLOUDY_DAY +6h:LIGHT_RAIN +7h:PARTLY_CLOUDY_DAY +8h:CLEAR_DAY
-keypoint: 多云，今天傍晚18点钟后转阴
+# newyork  (-74.006,40.7128)  local 2026-07-29 16:16  UTC-4
+now: LIGHT_RAIN  temp 28C  humidity 66%  wind 16km/h  precip 0.24
+next 2h rain (per min, max=0.24): █████████▂▂▂▂▂▂▂▂▂▂▂▂▅▅▅
+rain probability 30min bins: 95% 95% 95% 95%
+next 24h precip (mm/h): █▁▃▁                      peak 0.8
+next 24h temp 20..28C: ██▆▆▅▄▃▃▂▂▁▁▁▁▁ ▁▁▂▃▃▄▅▅
+sky: +0h:LIGHT_RAIN +3h:CLEAR_DAY +4h:CLEAR_NIGHT +6h:PARTLY_CLOUDY_NIGHT +8h:CLOUDY +16h:PARTLY_CLOUDY_DAY
+keypoint: 小雨，今天傍晚19点钟后雨停，转多云，其后小雨
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
