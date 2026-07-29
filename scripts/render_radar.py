@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Three-frame ascii radar with lon/lat axes: t-1h obs, now, t+1h forecast.
-China radar coverage only (beijing/shanghai/guangzhou).
+Global radar where caiyun has coverage (probed at runtime; e.g. NYC has none).
 Axes: left column = latitude, bottom row = longitude (degrees).
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
 import json, os, sys, time, urllib.request, tempfile
@@ -9,9 +9,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
 
 CITIES = [
-    ("beijing",   116.4074, 39.9042),
-    ("shanghai",  121.4737, 31.2304),
-    ("guangzhou", 113.2644, 23.1291),
+    # name, lng, lat, tz_offset_hours  (radar coverage probed at runtime)
+    ("beijing",   116.4074, 39.9042, 8),
+    ("shanghai",  121.4737, 31.2304, 8),
+    ("guangzhou", 113.2644, 23.1291, 8),
+    ("london",     -0.1276, 51.5072, 0),
+    ("newyork",   -74.0060, 40.7128, -4),
+    ("singapore", 103.8198,  1.3521, 8),
+    ("chiangmai",  98.9853, 18.7883, 7),
+    ("bangkok",   100.5018, 13.7563, 7),
 ]
 
 def _get(url, timeout=25):
@@ -65,13 +71,13 @@ def labeled(art, bbox):
     out.append("".join(bot))
     return "\n".join(out)
 
-def city_radar(name, lng, lat, token):
+def city_radar(name, lng, lat, token, tzh=8):
     now = time.time()
     obs = frames_of(_get(f"https://api.caiyunapp.com/v1/radar/images?token={token}&lon={lng}&lat={lat}"))
     fc  = frames_of(_get(f"https://api.caiyunapp.com/v1/radar/forecast_images?token={token}&lon={lng}&lat={lat}"))
     if not obs:
         raise RuntimeError("no obs frames")
-    tz = 8 * 3600
+    tz = tzh * 3600
     def stamp(ts): return time.strftime("%H:%M", time.gmtime(ts + tz))
     picks = [("t-1h obs", pick(obs, now - 3600)), ("now obs", obs[-1])]
     if fc:
@@ -95,12 +101,18 @@ def main():
     token = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
     os.makedirs("live", exist_ok=True)
     ok = 0
-    for name, lng, lat in CITIES:
+    for name, lng, lat, tzh in CITIES:
         try:
-            open(f"live/{name}_radar.txt", "w").write(city_radar(name, lng, lat, token))
+            open(f"live/{name}_radar.txt", "w").write(city_radar(name, lng, lat, token, tzh))
             ok += 1; print(f"{name} ok")
         except Exception as e:
-            print(f"{name} FAIL {e}")
+            if "no obs frames" in str(e) or "404" in str(e):
+                open(f"live/{name}_radar.txt", "w").write(
+                    f"# {name} radar: no radar coverage at this location (data: caiyunapp.com)\n"
+                    f"# text brief still available: live/{name}.txt\n")
+                print(f"{name} no-coverage stub")
+            else:
+                print(f"{name} FAIL {e}")
         time.sleep(0.3)
     if ok == 0: sys.exit(1)
 
