@@ -75,6 +75,19 @@ Endpoints per city: `live/<city>/en` and `live/<city>/zh` (one-screen scene: hea
 curve + radar + legend), `live/<city>.txt` (brief), `live/<city>_radar.txt` (3-frame radar).
 Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
 
+## any coordinate
+
+The files above are pre-rendered for a fixed city list. For an arbitrary point,
+render it yourself -- bring your own caiyunapp.com token:
+
+    CAIYUN_TOKEN=xxx python3 scripts/scene_at.py --lat 18.7883 --lon 98.9853 --lang zh
+
+Flags: `--lang en|zh`, `--label NAME` (shown in the headline), `--tz HOURS`
+(default `lon/15`), `--code XX` (2-char marker drawn at the point).
+
+Radar PNGs are cached in `~/.cache/runemap` (30 min; radar index 5 min; current
+weather is never cached). Override the path with `RUNEMAP_CACHE`.
+
 ## Why characters instead of a picture
 
 | | image | prose summary | runemap |
