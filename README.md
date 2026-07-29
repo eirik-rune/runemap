@@ -116,7 +116,7 @@ guess is wrong in Iceland and off by 30min in Kolkata.
 
 ```bash
 pip install runemap
-pip install "runemap[image]"   # + pillow, to read radar PNGs
+# numpy + pillow are required (radar PNGs are decoded, not optional)
 ```
 
 ## Use

@@ -11,10 +11,10 @@ license = { text = "MIT" }
 requires-python = ">=3.8"
 authors = [{ name = "echorune" }]
 keywords = ["weather", "radar", "ascii", "llm", "agents", "terminal"]
-dependencies = ["numpy>=1.20"]
+dependencies = ["numpy>=1.20", "pillow>=8"]
 
 [project.optional-dependencies]
-image = ["pillow>=8"]
+image = ["pillow>=8"]   # retained as alias; pillow is required since 0.3
 
 [project.urls]
 Homepage = "https://github.com/eirik-rune/runemap"
