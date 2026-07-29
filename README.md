@@ -17,14 +17,48 @@ how strong it is, and which way it is moving.**
          ...ddddd...  ...ddddddddd....
         ..d##OOO#dd..      ...
        ..d#OO```O#dd..
-       ..d#OO```O#dd.. HERE
-        ..d##OOO##d..
-         ...ddddd...
+       ..d#OO```
+# guangzhou weather scene  updated 2026-07-29 19:36 local time  (lon 113.2644, lat 23.1291)
+now: CLOUDY  28C  humidity 94%  wind 10km/h  precip 0.00mm/h
+After 27 minute, expect a light rain
+
+rain curve (next 2h, 6min/bucket):
+    ▃▃▃▅▅▅▅▇▇██▇██▇█
+now       +30min    +60min    +90min   +120min
+bucket max (mm/h): [0.0, 0.0, 0.0, 0.0, 0.08, 0.08, 0.08, 0.13, 0.13, 0.13, 0.14, 0.19, 0.21, 0.25, 0.23, 0.21, 0.25, 0.23, 0.21, 0.25]
+
+radar now (19:32 local), ~10km/char, [GZ]=guangzhou
+                                                
+                      ░░░         ░░░ ░░        
+                   ░░░░░░░░░░   ░░░░░░░░░░      
+               ░░░ ░░░░▒░░▒░░░ ░░▒▓▒░░░░░░      
+         ░░░░░░░░░░ ░░░▒░▓▓░░░░░▓▒▓▓░░░░░░░░    
+    ░░   ░░░░░░▒▒▓▒░░░▒▓▓▓▓▓▒░▒█████▓░░▓▒▒░░    
+    ░░░░  ░░░ ░▓▓▓▒░░░░░▒▓▓▓▒▒██▓▓██▓▓▒▓▒▒▒▒░   
+    ░░░░  ░░░░░░▓▒▒░░░░░░▒▓▓░▓▓██▓▓▓▓█▓▓▓░░▒░░  
+   ░░░░░░ ░▒░▒▒░░░░░░░ ░░░░░▓▓▓▓█▓▓░▒▒▓▓▓▓▓░░░  
+   ░░░░░░ ▒▓░░▒░░░░░░░░░░░ ░▓▓▓▓▒░▓▓▒░░░░▓▒░░░░░
+░░░░░░░░  ░▒░░░▒▒░░░░░ ░░░░░░░▓GZ░░▓▓░░░░   ░░  
+░░░░░░░░░░░▒▒░░░░░░░░░░░▒░░░▒▒░░░░░░░░          
+   ░░░░░░▒░░░▒░░  ░░░░░░░░░░▒▒▒░▒▓▓▒▒▒▒░░░░     
+    ░░░░░░░▒░░░░░░░░░ ░░░░░▒░░▒▒▓▓▓▓▓▓▒▒▒░░░    
+       ░░░░░▒▒░░░░░░░░░░░░░░░░░▒▓▓▓▓▓▓▓▓▒░░░░   
+       ░░░▒▒▒▒░▒▒░░░░░░░░░░░░░▒▒▒▒▓▓▓▓▓▓▓▒░░░░░ 
+       ░░░░░▓▓▒░░░░░░░░░░░░▒▒░░▒▒▒▒▒▓▓█▓▓░░░░░░ 
+        ░░▒▒░░░░░░░░░░░▒░▒▒▓▒▒▓▒▒▒▒▒▓▓▓▓▓▒░░░░░ 
+              ░░░░░░▒▒░░░▒▒▒▒░░░░░░░▒▒▓▓░░░░░   
+             ░░░░▒▓▓▒░░░░▒░▒░░░░░░░░▒▒░░░░░░    
+           ░░░░░░░░▒░░░░░░░░░░░░░░░░░░░░░░░░    
+           ░░░  ░░░░   ░░░░░░░░   ░░░░░░░░░     
+                ░░░░░  ░░░░░   ░░░  ░░░         
+                ░░░░░           ░░              
+legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+
+data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
 ```
 
-(schematic; real output uses the shade ramp
-`" "` `\u00b7` `\u2591` `\u2592` `\u2593` `\u2588`
-= blank, drizzle, light, moderate, heavy, storm)
+(real output, captured live 2026-07-29 11:39 UTC -- get a fresh one:
+`curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en`)
 
 
 ## live service (updated every 6 minutes)
