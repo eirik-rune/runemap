@@ -26,6 +26,22 @@ how strong it is, and which way it is moving.**
 `" "` `\u00b7` `\u2591` `\u2592` `\u2593` `\u2588`
 = blank, drizzle, light, moderate, heavy, storm)
 
+
+## live service (updated every 6 minutes)
+
+Text weather briefs + ascii radar, curlable by any agent — no key, no signup:
+
+```
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/index.txt            # all cities overview
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou.txt        # one city brief
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou_radar.txt  # ascii radar: t-1h obs / now / t+1h forecast
+```
+
+Cities: beijing shanghai guangzhou london newyork singapore chiangmai bangkok.
+Radar maps (48x24, lon/lat axes, ~9.6km/col) for CN cities: beijing / shanghai / guangzhou.
+Each brief: current conditions, next-2h minutely rain sparkline, 24h precip/temp curves, sky transitions.
+Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
+
 ## Why characters instead of a picture
 
 | | image | prose summary | runemap |
