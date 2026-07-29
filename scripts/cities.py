@@ -58,3 +58,10 @@ CITIES = [
     ("melbourne","ML","墨尔本",144.9631,-37.8136,10),
     ("auckland","AK","奥克兰",174.7633,-36.8485,12),
 ]
+
+# --- expansion frozen by shareholder (2026-07-29 19:57) ---
+# full 56-city registry above kept for unfreeze; only original 8 active.
+ALL_CITIES = CITIES
+_ACTIVE = {"beijing", "shanghai", "guangzhou", "london", "newyork",
+           "singapore", "chiangmai", "bangkok"}
+CITIES = [c for c in ALL_CITIES if c[0] in _ACTIVE]
