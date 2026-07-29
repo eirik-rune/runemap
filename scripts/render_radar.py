@@ -66,7 +66,12 @@ def labeled(art, bbox):
 
 def city_radar(name, lng, lat, token, tzh=8):
     now = time.time()
-    obs = frames_of(_get(f"https://api.caiyunapp.com/v1/radar/images?token={token}&lon={lng}&lat={lat}"))
+    obs = []
+    for _try in range(3):  # global source flaps 200-with-0-frames ~50%: retry
+        obs = frames_of(_get(f"https://api.caiyunapp.com/v1/radar/images?token={token}&lon={lng}&lat={lat}"))
+        if obs:
+            break
+        time.sleep(2)
     fc  = frames_of(_get(f"https://api.caiyunapp.com/v1/radar/forecast_images?token={token}&lon={lng}&lat={lat}"))
     if not obs:
         raise RuntimeError("no obs frames")
