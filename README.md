@@ -115,8 +115,9 @@ guess is wrong in Iceland and off by 30min in Kolkata.
 ## Install
 
 ```bash
-pip install runemap
-# numpy + pillow are required (radar PNGs are decoded, not optional)
+git clone https://github.com/eirik-rune/runemap.git
+cd runemap && pip install numpy pillow      # both required: radar PNGs are decoded
+# not on PyPI yet -- install from source
 ```
 
 ## Use
