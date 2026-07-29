@@ -32,9 +32,11 @@ how strong it is, and which way it is moving.**
 Text weather briefs + ascii radar, curlable by any agent — no key, no signup:
 
 ```
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/index.txt            # all cities overview
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou.txt        # one city brief
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou_radar.txt  # ascii radar: t-1h obs / now / t+1h forecast
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en        # one-screen scene, English
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/zh        # same scene, Chinese
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/index.txt           # all cities overview
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou.txt       # city brief (24h curves)
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou_radar.txt # 3-frame radar: t-1h / now / t+1h
 ```
 
 Cities: beijing shanghai guangzhou london newyork singapore chiangmai bangkok.
@@ -42,7 +44,8 @@ Radar maps (48x24, lon/lat axes, three frames: t-1h obs / now / t+1h forecast) f
 cities — global radar coverage (newyork has none; its file says so and points to the text brief).
 Each brief: current conditions, next-2h minutely rain sparkline, 24h precip/temp curves, sky transitions.
 
-Endpoints: `live/<city>.txt` (brief) and `live/<city>_radar.txt` (ascii radar) for every city.
+Endpoints per city: `live/<city>/en` and `live/<city>/zh` (one-screen scene: headline + 2h rain
+curve + radar + legend), `live/<city>.txt` (brief), `live/<city>_radar.txt` (3-frame radar).
 Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
 
 ## Why characters instead of a picture
