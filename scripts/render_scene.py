@@ -78,7 +78,6 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
         L.append("rain curve (next 2h, 6min/bucket):" if lang == "en" else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h, 6min/\u683c):")
         L.append(spark(buckets))
         L.append(AXIS)
-        L.append(("bucket max (mm/h): " if lang == "en" else "\u5404\u683c\u5cf0\u503c(mm/h): ") + str(buckets))
     else:
         L.append("rain curve (next 2h): no precipitation expected" if lang == "en"
                  else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h): \u65e0\u964d\u6c34")
