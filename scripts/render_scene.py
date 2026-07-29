@@ -25,8 +25,7 @@ SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591
 "FOG":"\u96fe","LIGHT_SNOW":"\u5c0f\u96ea","MODERATE_SNOW":"\u4e2d\u96ea","HEAVY_SNOW":"\u5927\u96ea","STORM_SNOW":"\u66b4\u96ea",
 "DUST":"\u6d6e\u5c18","SAND":"\u6c99\u5c18","WIND":"\u5927\u98ce"}
 BARS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
-AXIS = "├────┼────┼────┼────┤
-0   30   60   90 120min"
+AXIS = '├────┼────┼────┼────┤\n0   30   60   90 120min'
 
 def _get(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
