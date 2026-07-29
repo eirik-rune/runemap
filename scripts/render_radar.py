@@ -100,10 +100,20 @@ def main():
             ok += 1; print(f"{name} ok")
         except Exception as e:
             if "no obs frames" in str(e) or "404" in str(e):
-                open(f"live/{name}_radar.txt", "w").write(
-                    f"# {name} radar: no radar coverage at this location (data: caiyunapp.com)\n"
-                    f"# text brief still available: live/{name}.txt\n")
-                print(f"{name} no-coverage stub")
+                # transient empty response? keep last good frame instead of clobbering
+                path = f"live/{name}_radar.txt"
+                prev = ""
+                try:
+                    prev = open(path).read()
+                except Exception:
+                    pass
+                if prev and "no radar coverage" not in prev:
+                    print(f"{name} empty-frames, kept previous good radar")
+                else:
+                    open(path, "w").write(
+                        f"# {name} radar: no radar coverage at this location (data: caiyunapp.com)\n"
+                        f"# text brief still available: live/{name}.txt\n")
+                    print(f"{name} no-coverage stub")
             else:
                 print(f"{name} FAIL {e}")
         time.sleep(0.3)
