@@ -81,7 +81,8 @@ def main():
             fail += 1
         time.sleep(0.3)
     index.append("")
-    index.append("per-city: live/<city>.txt | " + ", ".join(c[0] for c in CITIES))
+    index.append("per-city: live/<city>/en live/<city>/zh (one-screen scene) | live/<city>.txt (brief) | live/<city>_radar.txt (radar)")
+    index.append("cities: " + ", ".join(c[0] for c in CITIES))
     open("live/index.txt", "w").write("\n".join(index) + "\n")
     print(f"rendered ok={ok} fail={fail}")
     if ok == 0: sys.exit(1)
