@@ -38,8 +38,11 @@ curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou
 ```
 
 Cities: beijing shanghai guangzhou london newyork singapore chiangmai bangkok.
-Radar maps (48x24, lon/lat axes, ~9.6km/col) for CN cities: beijing / shanghai / guangzhou.
+Radar maps (48x24, lon/lat axes, three frames: t-1h obs / now / t+1h forecast) for 7 of 8
+cities — global radar coverage (newyork has none; its file says so and points to the text brief).
 Each brief: current conditions, next-2h minutely rain sparkline, 24h precip/temp curves, sky transitions.
+
+Endpoints: `live/<city>.txt` (brief) and `live/<city>_radar.txt` (ascii radar) for every city.
 Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
 
 ## Why characters instead of a picture
