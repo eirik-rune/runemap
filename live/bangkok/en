@@ -1,0 +1,36 @@
+# bangkok weather scene  updated 2026-07-31 21:12 local time  (lon 100.5018, lat 13.7563)
+now: CLOUDY  27C  humidity 77%  wind 5km/h  precip 0.00mm/h
+To your north, 8 kilometers away, a light rain is occurring
+
+rain curve (next 2h): no precipitation expected
+
+radar: ok
+radar now (21:05 local), ~5km/char, [BK]=bangkok
+                   ░░░░░░░     ░░ ░░░░░         
+                ░░░░░░░░░░░░░░░░░░░░░░░░▒░░     
+          ░░░░░░░░░░░░░░░░    ░░░░░░░░░░░░▒▒▒░  
+       ░░░░░░░░░░░░░░░░░░░       ░░░░░░░░░▒▒▒▒▒▒
+     ░░░░░░░░░░░░ ░              ░░░░░░░░░░░░░░░
+    ░░░░░░░░░                  ░░░░░░░░░░░░░░░░░
+   ░░░░░░░░                 ░░░░░░░░░░░░░░░░░░░░
+  ░░                       ░░░░░  ░░░░░░░░░░░░░░
+ ░░░░                           ░░░░░░░░░░░░░   
+  ░░                           ░░               
+                             ░░░░             ░▒
+                           BK░░░              ░░
+                  ░ ░░░░░                   ░▒▒▒
+     ░  ░      ░░░░                     ░▒▓░░▒░ 
+ ░░░░░░░░░░░░░░░░░░░                    ░░▓▓    
+ ░░░░░░░░░░░░░░░░░░                      ░░     
+ ░░░░░░░     ░░                                 
+                                                
+                                                
+                                                
+               ░░░                              
+           ░░░░░░                               
+            ░                                   
+                  ░                             
+= echo quasi-stationary (<5km/h, 1h obs)
+legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+
+data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

@@ -1,0 +1,9 @@
+# guangzhou  (113.2644,23.1291)  local 2026-07-31 22:12  UTC+8
+now: LIGHT_RAIN  temp 28C  humidity 85%  wind 6km/h  precip 0.12
+next 2h rain (per min, max=0.13): ███▄▄▄▄▅▃               
+rain probability 30min bins: 97% 62% 0% 0%
+next 24h precip (mm/h): ▁     ▁▁▁▁ ▁█▅▁ ▂▃▁▁▁▁▂▆  peak 8.1
+next 24h temp 25..28C: ██▇▅▄▂▁▁▁ ▁▅▆▇█▇▅▄▅▆▄▄▃▃
+sky: +0h:LIGHT_RAIN +1h:PARTLY_CLOUDY_NIGHT +2h:CLEAR_NIGHT +3h:PARTLY_CLOUDY_NIGHT +5h:CLOUDY +6h:LIGHT_RAIN
+keypoint: 40分钟后雨渐停
+data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

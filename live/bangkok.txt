@@ -1,0 +1,9 @@
+# bangkok  (100.5018,13.7563)  local 2026-07-31 21:12  UTC+7
+now: CLOUDY  temp 27C  humidity 77%  wind 5km/h  precip 0.00
+next 2h rain (per min, max=0.00):                         
+rain probability 30min bins: 0% 0% 0% 0%
+next 24h precip (mm/h):      ▁▁ ▁▁▁▁       ▁█▁▁   peak 4.2
+next 24h temp 26..32C: ▂▂▂▂▂▁▁▁▁ ▁▃▅▆▇██▇█▇▆▅▅▄
+sky: +0h:CLOUDY +5h:LIGHT_RAIN +7h:CLOUDY +8h:LIGHT_RAIN +10h:CLOUDY +11h:LIGHT_RAIN
+keypoint: 您北边8公里正在下小雨哦
+data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
