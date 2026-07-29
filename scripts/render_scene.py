@@ -12,6 +12,10 @@ from runemap.render import ascii_radar
 import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
 from cities import CITIES
+try:
+    _MOTION = json.load(open("live/_motion.json"))
+except Exception:
+    _MOTION = {}
 
 def _load_motion():
     try:
@@ -81,6 +85,15 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, mo=None):
             rt["precipitation"]["local"]["intensity"]))
     if kp:
         L.append(kp)
+    mo = _MOTION.get(name) or {}
+    if mo.get("kind") == "moving":
+        L.append(("echo motion (radar-observed, last 1h): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
+                 if lang == "en" else
+                 ("回波移动(近1h雷达实测): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"])))
+    elif mo.get("kind") == "stationary":
+        L.append("echo quasi-stationary (<5 km/h, radar-observed, last 1h)"
+                 if lang == "en" else
+                 "回波准静止(<5km/h, 近1h雷达实测)")
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
