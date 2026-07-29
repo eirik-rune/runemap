@@ -1,6 +1,6 @@
 """Radar echo motion analysis v0.1: two radar frames -> rain-band motion vector.
 Method: intensity-weighted centroid displacement (crude; TODO v2: block-matching / optical flow).
-Input: caiyun /v1/radar/images frames (PNG + bbox + timestamps).
+Input: radar image frames (PNG + bbox + timestamps) (PNG + bbox + timestamps).
 Output: bearing, speed km/h, coverage trend -> LLM-friendly sentence."""
 from PIL import Image
 import math

@@ -1,5 +1,5 @@
 """ASCII radar v0.3 — numpy vectorized (PIL loop was ~8s/frame; this is ms-level).
-Same semantics as ascii_radar.py: caiyun radar PNG -> shade-glyph grid + location marker."""
+Same semantics as ascii_radar.py: radar PNG -> shade-glyph grid + location marker."""
 import numpy as np
 from PIL import Image
 import math
