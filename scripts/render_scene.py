@@ -78,13 +78,14 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
         L.append(kp)
     mo = _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
-        L.append(("echo motion (radar-observed, last 1h): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
-                 if lang == "en" else
-                 ("回波移动(近1h雷达实测): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"])))
+        mo_sfx = (("  |  echo motion(1h obs): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
+                  if lang == "en" else
+                  ("  |  \u56de\u6ce2\u79fb\u52a8(\u8fd11h\u5b9e\u6d4b): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"])))
     elif mo.get("kind") == "stationary":
-        L.append("echo quasi-stationary (<5 km/h, radar-observed, last 1h)"
-                 if lang == "en" else
-                 "回波准静止(<5km/h, 近1h雷达实测)")
+        mo_sfx = ("  |  echo quasi-stationary(<5km/h, 1h obs)" if lang == "en"
+                  else "  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, \u8fd11h\u5b9e\u6d4b)")
+    else:
+        mo_sfx = ""
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
@@ -99,11 +100,11 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
         art, kmcol, ts = rb
         t = time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
         if lang == "en":
-            L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name))
+            L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
             L.append(art)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
-            L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh))
+            L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh) + mo_sfx)
             L.append(art)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
