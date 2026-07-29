@@ -35,6 +35,19 @@ def _admin(cc, a1, a2):
     return out
 
 
+def tz_offset(tzname, at=None):
+    """IANA tz name -> current UTC offset in hours (DST-aware). None if unknown."""
+    if not tzname:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        import datetime as _dt
+        t = _dt.datetime.now(_dt.timezone.utc) if at is None else at
+        return t.astimezone(ZoneInfo(tzname)).utcoffset().total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
 def _pack(row):
     adm = _admin(row["cc"], row["a1"], row["a2"])
     return {"name": row["name"], "lat": row["lat"], "lon": row["lon"], "cc": row["cc"],

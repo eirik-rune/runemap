@@ -56,7 +56,10 @@ class H(BaseHTTPRequestHandler):
         try:
             tzh = float(q["tz"][0])
         except Exception:
-            tzh = round(lon / 15.0)   # TODO: use IANA tz from geonames
+            near = place or G.rlookup(lat, lon)
+            tzh = G.tz_offset(near.get("tz")) if near else None
+            if tzh is None:
+                tzh = round(lon / 15.0)     # fallback: no settlement nearby
         code = ((q.get("code", ["><"])[0]) + "><")[:2]
         try:
             wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
