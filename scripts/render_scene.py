@@ -9,16 +9,9 @@ import json, os, sys, time, urllib.request, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
 
-CITIES = [
-    ("beijing",   "BJ", "\u5317\u4eac",   116.4074, 39.9042, 8),
-    ("shanghai",  "SH", "\u4e0a\u6d77",   121.4737, 31.2304, 8),
-    ("guangzhou", "GZ", "\u5e7f\u5dde",   113.2644, 23.1291, 8),
-    ("london",    "LD", "\u4f26\u6566",    -0.1276, 51.5072, 0),
-    ("newyork",   "NY", "\u7ebd\u7ea6",   -74.0060, 40.7128, -4),
-    ("singapore", "SG", "\u65b0\u52a0\u5761", 103.8198, 1.3521, 8),
-    ("chiangmai", "CM", "\u6e05\u8fc8",    98.9853, 18.7883, 7),
-    ("bangkok",   "BK", "\u66fc\u8c37",   100.5018, 13.7563, 7),
-]
+import os as _o, sys as _s
+_s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cities import CITIES
 SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591a\u4e91","PARTLY_CLOUDY_NIGHT":"\u591a\u4e91",
 "CLOUDY":"\u9634","LIGHT_HAZE":"\u8f7b\u96fe\u973e","MODERATE_HAZE":"\u4e2d\u96fe\u973e","HEAVY_HAZE":"\u91cd\u96fe\u973e",
 "LIGHT_RAIN":"\u5c0f\u96e8","MODERATE_RAIN":"\u4e2d\u96e8","HEAVY_RAIN":"\u5927\u96e8","STORM_RAIN":"\u66b4\u96e8",

@@ -8,17 +8,10 @@ import json, os, sys, time, urllib.request, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
 
-CITIES = [
-    # name, lng, lat, tz_offset_hours  (radar coverage probed at runtime)
-    ("beijing",   116.4074, 39.9042, 8),
-    ("shanghai",  121.4737, 31.2304, 8),
-    ("guangzhou", 113.2644, 23.1291, 8),
-    ("london",     -0.1276, 51.5072, 0),
-    ("newyork",   -74.0060, 40.7128, -4),
-    ("singapore", 103.8198,  1.3521, 8),
-    ("chiangmai",  98.9853, 18.7883, 7),
-    ("bangkok",   100.5018, 13.7563, 7),
-]
+import os as _o, sys as _s
+_s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+from cities import CITIES as _ALL
+CITIES = [(n, lng, lat, tz) for (n, _c, _z, lng, lat, tz) in _ALL]
 
 def _get(url, timeout=25):
     req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
