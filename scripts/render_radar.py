@@ -138,7 +138,7 @@ def main():
     try:
         out = {k: v for k, v in MOTION.items() if v.get("kind")}
         out["_ts"] = time.time()
-        open("live/motion.json", "w").write(json.dumps(out, ensure_ascii=False))
+        open("live/_motion.json", "w").write(json.dumps(out, ensure_ascii=False))
     except Exception as e:
         print("motion.json write fail", e)
     if ok == 0: sys.exit(1)
