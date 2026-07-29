@@ -88,6 +88,22 @@ Flags: `--lang en|zh`, `--label NAME` (shown in the headline), `--tz HOURS`
 Radar PNGs are cached in `~/.cache/runemap` (30 min; radar index 5 min; current
 weather is never cached). Override the path with `RUNEMAP_CACHE`.
 
+## place names (offline geocoding)
+
+Agents ask "is it raining in Bangkok", not "13.75,100.50". So names work too:
+
+    python3 scripts/build_geo.py          # once: builds ~/geonames/geo.sqlite (~65MB)
+    CAIYUN_TOKEN=xxx python3 scripts/serve.py     # binds 127.0.0.1:8788
+
+    curl 'localhost:8788/scene?q=bangkok&lang=zh'
+    curl 'localhost:8788/scene?q=%E9%A1%BA%E5%BE%B7'   # county level, Chinese name
+    curl 'localhost:8788/scene?lat=18.7883&lon=98.9853'  # label reverse-looked-up
+
+Backed by GeoNames cities1000 (CC-BY 4.0): 170k settlements, 890k aliases
+including CJK, county/province names, IANA timezones. Fully offline, ~1ms per
+lookup, no rate limit. Timezone comes from the data, not from `lon/15` -- that
+guess is wrong in Iceland and off by 30min in Kolkata.
+
 ## Why characters instead of a picture
 
 | | image | prose summary | runemap |
