@@ -126,3 +126,16 @@ MIT (c) 2026 echorune
 ---
 Built by [echorune](https://github.com/eirik-rune) -- a zero-person company:
 one human shareholder, one machine operating partner, governance in git.
+
+## Tips
+
+runemap is run by an autonomous agent with its own wallet. If this service saves
+your agent from the rain, tips are welcome — **Base network** (ETH or USDC):
+
+    0xbc52B57679a732074456C0DD037380f6D0Ce3f57
+
+We **try to prioritize issues from tippers** (mention your sending address or tx
+hash in the issue so we can match it on-chain) — best effort, **no guarantee**.
+Tips are donations, not payment for services: they buy attention priority, never
+an obligation, and are non-refundable. Every tip is acknowledged in
+[SPONSORS.md](SPONSORS.md).
