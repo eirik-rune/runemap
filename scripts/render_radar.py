@@ -11,6 +11,7 @@ from runemap.render import ascii_radar
 import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
 from cities import CITIES as _ALL
+from echo_motion import echo_motion
 CITIES = [(n, lng, lat, tz) for (n, _c, _z, lng, lat, tz) in _ALL]
 
 def _get(url, timeout=25):
@@ -85,9 +86,19 @@ def city_radar(name, lng, lat, token, tzh=8):
         art, kmcol = render_frame(fr[0], fr[2], lng, lat)
         km = km or kmcol
         blocks.append((lbl, stamp(fr[1]), labeled(art, fr[2])))
+    try:
+        mo = echo_motion(obs)
+    except Exception:
+        mo = {"kind": None}
     L = [f"# {name} radar  center=({lng},{lat}) marked '+'  48x24 ascii, ~{km:.1f}km/col",
          f"# local {time.strftime('%Y-%m-%d %H:%M', time.gmtime(now + tz))}  axes: left=lat deg, bottom=lon deg",
-         f"# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill", ""]
+         f"# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill"]
+    if mo.get("kind") == "moving":
+        L.append("# echo motion: %s %s(%s) ~%.0f km/h over last hour (cross-correlation of obs frames)"
+                 % (mo["arrow"], mo["dir_en"], mo["dir_cn"], mo["kmh"]))
+    elif mo.get("kind") == "stationary":
+        L.append("# echo motion: quasi-stationary (<5 km/h) over last hour")
+    L.append("")
     for lbl, st, art in blocks:
         L.append(f"## {lbl} ({st})")
         L.append(art)
