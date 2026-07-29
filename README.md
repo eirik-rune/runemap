@@ -11,13 +11,6 @@ prompt (~600 tokens for 48x24) and preserves what matters: **where the rain is,
 how strong it is, and which way it is moving.**
 
 ```
-                      ....ddddddd.....
-                    ...dd###OOO###dd...
-             .      ...ddd##OOOO##dd...
-         ...ddddd...  ...ddddddddd....
-        ..d##OOO#dd..      ...
-       ..d#OO```O#dd..
-       ..d#OO```
 # guangzhou weather scene  updated 2026-07-29 19:36 local time  (lon 113.2644, lat 23.1291)
 now: CLOUDY  28C  humidity 94%  wind 10km/h  precip 0.00mm/h
 After 27 minute, expect a light rain
@@ -57,7 +50,7 @@ legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
 ```
 
-(real output, captured live 2026-07-29 11:39 UTC -- get a fresh one:
+(real output, captured live 2026-07-29 11:40 UTC -- get a fresh one:
 `curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en`)
 
 
