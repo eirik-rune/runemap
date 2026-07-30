@@ -163,7 +163,7 @@ def radar_art(code, lng, lat, token):
     finally:
         os.unlink(p)
 
-def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
+def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None):
     code = _mark(code)   # legend and grid must show the same glyph
     rt = wx["realtime"]
     kp = (wx.get("forecast_keypoint") or wx.get("minutely", {}).get("description", "")).strip()
@@ -244,8 +244,15 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
                 L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
-        L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"
-                 else "\u96f7\u8fbe: \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
+        if radar_err:
+            # bob 7/30 19:26: a transient tile stall must degrade, not 502.
+            # Distinct from genuine no-coverage; probes treat this as FAIL.
+            L.append("radar: temporarily unavailable (upstream stall: %s) -- weather above is live, retry in a minute" % radar_err
+                     if lang == "en" else
+                     "雷达: 上游暂时不可用(%s), 以上天气为实时, 请稍后重试" % radar_err)
+        else:
+            L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"
+                     else "\u96f7\u8fbe: \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")

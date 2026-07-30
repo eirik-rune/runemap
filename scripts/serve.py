@@ -236,7 +236,15 @@ class H(BaseHTTPRequestHandler):
                     _wxb["e"] = _e
             _wxt = _th.Thread(target=_wx_job, daemon=True)
             _wxt.start()
-            rb = R.radar_art(code, lon, lat, TOKEN)
+            radar_err = None
+            try:
+                rb = R.radar_art(code, lon, lat, TOKEN)
+            except Exception as _re:
+                # bob 7/30: no radar tile -> retry (hedge inside _get) or give
+                # up and ship weather with a notice, never 502 the request.
+                rb = None
+                radar_err = type(_re).__name__
+                sys.stderr.write("RADAR-DEGRADED %r\n" % (_re,))
             _t_rb = time.time() - _t; _t = time.time()
             _wxt.join(25)
             if "e" in _wxb:
@@ -245,7 +253,7 @@ class H(BaseHTTPRequestHandler):
             if wx is None:
                 raise RuntimeError("weather fetch did not return")
             _t_wx = time.time() - _t; _t = time.time()
-            out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
+            out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb, radar_err=radar_err)
             _t_bd = time.time() - _t
             # Per-stage timing, always logged. Cold renders of fresh cities ranged
             # from 0.5s to 13.3s on this box and calling the render functions
