@@ -4,19 +4,27 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '17 4 * * 1'      # a clean install rots without anyone touching the repo
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  clean-install:
+    # pyproject claims requires-python >=3.8, so 3.8 gets tested for real.
+    # An untested version bound is just another sentence nobody verified.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, python: '3.8' }
+          - { os: ubuntu-latest, python: '3.12' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install from source
+          python-version: ${{ matrix.python }}
+      - name: Install from source, as a stranger would
         run: pip install .
-      - name: Test imports and synthetic render
-        run: |
-          python3 -c "import runemap.render; print('Import OK')"
-          python3 examples/synthetic.py > out.txt
-          if [ ! -s out.txt ]; then echo "Empty output"; exit 1; fi
-          echo "Synthetic render OK"
+      - name: Import outside the source tree (catches path-only imports)
+        run: cd /tmp && python -c "import runemap, runemap.render; print('import OK', runemap.__file__)"
+      - name: README promises hold
+        run: python tools/readme_promises.py
