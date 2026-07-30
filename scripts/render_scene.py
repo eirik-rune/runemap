@@ -76,7 +76,21 @@ def _motion_now(imgs, lng, lat):
         threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True).start()
     return (hit[1] if hit else {"kind": None})
 
+def _mark(code):
+    """The in-grid marker must be strictly single-width, so it is ASCII only.
+    Emoji (house, pushpin) are East_Asian_Width=Wide: one character, two columns,
+    so the row becomes 49 wide and the whole 48-column map shears. Arrows
+    (U+2192, U+2198) are Ambiguous: single-width in a Latin terminal, double in a
+    CJK one -- a Chinese reader would see a sheared map that I cannot reproduce
+    locally. Direction belongs on the legend line, which is prose and does not
+    have to align; it already carries the motion arrow.
+    One cell, not two: the old '><' covered ~20km of the rain it was pointing at."""
+    c = (code or "X").strip()[:1]
+    return c if c and 32 < ord(c) < 127 else "X"
+
+
 def radar_art(code, lng, lat, token):
+    code = _mark(code)
     try:
         d = json.loads(_get("https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)))
     except Exception:
@@ -95,6 +109,7 @@ def radar_art(code, lng, lat, token):
         os.unlink(p)
 
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
+    code = _mark(code)   # legend and grid must show the same glyph
     rt = wx["realtime"]
     kp = (wx.get("forecast_keypoint") or wx.get("minutely", {}).get("description", "")).strip()
     p2h = wx.get("minutely", {}).get("precipitation_2h", [])[:120]
