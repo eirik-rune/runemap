@@ -37,7 +37,12 @@ AXIS = '├────┼────┼────┼────┤\n0   30 
 def _get(url, timeout=15):
     # `timeout` is now a TOTAL wall-clock budget for dial + TTFB + body, not the
     # per-recv gap that urlopen gives you. See scripts/net_budget.py.
-    return net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
+    _t0 = time.time()
+    b = net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
+    _el = time.time() - _t0
+    if _el > 1.0:
+        sys.stderr.write("SLOW-GET total=%.2f bytes=%d %s\n" % (_el, len(b), url[-46:]))
+    return b
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
@@ -127,7 +132,12 @@ def radar_art(code, lng, lat, token):
         f.write(png); p = f.name
     try:
         art, kmcol = ascii_radar(p, bbox, lng, lat, cols=48, rows=24, marker=code)
-        return art, kmcol, ts, _motion_now(imgs, lng, lat)
+        _t = time.time()
+        mo = _motion_now(imgs, lng, lat)
+        _t_mo = time.time() - _t
+        if _t_mo > 1.5:
+            sys.stderr.write("SLOW-RADAR motion=%.2f\n" % (_t_mo,))
+        return art, kmcol, ts, mo
     finally:
         os.unlink(p)
 

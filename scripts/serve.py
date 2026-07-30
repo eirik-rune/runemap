@@ -224,9 +224,20 @@ class H(BaseHTTPRequestHandler):
         canonical_url = f"/scene?{c_qs}"
 
         try:
+            _t = time.time()
             wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+            _t_wx = time.time() - _t; _t = time.time()
             rb = R.radar_art(code, lon, lat, TOKEN)
+            _t_rb = time.time() - _t; _t = time.time()
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
+            _t_bd = time.time() - _t
+            # Per-stage timing, always logged. Cold renders of fresh cities ranged
+            # from 0.5s to 13.3s on this box and calling the render functions
+            # directly never exceeded 3.7s, so the slow part is somewhere I could
+            # not see from outside. Guessing from the outside cost five rounds.
+            if _t_wx + _t_rb + _t_bd > 2.0:
+                sys.stderr.write("SLOW %s wx=%.2f radar=%.2f build=%.2f total=%.2f\n"
+                                 % (label, _t_wx, _t_rb, _t_bd, _t_wx + _t_rb + _t_bd))
             if guessed:
                 out += _guess_note(lang, label)
             HITS["n"] += 1
