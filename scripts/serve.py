@@ -59,6 +59,28 @@ github.com/eirik-rune/runemap/issues
 _PROBE_EXT = ("txt", "ico", "xml", "json", "php", "html", "htm", "css", "js",
               "png", "jpg", "gif", "map", "env", "git", "asp", "aspx", "yml", "yaml", "sql")
 
+def _accept_lang(hdr):
+    """First supported language in an Accept-Language header, by q-order."""
+    if not hdr:
+        return ""
+    best, bq = "", -1.0
+    for part in hdr.split(",")[:8]:
+        bits = part.strip().split(";")
+        tag = bits[0].strip().lower()[:8]
+        q = 1.0
+        for b in bits[1:]:
+            b = b.strip()
+            if b.startswith("q="):
+                try:
+                    q = float(b[2:])
+                except ValueError:
+                    q = 0.0
+        code = "zh" if tag.startswith("zh") else ("en" if tag.startswith("en") else "")
+        if code and q > bq:
+            best, bq = code, q
+    return best
+
+
 def _guess_note(lang, label):
     """A guess must never be embarrassing: say it is a guess, then hand over the
     one-line escape. GeoIP is wrong behind VPNs and carrier NAT by construction."""
@@ -163,7 +185,10 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, "bad or missing coordinates\n\n" + HOME)
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 return self._send(400, "lat/lon out of range\n")
-        lang = (q.get("lang", ["en"])[0] or "en").lower()
+        # explicit suffix/param wins; otherwise follow the client's own preference.
+        # It applied to "/" only at first, so a Chinese phone asking for /london
+        # got English -- a difference the caller never asked for.
+        lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
         lang = lang if lang in ("en", "zh") else "en"
         label = q.get("label", [None])[0]
         if not label:
