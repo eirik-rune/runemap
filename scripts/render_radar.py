@@ -16,6 +16,11 @@ MOTION = {}
 CITIES = [(n, lng, lat, tz) for (n, _c, _z, lng, lat, tz) in _ALL]
 
 import net_budget
+try:
+    import happy_eyeballs
+    happy_eyeballs.install()   # concurrent dial (first answer wins) under net_budget's deadline
+except Exception as _he:
+    import sys as _hs; _hs.stderr.write('happy_eyeballs not installed: %r\n' % (_he,))
 
 def _get(url, timeout=25):
     # total budget, not a per-recv gap -- see scripts/net_budget.py

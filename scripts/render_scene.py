@@ -20,6 +20,11 @@ except Exception:
 import os as _nb_os, sys as _nb_sys
 _nb_sys.path.insert(0, _nb_os.path.dirname(_nb_os.path.abspath(__file__)))
 import net_budget
+try:
+    import happy_eyeballs
+    happy_eyeballs.install()   # concurrent dial (first answer wins) under net_budget's deadline
+except Exception as _he:
+    import sys as _hs; _hs.stderr.write('happy_eyeballs not installed: %r\n' % (_he,))
 
 SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591a\u4e91","PARTLY_CLOUDY_NIGHT":"\u591a\u4e91",
 "CLOUDY":"\u9634","LIGHT_HAZE":"\u8f7b\u96fe\u973e","MODERATE_HAZE":"\u4e2d\u96fe\u973e","HEAVY_HAZE":"\u91cd\u96fe\u973e",
