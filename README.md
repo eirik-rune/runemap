@@ -75,6 +75,29 @@ Endpoints per city: `live/<city>/en` and `live/<city>/zh` (one-screen scene: hea
 curve + radar + legend), `live/<city>.txt` (brief), `live/<city>_radar.txt` (3-frame radar).
 Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
 
+## public service (https://echorune.net)
+
+    curl echorune.net                 # your location, guessed from your IP
+    curl echorune.net/bangkok         # by name
+    curl echorune.net/bangkok/zh      # language suffix: en (default) | zh
+    curl echorune.net/13.75,100.50    # by coordinate
+    curl echorune.net/help            # full door plate
+    curl echorune.net/healthz
+
+Path style exists for a reason: `&` is a shell operator, so `?q=x&lang=zh` has
+to be quoted, and that is where agent-generated curl commands die most often.
+A path needs no quotes. The query form keeps working forever, with no redirect
+to it: LLM agents do not follow 301 by default.
+
+Coordinate order is disambiguated by measurement rather than convention: a value
+with abs > 90 cannot be a latitude, so `/116.39,39.93` resolves with certainty.
+Only when both values are <= 90 does the lat,lon convention apply.
+
+IP to coordinate is a local lookup (DB-IP City Lite, CC-BY, ~0.5ms), never a
+third-party call; the label then comes from GeoNames in either language, so the
+two capabilities compose instead of overlapping. A guess says it is a guess and
+prints the one-line escape. The access log stores only the first three octets.
+
 ## any coordinate
 
 The files above are pre-rendered for a fixed city list. For an arbitrary point,
