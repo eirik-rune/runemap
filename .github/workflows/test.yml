@@ -1,0 +1,22 @@
+name: test
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install from source
+        run: pip install .
+      - name: Test imports and synthetic render
+        run: |
+          python3 -c "import runemap.render; print('Import OK')"
+          python3 examples/synthetic.py > out.txt
+          if [ ! -s out.txt ]; then echo "Empty output"; exit 1; fi
+          echo "Synthetic render OK"
