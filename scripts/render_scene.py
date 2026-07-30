@@ -84,9 +84,11 @@ def _mark(code):
     CJK one -- a Chinese reader would see a sheared map that I cannot reproduce
     locally. Direction belongs on the legend line, which is prose and does not
     have to align; it already carries the motion arrow.
-    One cell, not two: the old '><' covered ~20km of the rain it was pointing at."""
-    c = (code or "X").strip()[:1]
-    return c if c and 32 < ord(c) < 127 else "X"
+    Two cells: '><' brackets the spot, and a lone glyph is genuinely hard to find
+    in a field of shade characters -- a map you cannot locate yourself on is not a
+    map. It does hide ~20km of rain; being findable wins that trade."""
+    c = "".join(ch for ch in (code or "") if 32 < ord(ch) < 127)[:2]
+    return c or "><"
 
 
 def radar_art(code, lng, lat, token):
@@ -138,6 +140,22 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
                   else "  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, \u8fd11h\u5b9e\u6d4b)")
     else:
         mo_sfx = ""
+    # The arrow goes on its own line under the map, flush left, where the eye lands
+    # after finishing the grid. It stays OUT of the grid on purpose: arrows are
+    # East_Asian_Width=Ambiguous, one column in a Latin terminal and two in a CJK
+    # one, so putting one in a 48-column row would shear the map for exactly the
+    # readers whose terminals I cannot reproduce here.
+    if mo.get("kind") == "moving":
+        mo_line = ("%s %s ~%.0f km/h   echo motion, 1h obs"
+                   % (mo["arrow"], mo["dir_en"], mo["kmh"]) if lang == "en" else
+                   "%s %s ~%.0f km/h   回波移动, 近1h实测"
+                   % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
+    elif mo.get("kind") == "stationary":
+        mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
+                   else "= 回波准静止 (<5km/h, 近1h实测)")
+    else:
+        mo_line = ""
+    mo_sfx = ""   # said once, on its own line -- not twice
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
@@ -154,10 +172,14 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
         if lang == "en":
             L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
             L.append(art)
+            if mo_line:
+                L.append(mo_line)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
             L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh) + mo_sfx)
             L.append(art)
+            if mo_line:
+                L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
         L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"

@@ -202,7 +202,7 @@ class H(BaseHTTPRequestHandler):
             tzh = G.tz_offset(near.get("tz")) if near else None
             if tzh is None:
                 tzh = round(lon / 15.0)     # fallback: no settlement nearby
-        code = (q.get("code", ["X"])[0] or "X")[:1]   # one grid cell; render_scene._mark enforces single-width ASCII
+        code = ((q.get("code", ["><"])[0]) + "><")[:2]   # two cells; render_scene._mark keeps it single-width ASCII
         import urllib.parse
         c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
         canonical_url = f"/scene?{c_qs}"
