@@ -1,9 +1,9 @@
-# shanghai  (121.4737,31.2304)  local 2026-07-30 04:16  UTC+8
-now: CLEAR_NIGHT  temp 30C  humidity 80%  wind 2km/h  precip 0.00
+# shanghai  (121.4737,31.2304)  local 2026-07-30 08:08  UTC+8
+now: CLEAR_DAY  temp 31C  humidity 75%  wind 3km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):         ▁▁ ▁█▆▁           peak 10.1
-next 24h temp 30..39C: ▁▁▁▂▃▅▆▇██▆▅▄▃▃▃▃▂▂▁▁▁▁ 
-sky: +0h:CLEAR_NIGHT +1h:PARTLY_CLOUDY_DAY +5h:CLEAR_DAY +7h:PARTLY_CLOUDY_DAY +8h:LIGHT_RAIN +10h:PARTLY_CLOUDY_DAY
-keypoint: 多云，今天中午12点钟后转小雨，其后多云
+next 24h precip (mm/h):        █▂                 peak 1.1
+next 24h temp 29..38C: ▂▄▆███▇▆▅▄▄▄▃▃▂▂▁▁▁▁▁ ▁▂
+sky: +0h:CLEAR_DAY +4h:PARTLY_CLOUDY_DAY +7h:MODERATE_RAIN +8h:LIGHT_RAIN +9h:CLEAR_DAY +11h:CLEAR_NIGHT
+keypoint: 晴，今天下午15点钟后转小雨，其后晴
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
