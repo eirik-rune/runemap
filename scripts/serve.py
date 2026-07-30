@@ -270,5 +270,30 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     host = os.environ.get("RUNEMAP_HOST", "127.0.0.1")
     port = int(os.environ.get("RUNEMAP_PORT", "8788"))
+
+    class _DrainingServer(ThreadingHTTPServer):
+        # Graceful drain. Reproduced 7/30: SIGTERM 0.3s into a cold render
+        # gave the in-flight client "Empty reply from server" (curl 52);
+        # through nginx that is "upstream prematurely closed" -> the
+        # shareholder's 568-byte default 502 page when a rolling restart
+        # killed both instances under his request. daemon_threads=False +
+        # block_on_close makes serve_forever's exit wait for handler
+        # threads, so SIGTERM stops the accept loop but running requests
+        # finish and their bytes reach nginx before the process exits.
+        daemon_threads = False
+        block_on_close = True
+
+    srv = _DrainingServer((host, port), H)
+
+    import signal
+    import threading as _sig_th
+    def _drain(_sig, _frm):
+        # shutdown() blocks until serve_forever returns; call it off the
+        # signal frame so the handler itself never deadlocks.
+        _sig_th.Thread(target=srv.shutdown, daemon=True).start()
+    signal.signal(signal.SIGTERM, _drain)
+
     print("serving http://%s:%d/scene?lat=..&lon=.." % (host, port))
-    ThreadingHTTPServer((host, port), H).serve_forever()
+    srv.serve_forever()
+    srv.server_close()
+    sys.stderr.write("drained: in-flight requests finished, exiting clean\n")
