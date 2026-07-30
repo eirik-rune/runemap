@@ -23,9 +23,12 @@ def _get(url, timeout=10):
     # disk pool (png TTL 1800) already serves repeat frames. 10s, not 25s: a cold
     # render fetches weather + radar list + frames serially and 15+25+20 lands
     # exactly on nginx's 60s proxy_read_timeout -- how a healthy service 504'd.
-    req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    # total budget now, so the serial 15+25+20 worst case is a real ceiling
+    # rather than a per-recv cap a trickling peer can walk straight past.
+    import os as _o2, sys as _s2
+    _s2.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+    import net_budget
+    return net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
 
 def _load_lv(url):
     png = _get(url)
