@@ -68,7 +68,15 @@ def _cached_get(url, timeout=15):
         raise
     if _usable(kind, b):
         tmp = key + ".part"
-        open(tmp, "wb").write(b); os.replace(tmp, key)
+        # Unique temp per writer: the fixed key+".part" name raced when two
+        # threads fetched the same URL (motion thread overlapping the map
+        # fetch after the 18:51 parallelization) -- one os.replace won, the
+        # other crashed FileNotFoundError and the request 502d.
+        import tempfile as _tf
+        _fd, _tmpu = _tf.mkstemp(prefix=os.path.basename(key) + ".", suffix=".part", dir=os.path.dirname(key))
+        with os.fdopen(_fd, "wb") as _f:
+            _f.write(b)
+        os.replace(_tmpu, key)
         return b
     # bad payload: never poison the cache; last good beats nothing
     if have and age < _TTL[kind] * _STALE_MAX:
