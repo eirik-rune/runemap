@@ -10,6 +10,7 @@ import argparse, os, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_scene as R
+import net_budget
 
 # --- radar cache: PNG bytes + images-API responses (weather stays live) ---
 import hashlib, json as _json
@@ -61,7 +62,9 @@ def _cached_get(url, timeout=15):
         return open(key, "rb").read()
     _track_outbound()
     try:
-        b = _orig_get(url, timeout)
+        # Use total-budget fetch: dial + TTFB + body <= budget, even if upstream trickles.
+        # The per-recv cap is set inside net_budget to min(budget/4, 5s).
+        b = net_budget.budgeted_get(url, total_budget=timeout)
     except Exception:
         if have and age < _TTL[kind] * _STALE_MAX:
             return open(key, "rb").read()
