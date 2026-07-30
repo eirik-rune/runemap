@@ -62,7 +62,16 @@ class H(BaseHTTPRequestHandler):
                 tzh = round(lon / 15.0)     # fallback: no settlement nearby
         code = ((q.get("code", ["><"])[0]) + "><")[:2]
         try:
-            wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+            
+        import urllib.parse
+        c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
+        canonical_url = f"/scene?{c_qs}"
+        if self.path != canonical_url:
+            self.send_response(301)
+            self.send_header("Location", canonical_url)
+            self.end_headers()
+            return
+        wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
             rb = R.radar_art(code, lon, lat, TOKEN)
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
             HITS["n"] += 1
