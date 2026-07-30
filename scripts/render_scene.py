@@ -152,9 +152,13 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
     # column in a Latin terminal and two in a CJK one, so a 48-column row holding
     # one would shear for exactly the readers I cannot reproduce locally.
     if mo.get("kind") == "moving":
-        mo_line = mo["arrow"]
+        mo_line = ("%s %s ~%.0f km/h   echo motion, 1h obs"
+                   % (mo["arrow"], mo["dir_en"], mo["kmh"]) if lang == "en" else
+                   "%s %s ~%.0f km/h   回波移动, 近1h实测"
+                   % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
     elif mo.get("kind") == "stationary":
-        mo_line = "="
+        mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
+                   else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
         mo_line = ""
     L.append("")
