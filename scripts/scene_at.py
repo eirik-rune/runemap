@@ -52,7 +52,7 @@ def _usable(kind, b):
         return False
     return True
 
-def _cached_get(url, timeout=15):
+def _cached_get(url, timeout=None):
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
     key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
     have = os.path.exists(key)

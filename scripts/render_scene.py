@@ -4,7 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
-import json, os, sys, time, urllib.request, tempfile
+import json, os, sys, time, urllib.request, tempfile, threading, queue as _queue
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
@@ -25,10 +25,32 @@ SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591
 BARS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
 AXIS = '├────┼────┼────┼────┤\n0   30   60   90 120min'
 
-def _get(url, timeout=15):
+_GET_BUDGET = 25.0          # total wall-clock budget for any single upstream fetch
+
+def _get(url, timeout=None):
+    """Fetch URL with strict total wall-clock budget.
+
+    timeout here is the per-recv gap cap; the real bound is _GET_BUDGET.
+    An upstream that trickles one byte every 30s expires on total time,
+    not just the gap between recvs.
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    q = _queue.Queue()
+    def _fetch():
+        try:
+            with urllib.request.urlopen(req, timeout=timeout or _GET_BUDGET) as r:
+                q.put(r.read())
+        except BaseException as e:
+            q.put(e)
+    t = threading.Thread(target=_fetch, daemon=True)
+    t.start()
+    t.join(_GET_BUDGET)
+    if t.is_alive():
+        raise RuntimeError("total fetch budget exceeded (%ss) for %s" % (_GET_BUDGET, url))
+    result = q.get_nowait()
+    if isinstance(result, BaseException):
+        raise result
+    return result
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
