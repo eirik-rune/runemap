@@ -42,7 +42,7 @@ class H(BaseHTTPRequestHandler):
             lat, lon = place["lat"], place["lon"]
         else:
             try:
-                lat = float(q["lat"][0]); lon = float(q["lon"][0])
+                lat = round(float(q["lat"][0]), 3); lon = round(float(q["lon"][0]), 3)
             except Exception:
                 return self._send(400, "usage: /scene?q=bangkok  OR  /scene?lat=13.75&lon=100.50 [&lang=en|zh]\n")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):

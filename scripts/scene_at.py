@@ -15,16 +15,29 @@ import render_scene as R
 import hashlib, json as _json
 CACHE = os.environ.get("RUNEMAP_CACHE", os.path.expanduser("~/.cache/runemap"))
 os.makedirs(CACHE, exist_ok=True)
-_TTL = {"radar_json": 300, "png": 1800}   # radar refreshes ~6min; png urls are timestamped
+_TTL = {"radar_json": 300, "png": 1800, "weather": 300}   # radar refreshes ~6min; png urls are timestamped
 _orig_get = R._get
 
+import datetime
+MAX_CALLS = int(os.environ.get("RUNEMAP_MAX_CALLS", "1000"))
+
+def _track_outbound():
+    today = datetime.date.today().isoformat()
+    usage_file = os.path.join(CACHE, f"usage_{today}.txt")
+    try:
+        calls = int(open(usage_file).read().strip())
+    except Exception:
+        calls = 0
+    if calls >= MAX_CALLS:
+        raise RuntimeError(f"Circuit breaker tripped: {MAX_CALLS} API calls reached today")
+    open(usage_file, "w").write(str(calls + 1))
+
 def _cached_get(url, timeout=15):
-    kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else None)
-    if kind is None:
-        return _orig_get(url, timeout)            # weather: always live
+    kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
     key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
     if os.path.exists(key) and time.time() - os.path.getmtime(key) < _TTL[kind]:
         return open(key, "rb").read()
+    _track_outbound()
     b = _orig_get(url, timeout)
     tmp = key + ".part"
     open(tmp, "wb").write(b); os.replace(tmp, key)
