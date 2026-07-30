@@ -169,3 +169,43 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
         except Exception:
             pass
         conn.close()
+
+
+def get_hedged(url, budget=DEFAULT_BUDGET, headers=None, hedge_after=1.0):
+    """Tail-latency hedge. The radar PNG CDN serves the same object at a 0.65s
+    median but with a multi-second tail (measured 1.25s/2.25s/2.81s on 7/30);
+    if the first attempt has not finished after hedge_after seconds, fire a
+    second identical request and take whichever completes first. Cost: an
+    occasional duplicate ~13KB download; the tail collapses to about
+    median + hedge_after. Fast fetches (weather json ~0.3s) never hedge.
+    Both attempts share one total deadline."""
+    import threading
+    dl = _Deadline(budget)
+    win = {}
+    errs = []
+    done = threading.Event()
+
+    def attempt(delay):
+        if delay and done.wait(delay):
+            return
+        if dl.expired():
+            return
+        try:
+            b = get(url, budget=dl.left(), headers=dict(headers or {}))
+            if not done.is_set():
+                win["v"] = b
+                done.set()
+        except Exception as e:
+            errs.append(e)
+            if len(errs) >= 2:
+                done.set()
+
+    t1 = threading.Thread(target=attempt, args=(0,), daemon=True)
+    t2 = threading.Thread(target=attempt, args=(hedge_after,), daemon=True)
+    t1.start(); t2.start()
+    done.wait(dl.left())
+    if "v" in win:
+        return win["v"]
+    if errs:
+        raise errs[0]
+    raise BudgetExceeded(url, dl.budget, "hedged", 0)

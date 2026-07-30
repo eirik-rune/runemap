@@ -38,7 +38,7 @@ def _get(url, timeout=15):
     # `timeout` is now a TOTAL wall-clock budget for dial + TTFB + body, not the
     # per-recv gap that urlopen gives you. See scripts/net_budget.py.
     _t0 = time.time()
-    b = net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
+    b = net_budget.get_hedged(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
     _el = time.time() - _t0
     if _el > 1.0:
         sys.stderr.write("SLOW-GET total=%.2f bytes=%d %s\n" % (_el, len(b), url[-46:]))
