@@ -34,6 +34,7 @@ USAGE
   curl echorune.net/<lat>,<lon>     e.g. echorune.net/13.75,100.50
   curl echorune.net/help
   curl echorune.net/healthz
+  curl echorune.net/status         availability, measured every minute
   the query form keeps working: /scene?q=<place>&lang=zh
   (quote that one: & is a shell operator)
 
