@@ -155,7 +155,6 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
         mo_line = ""
-    mo_sfx = ""   # said once, on its own line -- not twice
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
