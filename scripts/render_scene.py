@@ -145,14 +145,16 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
     # East_Asian_Width=Ambiguous, one column in a Latin terminal and two in a CJK
     # one, so putting one in a 48-column row would shear the map for exactly the
     # readers whose terminals I cannot reproduce here.
+    # Just the glyph, flush left under the map. The reading already sits on the
+    # legend line above, so repeating it here would only bury the one thing this
+    # line exists for: a mark the eye cannot miss. It is deliberately below the
+    # grid rather than inside it -- arrows are East_Asian_Width=Ambiguous, one
+    # column in a Latin terminal and two in a CJK one, so a 48-column row holding
+    # one would shear for exactly the readers I cannot reproduce locally.
     if mo.get("kind") == "moving":
-        mo_line = ("%s %s ~%.0f km/h   echo motion, 1h obs"
-                   % (mo["arrow"], mo["dir_en"], mo["kmh"]) if lang == "en" else
-                   "%s %s ~%.0f km/h   回波移动, 近1h实测"
-                   % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
+        mo_line = mo["arrow"]
     elif mo.get("kind") == "stationary":
-        mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
-                   else "= 回波准静止 (<5km/h, 近1h实测)")
+        mo_line = "="
     else:
         mo_line = ""
     L.append("")
