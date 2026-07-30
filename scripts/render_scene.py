@@ -42,6 +42,7 @@ def weather(lng, lat, token, lang):
 
 _MO_CACHE = {}
 _MO_TTL = 600
+_MO_BUDGET = 3.0    # seconds a request will wait for motion before giving up on it
 
 _MO_BUSY = set()
 
@@ -71,9 +72,20 @@ def _motion_now(imgs, lng, lat):
     hit = _MO_CACHE.get(key)
     if hit and time.time() - hit[0] < _MO_TTL:
         return hit[1]
+    # Wait for it, but only for a bounded moment. Measured cost: one extra 13KB PNG
+    # (the newest frame is already downloaded to draw the map), 0.03s to decode and
+    # 0.15s to cross-correlate -- so warm it is ~0.2s and the first hit to a cold
+    # upstream is dominated by DNS and the TLS handshake, ~3s.
+    # The budget is the whole point: an unbounded wait on an upstream fetch is
+    # exactly what turned a healthy service into a 504 earlier today. If the budget
+    # runs out the thread keeps going and fills the cache for the next request, and
+    # this response simply omits the line -- late is fine, slow is not.
     if key not in _MO_BUSY:
         _MO_BUSY.add(key)
-        threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True).start()
+        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
+        t.start()
+        t.join(_MO_BUDGET)
+    hit = _MO_CACHE.get(key)
     return (hit[1] if hit else {"kind": None})
 
 def _mark(code):
