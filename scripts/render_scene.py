@@ -161,6 +161,10 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
         mo_line = ""
+    # The reading lives on one line only: the one under the map, where the eye
+    # already is. On the legend line it competed with the marker key for the same
+    # glance and pushed that row to 100+ columns, which wraps in a narrow terminal.
+    mo_sfx = ""
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
