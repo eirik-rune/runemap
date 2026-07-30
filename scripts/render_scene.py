@@ -111,7 +111,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
         L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"
                  else "\u96f7\u8fbe: \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
     L.append("")
-    L.append("data: caiyunapp.com (数据来自彩云科技) | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
+    L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
     return "\n".join(L) + "\n"
 
