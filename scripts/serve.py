@@ -67,6 +67,7 @@ class H(BaseHTTPRequestHandler):
         if self.path != canonical_url:
             self.send_response(301)
             self.send_header("Location", canonical_url)
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
 
