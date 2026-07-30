@@ -18,7 +18,11 @@ CN8 = {"E": "\u5411\u4e1c", "NE": "\u5411\u4e1c\u5317", "N": "\u5411\u5317",
        "NW": "\u5411\u897f\u5317", "W": "\u5411\u897f", "SW": "\u5411\u897f\u5357",
        "S": "\u5411\u5357", "SE": "\u5411\u4e1c\u5357"}
 
-def _get(url, timeout=25):
+def _get(url, timeout=10):
+    # Rebound to scene_at's cached getter by render_scene._motion_compute, so the
+    # disk pool (png TTL 1800) already serves repeat frames. 10s, not 25s: a cold
+    # render fetches weather + radar list + frames serially and 15+25+20 lands
+    # exactly on nginx's 60s proxy_read_timeout -- how a healthy service 504'd.
     req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
@@ -67,7 +71,7 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     now = frames[-1][1]
     nearest = lambda t: min(frames, key=lambda f: abs(f[1] - t))
     pairs, seen = [], set()
-    for b0, b1 in [(3600, 1800), (2700, 900), (1800, 0)]:
+    for b0, b1 in [(3600, 0)]:   # one hour of separation; two frames measure displacement, extra pairs cost a download each and bought no accuracy
         fa, fb = nearest(now - b0), nearest(now - b1)
         key = (fa[0], fb[0])
         if fb[1] - fa[1] >= 600 and key not in seen:
@@ -75,6 +79,24 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     if not pairs:
         return {"kind": None}
     cache = {}
+    # The two frames are pure IO -- fetch them concurrently.
+    def _try(u):
+        try:
+            return _load_lv(u)
+        except Exception:
+            return None
+    urls = []
+    for fa, fb in pairs:
+        for f in (fa, fb):
+            if f[0] not in urls:
+                urls.append(f[0])
+    if len(urls) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(urls)) as ex:
+            for u, r in zip(urls, ex.map(_try, urls)):
+                if r is not None:
+                    cache[u] = r
+
     def lv(f):
         if f[0] not in cache:
             cache[f[0]] = _load_lv(f[0])
