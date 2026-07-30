@@ -21,8 +21,13 @@ class TrickleServer:
     returns well inside the socket timeout, so the old code never trips it.
     """
 
-    def __init__(self, gap=0.2, headers_delay=0.0, total=10_000):
+    def __init__(self, gap=0.2, headers_delay=0.0, total=10_000, will_close=False):
         self.gap, self.headers_delay, self.total = gap, headers_delay, total
+        # will_close reproduces the real world: most upstreams answer with
+        # Connection: close, and http.client then hands the socket to the
+        # response and nulls conn.sock. Code that keeps poking conn.sock
+        # passes against a persistent test server and dies against production.
+        self.will_close = will_close
         self.srv = socket.socket()
         self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.srv.bind(("127.0.0.1", 0))
@@ -49,7 +54,9 @@ class TrickleServer:
         try:
             c.recv(65536)
             time.sleep(self.headers_delay)
-            c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % self.total)
+            extra = b"Connection: close\r\n" if self.will_close else b""
+            c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n%s\r\n"
+                      % (self.total, extra))
             for _ in range(self.total):
                 if self.stop.is_set():
                     break
@@ -130,7 +137,31 @@ def main():
     finally:
         s.close()
 
-    print("5. a healthy server still returns the whole body")
+    print("5. Connection: close upstream — the shape production actually sends")
+    s4 = TrickleServer(gap=0.0, total=4096, will_close=True)
+    try:
+        b = net_budget.get(s4.url, budget=5.0)
+        check("full body over a closing connection", len(b) == 4096, "%d bytes" % len(b))
+    except Exception as e:
+        check("full body over a closing connection", False, "%r" % e)
+    finally:
+        s4.close()
+
+    s5 = TrickleServer(gap=0.2, total=99999, will_close=True)
+    try:
+        t0 = time.monotonic()
+        try:
+            net_budget.get(s5.url, budget=1.5)
+            ok = False
+        except net_budget.BudgetExceeded:
+            ok = True
+        el = time.monotonic() - t0
+        check("trickle still bounded when conn.sock was handed off", ok and el < 2.5,
+              "%.2fs elapsed, budget 1.5s" % el)
+    finally:
+        s5.close()
+
+    print("6. a healthy server still returns the whole body")
     s3 = TrickleServer(gap=0.0, total=5000)
     try:
         b = net_budget.get(s3.url, budget=5.0)

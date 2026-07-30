@@ -91,6 +91,12 @@ def _connect(url, dl, headers):
         if u.query:
             path += "?" + u.query
         conn.request("GET", path, headers=headers)
+        # Capture the socket BEFORE getresponse(). When the response says
+        # Connection: close, http.client hands the socket to the response and
+        # sets conn.sock = None ("this effectively passes the connection to the
+        # response"). Reading conn.sock afterwards is an AttributeError against
+        # every upstream that closes -- which is most of them.
+        sock = conn.sock
         resp = conn.getresponse()
     except (socket.timeout, TimeoutError):
         conn.close()
@@ -98,7 +104,27 @@ def _connect(url, dl, headers):
     except Exception:
         conn.close()
         raise
-    return conn, resp
+    return conn, resp, sock
+
+
+def _set_timeout(sock, resp, t):
+    """Apply the remaining budget to whichever socket object is still live.
+
+    After a Connection: close response the socket has been handed to `resp`;
+    the captured object still works because socket.makefile() holds an io-ref
+    that keeps the fd open. Fall back to the response's own raw socket, and
+    tolerate a socket that has already gone away.
+    """
+    for s in (sock, getattr(getattr(resp, "fp", None), "raw", None)):
+        target = getattr(s, "_sock", s)
+        if target is None:
+            continue
+        try:
+            target.settimeout(t)
+            return True
+        except (OSError, AttributeError):
+            continue
+    return False
 
 
 def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
@@ -112,7 +138,7 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
     headers.setdefault("User-Agent", "runemap/0.1")
     headers.setdefault("Connection", "close")
 
-    conn, resp = _connect(url, dl, headers)
+    conn, resp, sock = _connect(url, dl, headers)
     try:
         if resp.status in (301, 302, 303, 307, 308) and _redirects > 0:
             loc = resp.getheader("Location")
@@ -133,7 +159,7 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
                 raise BudgetExceeded(url, dl.budget, "body", len(buf))
             # the shrinking timeout is the whole trick: a trickling peer gets
             # less time on every pass and cannot outlast the deadline
-            conn.sock.settimeout(dl.left())
+            _set_timeout(sock, resp, dl.left())
             try:
                 # read1, NOT read: read(n) is buffered and loops internally until
                 # it has n bytes, so a peer dripping one byte per recv never
