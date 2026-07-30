@@ -4,6 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
+import concurrent.futures as _ft
 import json, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,10 +26,42 @@ SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591
 BARS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
 AXIS = '├────┼────┼────┼────┤\n0   30   60   90 120min'
 
-def _get(url, timeout=15):
+# -- total wall-clock read budget --
+# Python's urllib/socket timeout is a per-recv gap cap, not a total budget.
+# An upstream that trickles one byte every few seconds can hold the fetch open
+# indefinitely.  We use a ThreadPoolExecutor to enforce a total wall-clock
+# deadline across dial + TTFB + body read.
+_FETCH_POOL = _ft.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix="fetch",
+)
+
+def _get(url, timeout=15, budget=None):
+    """Fetch *url* with a total wall-clock *budget* (not just per-recv gap cap).
+
+    The ``timeout`` argument is passed to ``urlopen`` as the per-socket-recv
+    gap cap.  When *budget* is provided the entire call (dial + TTFB + body)
+    must finish within that many wall-clock seconds; otherwise a
+    ``RuntimeError`` is raised.
+
+    Python 3.12 stdlib only — no new dependencies.
+    """
+    if budget is None:
+        budget = timeout * 2     # default: twice the per-recv cap
     req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+
+    def _do():
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+
+    fut = _FETCH_POOL.submit(_do)
+    try:
+        return fut.result(timeout=budget)
+    except _ft.TimeoutError:
+        raise RuntimeError(
+            "upstream fetch exceeded %ds total budget: %s" % (budget, url[:80])
+        )
+
+# -- end total-budget wrapper --
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
