@@ -225,10 +225,26 @@ class H(BaseHTTPRequestHandler):
 
         try:
             _t = time.time()
-            wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
-            _t_wx = time.time() - _t; _t = time.time()
+            # weather and radar are independent upstreams: fetch them in
+            # parallel (card #9 -- the serial sum was the 1.9s cold-render base)
+            import threading as _th
+            _wxb = {}
+            def _wx_job():
+                try:
+                    _wxb["v"] = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+                except Exception as _e:
+                    _wxb["e"] = _e
+            _wxt = _th.Thread(target=_wx_job, daemon=True)
+            _wxt.start()
             rb = R.radar_art(code, lon, lat, TOKEN)
             _t_rb = time.time() - _t; _t = time.time()
+            _wxt.join(25)
+            if "e" in _wxb:
+                raise _wxb["e"]
+            wx = _wxb.get("v")
+            if wx is None:
+                raise RuntimeError("weather fetch did not return")
+            _t_wx = time.time() - _t; _t = time.time()
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
             _t_bd = time.time() - _t
             # Per-stage timing, always logged. Cold renders of fresh cities ranged

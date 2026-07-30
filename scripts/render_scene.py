@@ -72,6 +72,27 @@ def _motion_compute(key, imgs):
     _MO_CACHE[key] = (time.time(), mo)
     _MO_BUSY.discard(key)
 
+def _motion_start(imgs, lng, lat):
+    """Kick the motion thread as soon as imgs is known (it only needs the frame
+    list), so its extra PNG download overlaps ours instead of following it."""
+    key = (round(float(lat), 1), round(float(lng), 1))
+    hit = _MO_CACHE.get(key)
+    if hit and time.time() - hit[0] < _MO_TTL:
+        return (key, None)
+    if key not in _MO_BUSY:
+        _MO_BUSY.add(key)
+        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
+        t.start()
+        return (key, t)
+    return (key, None)
+
+def _motion_join(handle):
+    key, t = handle
+    if t is not None:
+        t.join(_MO_BUDGET)
+    hit = _MO_CACHE.get(key)
+    return (hit[1] if hit else {"kind": None})
+
 def _motion_now(imgs, lng, lat):
     """Echo motion, computed OFF the response path.
 
@@ -127,13 +148,14 @@ def radar_art(code, lng, lat, token):
     if not imgs:
         return None
     url, ts, bbox = imgs[-1][0], float(imgs[-1][1]), imgs[-1][2]
+    _mh = _motion_start(imgs, lng, lat)   # overlap motion's PNG with ours
     png = _get(url, timeout=20)
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         f.write(png); p = f.name
     try:
         art, kmcol = ascii_radar(p, bbox, lng, lat, cols=48, rows=24, marker=code)
         _t = time.time()
-        mo = _motion_now(imgs, lng, lat)
+        mo = _motion_join(_mh)
         _t_mo = time.time() - _t
         if _t_mo > 1.5:
             sys.stderr.write("SLOW-RADAR motion=%.2f\n" % (_t_mo,))
