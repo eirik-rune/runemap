@@ -71,7 +71,7 @@ class H(BaseHTTPRequestHandler):
             return
 
         try:
-        wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+            wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
             rb = R.radar_art(code, lon, lat, TOKEN)
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
             HITS["n"] += 1
