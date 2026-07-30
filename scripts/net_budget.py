@@ -133,7 +133,18 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
                 raise BudgetExceeded(url, dl.budget, "body", len(buf))
             # the shrinking timeout is the whole trick: a trickling peer gets
             # less time on every pass and cannot outlast the deadline
-            conn.sock.settimeout(dl.left())
+            _s = conn.sock
+            if _s is None:
+                # http.client hands the socket to the response and sets
+                # conn.sock=None inside getresponse() when the reply carries
+                # "Connection: close" (caiyun echoes our own request header).
+                # The trickle test server never sends that header, which is
+                # why the tests missed this. Reach the live socket through
+                # the response object instead.
+                _s = getattr(getattr(resp, "fp", None), "raw", None)
+                _s = getattr(_s, "_sock", None)
+            if _s is not None:
+                _s.settimeout(dl.left())
             try:
                 # read1, NOT read: read(n) is buffered and loops internally until
                 # it has n bytes, so a peer dripping one byte per recv never
