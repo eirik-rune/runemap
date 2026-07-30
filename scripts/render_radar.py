@@ -15,10 +15,11 @@ from echo_motion import echo_motion
 MOTION = {}
 CITIES = [(n, lng, lat, tz) for (n, _c, _z, lng, lat, tz) in _ALL]
 
+import net_budget
+
 def _get(url, timeout=25):
-    req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    # total budget, not a per-recv gap -- see scripts/net_budget.py
+    return net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
 
 def frames_of(payload):
     d = json.loads(payload)

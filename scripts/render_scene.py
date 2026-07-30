@@ -17,6 +17,10 @@ try:
     _MOTION = json.load(open("live/_motion.json"))
 except Exception:
     _MOTION = {}
+import os as _nb_os, sys as _nb_sys
+_nb_sys.path.insert(0, _nb_os.path.dirname(_nb_os.path.abspath(__file__)))
+import net_budget
+
 SKY_ZH = {"CLEAR_DAY":"\u6674","CLEAR_NIGHT":"\u6674","PARTLY_CLOUDY_DAY":"\u591a\u4e91","PARTLY_CLOUDY_NIGHT":"\u591a\u4e91",
 "CLOUDY":"\u9634","LIGHT_HAZE":"\u8f7b\u96fe\u973e","MODERATE_HAZE":"\u4e2d\u96fe\u973e","HEAVY_HAZE":"\u91cd\u96fe\u973e",
 "LIGHT_RAIN":"\u5c0f\u96e8","MODERATE_RAIN":"\u4e2d\u96e8","HEAVY_RAIN":"\u5927\u96e8","STORM_RAIN":"\u66b4\u96e8",
@@ -26,9 +30,9 @@ BARS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
 AXIS = '├────┼────┼────┼────┤\n0   30   60   90 120min'
 
 def _get(url, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    # `timeout` is now a TOTAL wall-clock budget for dial + TTFB + body, not the
+    # per-recv gap that urlopen gives you. See scripts/net_budget.py.
+    return net_budget.get(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0

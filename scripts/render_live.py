@@ -17,8 +17,10 @@ def spark(vals, vmax=None):
 
 def brief(name, lng, lat, tzh, token):
     url = f"https://api.caiyunapp.com/v2.6/{token}/{lng},{lat}/weather?hourlysteps=24&dailysteps=1"
-    with urllib.request.urlopen(url, timeout=20) as r:
-        d = json.load(r)
+    import os as _o3, sys as _s3
+    _s3.path.insert(0, _o3.path.join(_o3.path.dirname(_o3.path.abspath(__file__))))
+    import net_budget
+    d = json.loads(net_budget.get(url, budget=20))
     if d.get("status") != "ok":
         raise RuntimeError(f"api status {d.get('status')}")
     res = d["result"]
