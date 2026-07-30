@@ -124,6 +124,21 @@ def _as_coords(spec):
 
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    _head = False
+
+    def do_HEAD(self):
+        """Monitors, link previewers and crawlers reach for HEAD first, and
+        BaseHTTPRequestHandler answers 501 for anything it has no do_* for --
+        so 'curl -I echorune.net' was broken, and two strangers hit it today.
+        Reuse do_GET wholesale and drop only the body, so the headers a HEAD
+        returns are byte-for-byte the ones a GET would return, Content-Length
+        included. Answering HEAD with a hand-written 200 and Content-Length 0
+        would be cheaper and would be a lie."""
+        self._head = True
+        try:
+            self.do_GET()
+        finally:
+            self._head = False
 
     def _send(self, code, body, ctype="text/plain; charset=utf-8"):
         b = body.encode() if isinstance(body, str) else body
@@ -133,7 +148,8 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "public, max-age=300")
         self.end_headers()
-        self.wfile.write(b)
+        if not self._head:
+            self.wfile.write(b)
 
     def _client_ip(self):
         """Real client address behind the reverse proxy."""
