@@ -69,7 +69,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/" and not q:
                 return self._send(200, HOME)
         if u.path not in ("/scene", "/"):
-                return self._send(404, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
+                return self._send(404, "no such path: %s\n\n" % u.path[:60] + HOME)
         place = None
         if q.get("q"):
             place = G.lookup(q["q"][0])
@@ -80,7 +80,7 @@ class H(BaseHTTPRequestHandler):
             try:
                 lat = round(float(q["lat"][0]), 3); lon = round(float(q["lon"][0]), 3)
             except Exception:
-                return self._send(400, "usage: /scene?q=bangkok  OR  /scene?lat=13.75&lon=100.50 [&lang=en|zh]\n")
+                return self._send(400, "bad or missing coordinates\n\n" + HOME)
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 return self._send(400, "lat/lon out of range\n")
         lang = (q.get("lang", ["en"])[0] or "en").lower()
