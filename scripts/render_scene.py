@@ -8,6 +8,7 @@ import json, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
+import threading
 
 import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
@@ -39,6 +40,42 @@ def weather(lng, lat, token, lang):
         raise RuntimeError("weather api %s" % d.get("status"))
     return d["result"]
 
+_MO_CACHE = {}
+_MO_TTL = 600
+
+_MO_BUSY = set()
+
+def _motion_compute(key, imgs):
+    mo = {"kind": None}
+    try:
+        frames = [(f[0], float(f[1]), f[2]) for f in imgs if len(f) >= 3 and f[2]]
+        import echo_motion as EM
+        EM._get = _get          # picks up the cached getter
+        mo = EM.echo_motion(frames) or {"kind": None}
+    except Exception:
+        mo = {"kind": None}
+    _MO_CACHE[key] = (time.time(), mo)
+    _MO_BUSY.discard(key)
+
+def _motion_now(imgs, lng, lat):
+    """Echo motion, computed OFF the response path.
+
+    It needs ~6 extra radar PNGs plus cross-correlation: measured 5-7s warm and
+    >60s for Tokyo (504). Motion is only a suffix on the radar headline, so it
+    must never block the map. First request returns without it; a background
+    thread fills the cache and every later request inside TTL carries it.
+    The old code read a prebuilt live/_motion.json keyed by city name -- a
+    relative path the service never had (always {}), and name-keyed so an
+    arbitrary coordinate could never be answered at all."""
+    key = (round(float(lat), 1), round(float(lng), 1))
+    hit = _MO_CACHE.get(key)
+    if hit and time.time() - hit[0] < _MO_TTL:
+        return hit[1]
+    if key not in _MO_BUSY:
+        _MO_BUSY.add(key)
+        threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True).start()
+    return (hit[1] if hit else {"kind": None})
+
 def radar_art(code, lng, lat, token):
     try:
         d = json.loads(_get("https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)))
@@ -53,7 +90,7 @@ def radar_art(code, lng, lat, token):
         f.write(png); p = f.name
     try:
         art, kmcol = ascii_radar(p, bbox, lng, lat, cols=48, rows=24, marker=code)
-        return art, kmcol, ts
+        return art, kmcol, ts, _motion_now(imgs, lng, lat)
     finally:
         os.unlink(p)
 
@@ -76,7 +113,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
             rt["precipitation"]["local"]["intensity"]))
     if kp:
         L.append(kp)
-    mo = _MOTION.get(name) or {}
+    mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
         mo_sfx = (("  |  echo motion(1h obs): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
                   if lang == "en" else
@@ -97,7 +134,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb):
                  else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h): \u65e0\u964d\u6c34")
     L.append("")
     if rb:
-        art, kmcol, ts = rb
+        art, kmcol, ts = rb[0], rb[1], rb[2]
         t = time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
         if lang == "en":
             L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
