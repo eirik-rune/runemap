@@ -32,15 +32,47 @@ def _track_outbound():
         raise RuntimeError(f"Circuit breaker tripped: {MAX_CALLS} API calls reached today")
     open(usage_file, "w").write(str(calls + 1))
 
+_STALE_MAX = 6          # serve a stale-but-good entry up to 6x TTL when upstream is sick
+
+def _usable(kind, b):
+    """A payload is cacheable only if it is actually usable. Upstream returns
+    HTTP 200 with {"status":"failed"} (24 bytes) -- caching that poisons the
+    entry for a whole TTL and makes a covered city report 'no coverage'."""
+    if not b:
+        return False
+    if kind == "png":
+        return len(b) > 512
+    try:
+        j = _json.loads(b)
+    except Exception:
+        return False
+    if j.get("status") != "ok":
+        return False
+    if kind == "radar_json" and not j.get("images"):
+        return False
+    return True
+
 def _cached_get(url, timeout=15):
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
     key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
-    if os.path.exists(key) and time.time() - os.path.getmtime(key) < _TTL[kind]:
+    have = os.path.exists(key)
+    age = (time.time() - os.path.getmtime(key)) if have else None
+    if have and age < _TTL[kind]:
         return open(key, "rb").read()
     _track_outbound()
-    b = _orig_get(url, timeout)
-    tmp = key + ".part"
-    open(tmp, "wb").write(b); os.replace(tmp, key)
+    try:
+        b = _orig_get(url, timeout)
+    except Exception:
+        if have and age < _TTL[kind] * _STALE_MAX:
+            return open(key, "rb").read()
+        raise
+    if _usable(kind, b):
+        tmp = key + ".part"
+        open(tmp, "wb").write(b); os.replace(tmp, key)
+        return b
+    # bad payload: never poison the cache; last good beats nothing
+    if have and age < _TTL[kind] * _STALE_MAX:
+        return open(key, "rb").read()
     return b
 
 R._get = _cached_get
