@@ -162,6 +162,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         guessed = False
+        small = (q.get("size", [""])[0] or "").lower() == "s"
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path in ("/help", "/help/"):
@@ -179,6 +180,9 @@ class H(BaseHTTPRequestHandler):
                 # ('&' in a query string must be quoted in a shell -- that is where
                 #  agent-generated curl commands die most often. A path needs no quotes.)
                 seg = [x for x in unquote(u.path).split("/") if x.strip()]
+                # trailing /s = small radar (24x12, ~2x km/char) -- bob 7/30
+                if len(seg) > 1 and seg[-1].lower() == "s":
+                    small = True; seg = seg[:-1]
                 if len(seg) > 1 and seg[-1].lower() in ("en", "zh"):
                     q.setdefault("lang", [seg[-1].lower()]); seg = seg[:-1]
                 spec = "/".join(seg).strip()
@@ -238,7 +242,7 @@ class H(BaseHTTPRequestHandler):
             _wxt.start()
             radar_err = None
             try:
-                rb = R.radar_art(code, lon, lat, TOKEN)
+                rb = R.radar_art(code, lon, lat, TOKEN, small=small)
             except Exception as _re:
                 # bob 7/30: no radar tile -> retry (hedge inside _get) or give
                 # up and ship weather with a notice, never 502 the request.

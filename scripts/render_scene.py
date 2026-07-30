@@ -138,7 +138,7 @@ def _mark(code):
     return c or "><"
 
 
-def radar_art(code, lng, lat, token):
+def radar_art(code, lng, lat, token, small=False):
     code = _mark(code)
     try:
         d = json.loads(_get("https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)))
@@ -153,7 +153,7 @@ def radar_art(code, lng, lat, token):
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         f.write(png); p = f.name
     try:
-        art, kmcol = ascii_radar(p, bbox, lng, lat, cols=48, rows=24, marker=code)
+        art, kmcol = ascii_radar(p, bbox, lng, lat, cols=(24 if small else 48), rows=(12 if small else 24), marker=code)
         _t = time.time()
         mo = _motion_join(_mh)
         _t_mo = time.time() - _t
