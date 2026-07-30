@@ -31,9 +31,9 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         if u.path in ("/healthz", "/health"):
-            return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
+                return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path not in ("/scene", "/"):
-            return self._send(404, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
+                return self._send(404, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
         place = None
         if q.get("q"):
             place = G.lookup(q["q"][0])
@@ -46,7 +46,7 @@ class H(BaseHTTPRequestHandler):
             except Exception:
                 return self._send(400, "usage: /scene?q=bangkok  OR  /scene?lat=13.75&lon=100.50 [&lang=en|zh]\n")
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            return self._send(400, "lat/lon out of range\n")
+                return self._send(400, "lat/lon out of range\n")
         lang = (q.get("lang", ["en"])[0] or "en").lower()
         lang = lang if lang in ("en", "zh") else "en"
         label = q.get("label", [None])[0]
@@ -63,14 +63,14 @@ class H(BaseHTTPRequestHandler):
         code = ((q.get("code", ["><"])[0]) + "><")[:2]
         try:
             
-        import urllib.parse
-        c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
-        canonical_url = f"/scene?{c_qs}"
-        if self.path != canonical_url:
-            self.send_response(301)
-            self.send_header("Location", canonical_url)
-            self.end_headers()
-            return
+            import urllib.parse
+            c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
+            canonical_url = f"/scene?{c_qs}"
+            if self.path != canonical_url:
+                self.send_response(301)
+                self.send_header("Location", canonical_url)
+                self.end_headers()
+                return
         wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
             rb = R.radar_art(code, lon, lat, TOKEN)
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
