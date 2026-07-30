@@ -147,9 +147,24 @@ def radar_art(code, lng, lat, token, small=False):
     imgs = d.get("images") or []
     if not imgs:
         return None
-    url, ts, bbox = imgs[-1][0], float(imgs[-1][1]), imgs[-1][2]
     _mh = _motion_start(imgs, lng, lat)   # overlap motion's PNG with ours
-    png = _get(url, timeout=20)
+    # JP2375 stalls recur (7/30 19:17, 21:07-21:13): when the newest frame's
+    # CDN object stalls, fall back to the previous frame (~6min older, its
+    # own timestamp shown honestly) instead of degrading to no radar at all.
+    png = None
+    _err = None
+    for _cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
+        if _cand is None:
+            continue
+        try:
+            png = _get(_cand[0], timeout=20)
+            url, ts, bbox = _cand[0], float(_cand[1]), _cand[2]
+            break
+        except Exception as _e:
+            _err = _e
+            sys.stderr.write("RADAR-FRAME-FALLBACK %r\n" % (_e,))
+    if png is None:
+        raise _err
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         f.write(png); p = f.name
     try:
