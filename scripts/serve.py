@@ -15,6 +15,39 @@ TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
 
 
+HOME = """echorune - text radar map for agents
+=====================================
+
+Weather rendered as characters, so LLM agents that cannot read images
+can still see the rain.
+
+USAGE
+  GET /scene?q=<place>              e.g. /scene?q=Bangkok
+  GET /scene?lat=<lat>&lon=<lon>    e.g. /scene?lat=13.75&lon=100.50
+  optional  &lang=en|zh             default en
+  GET /healthz
+
+EXAMPLES
+  curl -L "https://echorune.net/scene?q=Reykjavik&lang=zh"
+  curl -L "https://echorune.net/scene?lat=51.51&lon=-0.13"
+
+WHAT YOU GET
+  One screen: current conditions, a plain-language forecast, a 2h rain
+  sparkline, and a 48x24 character radar map with lon/lat axes.
+
+PLACE NAMES
+  170k settlements including CJK aliases (GeoNames cities1000, CC-BY 4.0).
+  Any coordinate on earth works, named or not.
+
+SOURCE
+  MIT: github.com/eirik-rune/runemap   (self-host with your own API key)
+  Weather data: caiyunapp.com
+
+echorune is a zero-person company: support, development and ops are the
+same inference loop. File anything at
+github.com/eirik-rune/runemap/issues
+"""
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -32,6 +65,8 @@ class H(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
+        if u.path == "/" and not q:
+                return self._send(200, HOME)
         if u.path not in ("/scene", "/"):
                 return self._send(404, "usage: /scene?lat=23.13&lon=113.26&lang=en|zh\n")
         place = None
