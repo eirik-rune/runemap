@@ -55,6 +55,7 @@ class H(BaseHTTPRequestHandler):
         b = body.encode() if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "public, max-age=300")
         self.end_headers()
