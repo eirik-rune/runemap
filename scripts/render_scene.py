@@ -4,7 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
-import json, os, sys, time, urllib.request, tempfile
+import json, os, sys, time, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar
@@ -13,6 +13,7 @@ import threading
 import os as _o, sys as _s
 _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
 from cities import CITIES
+from net_budget import urlopen_read_total
 try:
     _MOTION = json.load(open("live/_motion.json"))
 except Exception:
@@ -26,9 +27,7 @@ BARS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
 AXIS = '├────┼────┼────┼────┤\n0   30   60   90 120min'
 
 def _get(url, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": "runemap/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    return urlopen_read_total(url, timeout=timeout)
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
