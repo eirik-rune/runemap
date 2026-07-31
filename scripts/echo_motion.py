@@ -95,8 +95,19 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
                 urls.append(f[0])
     if len(urls) > 1:
         from concurrent.futures import ThreadPoolExecutor
+        import os as _o4, sys as _s4
+        _s4.path.insert(0, _o4.path.dirname(_o4.path.abspath(__file__)))
+        import net_budget
+        # the pool's threads do not inherit the request deadline; without this
+        # each worker starts a fresh budget and the request ceiling is a lie
+        _dl = net_budget.current_deadline()
+
+        def _try_under_budget(u):
+            with net_budget.adopt(_dl):
+                return _try(u)
+
         with ThreadPoolExecutor(max_workers=len(urls)) as ex:
-            for u, r in zip(urls, ex.map(_try, urls)):
+            for u, r in zip(urls, ex.map(_try_under_budget, urls)):
                 if r is not None:
                     cache[u] = r
 

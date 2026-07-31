@@ -9,6 +9,9 @@ from urllib.parse import urlparse, parse_qs, unquote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_at as SA          # installs the radar cache layer on render_scene._get
 import render_scene as R
+import net_budget
+
+SCENE_BUDGET = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "18"))
 import geo as G
 try:
     import geoip as GI          # ip -> lat/lon (DB-IP Lite, local sqlite, no third party)
@@ -230,27 +233,35 @@ class H(BaseHTTPRequestHandler):
         try:
             _t = time.time()
             # weather and radar are independent upstreams: fetch them in
-            # parallel (card #9 -- the serial sum was the 1.9s cold-render base)
+            # parallel (card #9 -- the serial sum was the 1.9s cold-render base).
+            # One ceiling for the whole request (Luoshu): per-fetch budgets
+            # bound each hop but never their sum -- weather 15 + radar list 25
+            # + png 20 is a legal 60s request in which nothing times out. 18s
+            # leaves room inside the probe's 20s window and nginx's 60s
+            # proxy_read_timeout. The wx thread adopt()s the parent deadline;
+            # without that it starts a fresh budget and reopens the hole.
             import threading as _th
             _wxb = {}
-            def _wx_job():
+            with net_budget.request_budget(SCENE_BUDGET) as _dl:
+                def _wx_job():
+                    try:
+                        with net_budget.adopt(_dl):
+                            _wxb["v"] = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+                    except Exception as _e:
+                        _wxb["e"] = _e
+                _wxt = _th.Thread(target=_wx_job, daemon=True)
+                _wxt.start()
+                radar_err = None
                 try:
-                    _wxb["v"] = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
-                except Exception as _e:
-                    _wxb["e"] = _e
-            _wxt = _th.Thread(target=_wx_job, daemon=True)
-            _wxt.start()
-            radar_err = None
-            try:
-                rb = R.radar_art(code, lon, lat, TOKEN, small=small)
-            except Exception as _re:
-                # bob 7/30: no radar tile -> retry (hedge inside _get) or give
-                # up and ship weather with a notice, never 502 the request.
-                rb = None
-                radar_err = type(_re).__name__
-                sys.stderr.write("RADAR-DEGRADED %r\n" % (_re,))
-            _t_rb = time.time() - _t; _t = time.time()
-            _wxt.join(25)
+                    rb = R.radar_art(code, lon, lat, TOKEN, small=small)
+                except Exception as _re:
+                    # bob 7/30: no radar tile -> retry (hedge inside _get) or give
+                    # up and ship weather with a notice, never 502 the request.
+                    rb = None
+                    radar_err = type(_re).__name__
+                    sys.stderr.write("RADAR-DEGRADED %r\n" % (_re,))
+                _t_rb = time.time() - _t; _t = time.time()
+                _wxt.join(25)
             if "e" in _wxb:
                 raise _wxb["e"]
             wx = _wxb.get("v")

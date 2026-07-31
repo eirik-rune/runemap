@@ -26,18 +26,21 @@ a 5s budget.
 
     get("https://example.com/x", budget=8.0)  -> bytes
 """
+import contextlib
 import http.client
 import socket
 import ssl
+import threading
 import time
 import urllib.parse
 
-__all__ = ["get", "BudgetExceeded"]
+__all__ = ["get", "BudgetExceeded", "request_budget", "current_deadline", "adopt"]
 
 DEFAULT_BUDGET = 15.0
 CHUNK = 65536
 MAX_REDIRECTS = 4
 MAX_BYTES = 32 * 1024 * 1024
+MIN_BUDGET = 0.05      # below this there is no point dialling; see get()
 
 
 class BudgetExceeded(TimeoutError):
@@ -54,6 +57,49 @@ class BudgetExceeded(TimeoutError):
             "budget %.2fs exhausted during %s after %d bytes: %s"
             % (budget, phase, got, url)
         )
+
+
+# --- request-scoped budget -------------------------------------------------
+#
+# A per-fetch budget cannot bound a request: a cold scene fetches weather,
+# then the radar frame list, then the PNGs, each entitled to its own budget.
+# Every one can finish just inside its own limit while the request as a whole
+# runs 60s -- which is how a 20s probe records a timeout against a server that
+# is still working. The request deadline is the ceiling all of them share.
+#
+# ThreadingHTTPServer gives each request its own thread, so this is thread
+# local. Worker threads (echo_motion's pool) do NOT inherit it -- they must
+# adopt() the deadline explicitly, or they will each start a fresh budget and
+# quietly reopen the hole this closes.
+
+_local = threading.local()
+
+
+def current_deadline():
+    return getattr(_local, "deadline", None)
+
+
+@contextlib.contextmanager
+def request_budget(seconds):
+    """Cap one whole request. Nested use keeps the earlier (tighter) deadline."""
+    prev = current_deadline()
+    if prev is None:
+        _local.deadline = _Deadline(seconds)
+    try:
+        yield current_deadline()
+    finally:
+        _local.deadline = prev
+
+
+@contextlib.contextmanager
+def adopt(deadline):
+    """Run a worker thread under a deadline captured in the parent thread."""
+    prev = current_deadline()
+    _local.deadline = deadline
+    try:
+        yield
+    finally:
+        _local.deadline = prev
 
 
 class _Deadline:
@@ -79,18 +125,26 @@ def _connect(url, dl, headers):
     port = u.port or (443 if u.scheme == "https" else 80)
     if u.scheme == "https":
         conn = http.client.HTTPSConnection(
-            u.hostname, port, timeout=dl.left(), context=ssl.create_default_context()
+            u.hostname, port, timeout=max(dl.left(), MIN_BUDGET),
+            context=ssl.create_default_context()
         )
     else:
-        conn = http.client.HTTPConnection(u.hostname, port, timeout=dl.left())
+        conn = http.client.HTTPConnection(u.hostname, port,
+                                          timeout=max(dl.left(), MIN_BUDGET))
 
     try:
         conn.connect()                       # dial
-        conn.sock.settimeout(dl.left())      # send + TTFB share what is left
+        conn.sock.settimeout(max(dl.left(), MIN_BUDGET))   # send + TTFB
         path = u.path or "/"
         if u.query:
             path += "?" + u.query
         conn.request("GET", path, headers=headers)
+        # Capture the socket BEFORE getresponse(). When the response says
+        # Connection: close, http.client hands the socket to the response and
+        # sets conn.sock = None ("this effectively passes the connection to the
+        # response"). Reading conn.sock afterwards is an AttributeError against
+        # every upstream that closes -- which is most of them.
+        sock = conn.sock
         resp = conn.getresponse()
     except (socket.timeout, TimeoutError):
         conn.close()
@@ -98,7 +152,28 @@ def _connect(url, dl, headers):
     except Exception:
         conn.close()
         raise
-    return conn, resp
+    return conn, resp, sock
+
+
+def _set_timeout(sock, resp, t):
+    """Apply the remaining budget to whichever socket object is still live.
+
+    After a Connection: close response the socket has been handed to `resp`;
+    the captured object still works because socket.makefile() holds an io-ref
+    that keeps the fd open. Fall back to the response's own raw socket, and
+    tolerate a socket that has already gone away.
+    """
+    t = max(t, MIN_BUDGET)      # never 0 -- that is non-blocking, not "expired"
+    for s in (sock, getattr(getattr(resp, "fp", None), "raw", None)):
+        target = getattr(s, "_sock", s)
+        if target is None:
+            continue
+        try:
+            target.settimeout(t)
+            return True
+        except (OSError, AttributeError):
+            continue
+    return False
 
 
 def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
@@ -107,12 +182,28 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
     Raises BudgetExceeded (a TimeoutError) if the budget runs out at any phase,
     and http.client.HTTPException / OSError for the usual transport failures.
     """
-    dl = budget if isinstance(budget, _Deadline) else _Deadline(budget)
+    if isinstance(budget, _Deadline):
+        dl = budget                       # redirect hops share the caller's clock
+    else:
+        req = current_deadline()
+        if req is None:
+            dl = _Deadline(budget)
+        else:
+            # never more than the request has left, never more than this fetch
+            # was allowed: whichever runs out first ends the fetch
+            left = req.left()
+            # A budget of 0 must not reach socket.settimeout(): 0 means
+            # NON-BLOCKING there, not "give up", and the failure mode changes
+            # shape entirely. Anything at or under the floor is simply out of
+            # time.
+            if req.expired() or left <= MIN_BUDGET:
+                raise BudgetExceeded(url, req.budget, "request budget", 0)
+            dl = _Deadline(min(float(budget), left))
     headers = dict(headers or {})
     headers.setdefault("User-Agent", "runemap/0.1")
     headers.setdefault("Connection", "close")
 
-    conn, resp = _connect(url, dl, headers)
+    conn, resp, sock = _connect(url, dl, headers)
     try:
         if resp.status in (301, 302, 303, 307, 308) and _redirects > 0:
             loc = resp.getheader("Location")
@@ -133,18 +224,7 @@ def get(url, budget=DEFAULT_BUDGET, headers=None, _redirects=MAX_REDIRECTS):
                 raise BudgetExceeded(url, dl.budget, "body", len(buf))
             # the shrinking timeout is the whole trick: a trickling peer gets
             # less time on every pass and cannot outlast the deadline
-            _s = conn.sock
-            if _s is None:
-                # http.client hands the socket to the response and sets
-                # conn.sock=None inside getresponse() when the reply carries
-                # "Connection: close" (caiyun echoes our own request header).
-                # The trickle test server never sends that header, which is
-                # why the tests missed this. Reach the live socket through
-                # the response object instead.
-                _s = getattr(getattr(resp, "fp", None), "raw", None)
-                _s = getattr(_s, "_sock", None)
-            if _s is not None:
-                _s.settimeout(dl.left())
+            _set_timeout(sock, resp, dl.left())
             try:
                 # read1, NOT read: read(n) is buffered and loops internally until
                 # it has n bytes, so a peer dripping one byte per recv never
@@ -181,6 +261,13 @@ def get_hedged(url, budget=DEFAULT_BUDGET, headers=None, hedge_after=1.0):
     Both attempts share one total deadline."""
     import threading
     dl = _Deadline(budget)
+    req = current_deadline()
+    if req is not None:
+        # hedge threads never see the request's thread-local; bounding the
+        # shared deadline here keeps both attempts under the request ceiling
+        if req.expired() or req.left() <= MIN_BUDGET:
+            raise BudgetExceeded(url, req.budget, "request budget", 0)
+        dl = _Deadline(min(float(budget), req.left()))
     win = {}
     errs = []
     done = threading.Event()
