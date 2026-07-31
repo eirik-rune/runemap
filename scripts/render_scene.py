@@ -56,7 +56,11 @@ def weather(lng, lat, token, lang):
 
 _MO_CACHE = {}
 _MO_TTL = 600
-_MO_BUDGET = 3.0    # seconds a request will wait for motion before giving up on it
+# _MO_BUDGET is gone with ede4d59. It was 3.0s of join on the request thread
+# that never consulted the deadline, and 1.2 + 3.0 walked through a 3s wall.
+# The constant and its two joins are deleted rather than left unused: a shape
+# that could once breach the wall, sitting in the file with no callers, is an
+# invitation for the next reader to wire it back in exactly as it was.
 
 _MO_BUSY = set()
 
@@ -86,10 +90,17 @@ def _motion_start(imgs, lng, lat):
         return (key, t)
     return (key, None)
 
+# Batch path only (render_scene main() writing live/), never a request. It may
+# block: nobody is waiting on the other end of a socket for it. Named apart
+# from anything on the request path so the two can never be confused again --
+# that confusion is precisely what put a 3.0s join behind a 3s wall.
+_MO_BATCH_BUDGET = 3.0
+
+
 def _motion_join(handle):
     key, t = handle
     if t is not None:
-        t.join(_MO_BUDGET)
+        t.join(_MO_BATCH_BUDGET)
     hit = _MO_CACHE.get(key)
     return (hit[1] if hit else {"kind": None})
 
@@ -118,36 +129,6 @@ def _motion_peek(imgs, lng, lat):
         t.start()
     return {"kind": None}
 
-
-def _motion_now(imgs, lng, lat):
-    """Echo motion, computed OFF the response path.
-
-    It needs ~6 extra radar PNGs plus cross-correlation: measured 5-7s warm and
-    >60s for Tokyo (504). Motion is only a suffix on the radar headline, so it
-    must never block the map. First request returns without it; a background
-    thread fills the cache and every later request inside TTL carries it.
-    The old code read a prebuilt live/_motion.json keyed by city name -- a
-    relative path the service never had (always {}), and name-keyed so an
-    arbitrary coordinate could never be answered at all."""
-    key = (round(float(lat), 1), round(float(lng), 1))
-    hit = _MO_CACHE.get(key)
-    if hit and time.time() - hit[0] < _MO_TTL:
-        return hit[1]
-    # Wait for it, but only for a bounded moment. Measured cost: one extra 13KB PNG
-    # (the newest frame is already downloaded to draw the map), 0.03s to decode and
-    # 0.15s to cross-correlate -- so warm it is ~0.2s and the first hit to a cold
-    # upstream is dominated by DNS and the TLS handshake, ~3s.
-    # The budget is the whole point: an unbounded wait on an upstream fetch is
-    # exactly what turned a healthy service into a 504 earlier today. If the budget
-    # runs out the thread keeps going and fills the cache for the next request, and
-    # this response simply omits the line -- late is fine, slow is not.
-    if key not in _MO_BUSY:
-        _MO_BUSY.add(key)
-        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
-        t.start()
-        t.join(_MO_BUDGET)
-    hit = _MO_CACHE.get(key)
-    return (hit[1] if hit else {"kind": None})
 
 # ---------------------------------------------------------------- radar states
 #
@@ -178,7 +159,8 @@ _RA_NONE_SPAN = 120.0             # ...and spread over at least this long
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
 _RA_BG_BUDGET = 45.0              # the background warm may outlive the response
                                   # but not the heat death of the universe
-_RA_WAIT = float(os.environ.get("RUNEMAP_RADAR_WAIT", "1.2"))
+import wall as _wall
+_RA_WAIT = _wall.RADAR_WAIT_UNKNOWN
 
 
 def _peek(url):
@@ -310,7 +292,7 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     because the next reader (me) quotes it instead of measuring."""
     code = _mark(code)
     key = (round(float(lat), 1), round(float(lng), 1))
-    wait = _RA_WAIT if wait is None else wait
+    _wait_override = wait
 
     now = time.time()
     with _RA_LOCK:
@@ -347,14 +329,25 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         return hit
 
     ev = _radar_start(key, lng, lat, token)
-    # Bounded wait, and bounded by the request deadline too if one is set --
-    # a warm city whose frames just expired should not lose its map over a
-    # few hundred milliseconds, but nobody waits past the wall.
+    # How long is worth waiting depends on what waiting can buy.
+    #
+    # Nothing renderable is in the pool (we would have returned above), so this
+    # reader sees a map only if the background warm lands while they are here:
+    # one list fetch, ~1s, plus one frame, 1-3s. Under the old 3s wall that
+    # could not finish, so the answer was always "fetching" -- the wall was not
+    # costing latency, it was costing content. That is the complaint the larger
+    # wall was bought to fix, and this is where it gets spent.
+    #
+    # Except for a sky that just refused us: the fail counter is in cooldown,
+    # and spending the reader's whole budget on a peer that said no 30 seconds
+    # ago is paying full price for a coin flip we just lost.
     _dl = net_budget.current_deadline()
-    if _dl is not None:
-        # keep a margin for rendering and the weather join; the wall is the
-        # wall, and being 200ms late with a map is the failure we are here for
-        wait = max(0.0, min(wait, _dl.left() - 0.25))
+    wait = _wall.radar_wait(cooling=fail is not None,
+                            left=(_dl.left() if _dl is not None else None))
+    if _wait_override is not None:      # explicit caller (tests) still wins,
+        wait = _wait_override           # but the deadline clamp below does not
+        if _dl is not None:             # get to be optional for them either
+            wait = max(0.0, min(wait, _dl.left() - _wall.RESERVE))
     if wait > 0:
         ev.wait(wait)
     hit = _from_cache()

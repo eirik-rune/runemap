@@ -133,7 +133,9 @@ def main():
     code = (a.code + "><")[:2]
 
     import net_budget
-    budget = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "3"))
+    import wall as _wall
+    budget = _wall.WALL             # the CLI measures the service, so it must
+                                    # read the same wall the service does
     # One resolution path, not two. This used to call radar_art directly, so the
     # CLI and the service could disagree about what state a sky was in -- and the
     # CLI is the tool anyone reaches for to check what the service is doing.

@@ -179,5 +179,47 @@ class TestInflightAlwaysReleased(Base):
         self.assertEqual(R._RA_INFLIGHT, {}, "in-flight entry leaked after a failure")
 
 
+class CooldownShortensTheWait(unittest.TestCase):
+    """A sky that just refused us is not worth the full budget.
+
+    Raising the wall to 10s bought one thing: a cold sky can now finish its
+    list+frame fetch while the reader is still here. Against a *broken*
+    upstream that same budget buys nothing -- the ablation measures 6.25s and
+    still answers "fetching", six seconds spent to say what we knew at once.
+
+    So the fail counter is load-bearing beyond state 3: the first reader pays
+    full price to find out the sky is refusing, and for the next 30s everyone
+    else pays 1.5s. Without this the wall change would make a broken upstream
+    six times more expensive for readers than it was under the 3s wall.
+    """
+
+    def setUp(self):
+        for d in (R._RA_INFLIGHT, R._RA_NONE, R._RA_FAIL):
+            d.clear()
+
+    def test_cooling_sky_waits_the_short_budget(self):
+        import wall as W
+        key = (1.0, 1.0)
+        with R._RA_LOCK:
+            R._RA_FAIL[key] = [1, time.time(), time.time()]
+        self.assertEqual(W.radar_wait(cooling=True, left=None),
+                         W.RADAR_WAIT_COOLDOWN)
+        self.assertGreater(W.radar_wait(cooling=False, left=None),
+                           W.radar_wait(cooling=True, left=None),
+                           "an unknown sky must be worth more waiting than a "
+                           "refusing one, or the cooldown does nothing")
+
+    def test_no_wait_may_outlast_the_wall(self):
+        import wall as W
+        for left in (W.WALL, 1.0, 0.3, 0.0):
+            for cooling in (False, True):
+                w = W.radar_wait(cooling=cooling, left=left)
+                self.assertLessEqual(w, max(0.0, left - W.RESERVE) + 1e-9,
+                                     "wait %.2f with %.2f left leaves nothing "
+                                     "for rendering" % (w, left))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+

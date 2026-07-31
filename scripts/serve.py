@@ -11,7 +11,8 @@ import scene_at as SA          # installs the radar cache layer on render_scene.
 import render_scene as R
 import net_budget
 
-SCENE_BUDGET = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "3"))   # the 3s wall
+import wall as _wall
+SCENE_BUDGET = _wall.WALL          # the wall; see scripts/wall.py for why it moved
 import geo as G
 try:
     import geoip as GI          # ip -> lat/lon (DB-IP Lite, local sqlite, no third party)
@@ -309,6 +310,15 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # Write down the wall we are about to run with, so the status page can
+    # score every sample against the ruler that was actually in force when it
+    # was taken. Nobody has to remember the switch date: the process that has
+    # the number is the one that records it.
+    _row = _wall.record()
+    if _row:
+        sys.stderr.write("WALL-CHANGED %s (was %g)\n"
+                         % (_row, _wall.wall_at(int(_row.split(",")[0]) - 1)))
+
     host = os.environ.get("RUNEMAP_HOST", "127.0.0.1")
     port = int(os.environ.get("RUNEMAP_PORT", "8788"))
 

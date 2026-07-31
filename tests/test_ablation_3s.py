@@ -1,4 +1,4 @@
-"""Ablation for the 3s wall: same stalling upstream, old path vs new path.
+"""Ablation for the wall (scripts/wall.py): same stalling upstream, old vs new path.
 
 Acceptance 5 asks for reproduce -> fix -> ablate. The honest problem is that
 the failure cannot be summoned on demand against the live upstream: sampled 10
@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 sys.path.insert(0, os.path.join(HERE, ".."))
 import render_scene as R
 import net_budget
+import wall as W
 
 FRAMES = [["/f1.png", "1000", [0, 0, 1, 1]], ["/f2.png", "1600", [0, 0, 1, 1]]]
 
@@ -96,16 +97,17 @@ class Ablation(unittest.TestCase):
             except Exception:
                 pass          # the old path may raise or hang; both are failures
         el = time.time() - t0
-        self.assertGreater(el, 3.0,
-                           "expected the old path to exceed the 3s wall, took %.2fs" % el)
+        self.assertGreater(el, W.WALL,
+                           "expected the old path to exceed the %.1fs wall, took %.2fs"
+                           % (W.WALL, el))
         print("\n  old path (radar_art, fetches inline): %.2fs -- over the wall" % el)
 
     def test_new_path_holds_the_wall(self):
         t0 = time.time()
-        with net_budget.request_budget(3.0):
+        with net_budget.request_budget(W.WALL):
             state, payload = R.radar_resolve("><", 2.0, 2.0, "T")
         el = time.time() - t0
-        self.assertLess(el, 3.0, "new path took %.2fs" % el)
+        self.assertLess(el, W.WALL, "new path took %.2fs" % el)
         self.assertEqual(state, R.STATE_FETCHING)
         self.assertIsNone(payload)
         print("  new path (radar_resolve, warms off-thread): %.2fs, state=%s"
