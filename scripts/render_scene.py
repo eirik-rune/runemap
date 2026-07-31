@@ -117,12 +117,23 @@ def radar_art(code, lng, lat, token):
     if not imgs:
         return None
     url, ts, bbox = imgs[-1][0], float(imgs[-1][1]), imgs[-1][2]
-    png = _get(url, timeout=20)
+    try:
+        png = _get(url, timeout=20)
+    except Exception:
+        # Out of budget or upstream sick. The weather half of the scene is
+        # already in hand; returning None drops the radar panel and still
+        # answers. Raising here turned a slow PNG into a 502 for the whole
+        # scene -- the user lost the forecast as well as the map.
+        return None
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         f.write(png); p = f.name
     try:
         art, kmcol = ascii_radar(p, bbox, lng, lat, cols=48, rows=24, marker=code)
-        return art, kmcol, ts, _motion_now(imgs, lng, lat)
+        try:
+            motion = _motion_now(imgs, lng, lat)
+        except Exception:
+            motion = None          # motion is the first thing worth losing
+        return art, kmcol, ts, motion
     finally:
         os.unlink(p)
 

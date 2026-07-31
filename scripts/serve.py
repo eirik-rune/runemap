@@ -9,6 +9,9 @@ from urllib.parse import urlparse, parse_qs, unquote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_at as SA          # installs the radar cache layer on render_scene._get
 import render_scene as R
+import net_budget
+
+SCENE_BUDGET = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "18"))
 import geo as G
 try:
     import geoip as GI          # ip -> lat/lon (DB-IP Lite, local sqlite, no third party)
@@ -224,8 +227,17 @@ class H(BaseHTTPRequestHandler):
         canonical_url = f"/scene?{c_qs}"
 
         try:
-            wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
-            rb = R.radar_art(code, lon, lat, TOKEN)
+            # One ceiling for the whole request. Per-fetch budgets bound each
+            # hop but not their sum: weather 15 + radar list 25 + png 20 is a
+            # legal 60s request in which nothing ever times out. Clients give
+            # up long before that, so the work is thrown away at both ends.
+            # 18s leaves room inside the 20s probe window and the 60s nginx
+            # proxy_read_timeout. Whatever is fetched before the ceiling is
+            # kept: the cache layer serves stale-but-good, and radar_art drops
+            # the map rather than the whole answer.
+            with net_budget.request_budget(SCENE_BUDGET):
+                wx = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+                rb = R.radar_art(code, lon, lat, TOKEN)
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb)
             if guessed:
                 out += _guess_note(lang, label)

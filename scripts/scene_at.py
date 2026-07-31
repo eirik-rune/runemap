@@ -96,8 +96,11 @@ def main():
     tzh = a.tz if a.tz is not None else round(a.lon / 15.0)
     code = (a.code + "><")[:2]
 
-    wx = R.weather(a.lon, a.lat, token, "en_US" if a.lang == "en" else "zh_CN")
-    rb = R.radar_art(code, a.lon, a.lat, token)
+    import net_budget
+    budget = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "18"))
+    with net_budget.request_budget(budget):     # same ceiling as the service
+        wx = R.weather(a.lon, a.lat, token, "en_US" if a.lang == "en" else "zh_CN")
+        rb = R.radar_art(code, a.lon, a.lat, token)
     sys.stdout.write(R.build(a.lang, label, code, label, a.lon, a.lat, tzh, wx, rb))
 
 

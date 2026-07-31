@@ -169,6 +169,59 @@ def main():
     finally:
         s3.close()
 
+    print("7. request budget: many legal fetches must not add up past the ceiling")
+    # each fetch is well inside its own 5s budget; three of them are not inside
+    # a 3s request. This is the shape that produced rc=28 in production while
+    # every individual fetch believed it was behaving.
+    s6 = TrickleServer(gap=0.0, total=2048, headers_delay=1.2, will_close=True)
+    try:
+        t0 = time.monotonic()
+        got, err = 0, None
+        try:
+            with net_budget.request_budget(3.0):
+                for _ in range(6):
+                    net_budget.get(s6.url, budget=5.0)
+                    got += 1
+        except net_budget.BudgetExceeded as e:
+            err = e
+        el = time.monotonic() - t0
+        check("request aborts at the ceiling", err is not None)
+        check("ceiling holds, not the sum of per-fetch budgets", el < 4.5,
+              "%.2fs elapsed, request budget 3.0s, per-fetch 5.0s x6" % el)
+        check("work done before the ceiling is real", got >= 1, "%d fetches completed" % got)
+
+        print("8. worker threads inherit the ceiling (adopt), not a fresh budget")
+        import concurrent.futures as cf
+        t0 = time.monotonic()
+        with net_budget.request_budget(2.0) as dl:
+            def worker(_):
+                with net_budget.adopt(dl):
+                    try:
+                        return net_budget.get(s6.url, budget=5.0) and "ok"
+                    except net_budget.BudgetExceeded:
+                        return "bounded"
+            with cf.ThreadPoolExecutor(max_workers=4) as ex:
+                out = list(ex.map(worker, range(4)))
+        el = time.monotonic() - t0
+        check("pool bounded by the request, not per-worker", el < 3.5,
+              "%.2fs elapsed, request budget 2.0s, 4 workers x 5.0s each" % el)
+
+        print("9. a worker that forgets to adopt gets its own budget (documents the trap)")
+        t0 = time.monotonic()
+        with net_budget.request_budget(0.1):
+            def naive(_):
+                try:
+                    return net_budget.get(s6.url, budget=2.5)
+                except Exception:
+                    return None
+            with cf.ThreadPoolExecutor(max_workers=2) as ex:
+                list(ex.map(naive, range(2)))
+        leaked = time.monotonic() - t0
+        check("un-adopted worker escapes the ceiling (why adopt() is mandatory)",
+              leaked > 0.5, "%.2fs spent under a 0.1s request budget" % leaked)
+    finally:
+        s6.close()
+
     print()
     print("FAILED" if check.failed else "ALL PASS")
     return 1 if check.failed else 0
