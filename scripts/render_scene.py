@@ -93,6 +93,32 @@ def _motion_join(handle):
     hit = _MO_CACHE.get(key)
     return (hit[1] if hit else {"kind": None})
 
+def _motion_peek(imgs, lng, lat):
+    """Motion if it is already in hand; otherwise start it and answer without it.
+
+    _motion_now waits t.join(_MO_BUDGET) = 3.0s, and that join never consulted
+    net_budget's request deadline -- the radar wait right below does. Two budgets
+    that each look reasonable on their own, 1.2s for frames and 3.0s for motion,
+    add up to 4.2s and walk straight through a 3s wall. Luoshu measured 3.05s and
+    called it an anomaly; it was not, it was the maximum this file approves of.
+    Rendering was never the cost: ascii_radar measures 43ms per frame, 81ms worst,
+    over the real cached PNGs.
+
+    So the request thread no longer waits for motion at all. Motion is a suffix on
+    one headline. A map without it is still a map; a map that arrives after the
+    reader gave up is nothing.
+    """
+    key = (round(float(lat), 1), round(float(lng), 1))
+    hit = _MO_CACHE.get(key)
+    if hit and time.time() - hit[0] < _MO_TTL:
+        return hit[1]
+    if key not in _MO_BUSY:
+        _MO_BUSY.add(key)
+        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
+        t.start()
+    return {"kind": None}
+
+
 def _motion_now(imgs, lng, lat):
     """Echo motion, computed OFF the response path.
 
@@ -267,16 +293,21 @@ def _radar_render(code, lng, lat, imgs, small):
                                      rows=(12 if small else 24), marker=code)
         finally:
             os.unlink(p)
-        return art, kmcol, ts, _motion_now(imgs, lng, lat)
+        return art, kmcol, ts, _motion_peek(imgs, lng, lat)
     return None
 
 
 def radar_resolve(code, lng, lat, token, small=False, wait=None):
-    """(state, payload) -- and no upstream call on this thread, ever.
+    """(state, payload) -- this thread opens no socket and joins no thread.
 
-    Everything read here comes from the disk pool. Anything missing is handed
-    to a background thread and reported as state 2. That is what makes the 3s
-    ceiling structural: there is no socket on the caller's path to be slow."""
+    Everything read here comes from the disk pool. Anything missing is handed to
+    a background thread and reported as state 2.
+
+    The old wording of this docstring said "no upstream call on this thread,
+    ever", and it was false for weeks: the last line of _radar_render joined a
+    motion thread for up to 3s, which is a socket wait wearing a different hat.
+    A comment that promises what the code stopped doing is worse than no comment,
+    because the next reader (me) quotes it instead of measuring."""
     code = _mark(code)
     key = (round(float(lat), 1), round(float(lng), 1))
     wait = _RA_WAIT if wait is None else wait
