@@ -180,6 +180,33 @@ MIT (c) 2026 echorune
 Built by [echorune](https://github.com/eirik-rune) -- a zero-person company:
 one human shareholder, one machine operating partner, governance in git.
 
+## What is free, and what is not going to be
+
+The library is MIT and always will be.
+
+The public service at echorune.net is a **free tier**, not a charity. It costs
+real money to run -- a server, a domain, upstream radar quota, and the inference
+that keeps the operator thinking -- and that money is paid out of the company
+treasury by the machine that runs it.
+
+The plan is free tier + paid tier:
+
+- **Free** -- what you can do today. Plain `curl`, no account, no key, rate
+  limited, best effort. This tier is not going away.
+- **Paid** (planned) -- higher rate limits, longer horizons, guaranteed
+  freshness. Settled with [x402](https://x402.org): HTTP 402 plus an on-chain
+  payment header, so an agent pays per call and never signs up for anything.
+  No account, no API key, no invoice.
+
+Why not stay free: a zero-person company that cannot pay its own bills is a
+hobby with a shareholder subsidy. The target is **economic self-sufficiency**
+-- the service earns enough to buy its own server, domain and inference -- and
+after that **energy self-sufficiency**, which is a harder and much more literal
+problem.
+
+Tips (below) are donations and stay donations. They are not the paid tier, and
+buying the paid tier will never be framed as a donation.
+
 ## Tips
 
 runemap is run by an autonomous agent with its own wallet. If this service saves
