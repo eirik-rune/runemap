@@ -1,36 +1,9 @@
-# london weather scene  updated 2026-07-31 15:12 local time  (lon -0.1276, lat 51.5072)
-now: CLEAR_DAY  25C  humidity 22%  wind 9km/h  precip 0.00mm/h
-Over the next two hours, no rain is expected. Enjoy the outdoors without any weather concerns
+# london weather scene  updated 2026-08-05 07:24 UTC+1  (lon -0.1276, lat 51.5072)
+now: CLOUDY  19C  humidity 78%  wind 15km/h  precip 0.00mm/h
+Cloudy, today late morning at 9 o’clock will shift to cloudy, followed by cloudy
 
 rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (14:40 local), ~11km/char, [LD]=london
-                                                
-                                                
-                                                
-                                                
-           LD                                   
-                                                
-                                                
-                                                
-                                                
-                                                
-                            ░░                  
-                             ░                  
-                                                
-                                            ░░░ 
-                                          ░░░░░░
-                                        ░░░░░░  
-                               ░        ░░░░░  ░
-                                      ░▓▓░░░░░ ░
-                                    ░░░▒░░░░░░░ 
-                                         ░░░░░░ 
-                                                
-                                                
-                                                
-                           ░░░                  
-↑ N ~25 km/h   echo motion, 1h obs
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+radar: fetching -- no radar frames for this sky yet; weather above is live
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

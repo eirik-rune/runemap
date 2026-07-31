@@ -1,35 +1,36 @@
-# shanghai weather scene  updated 2026-07-31 22:12 local time  (lon 121.4737, lat 31.2304)
-now: CLEAR_NIGHT  29C  humidity 69%  wind 4km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the north, 107 km away
+# shanghai weather scene  updated 2026-08-05 14:24 UTC+8  (lon 121.4737, lat 31.2304)
+now: PARTLY_CLOUDY_DAY  35C  humidity 40%  wind 8km/h  precip 0.00mm/h
+To your SW, 27 kilometers away, a light rain is occurring
 
 rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (22:08 local), ~10km/char, [SH]=shanghai
-                                                
-                                                
-                                                
-                                ░               
-                                                
-                                                
-                                                
-             ░█                                 
-           ░▒▒▓░                                
-                               SH               
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
+radar: predict 14:25  obs age: 4min ok
+~10km/char, [SH]=shanghai
+               ▒░                               
+             ░▓▓▒                               
+        ░▒░░ ░▒▒░    █▓                         
+        ▒▒    ▒▓░░  ░██▓                        
+            ░▓██▓░░  ███  ░░                    
+         ░░  ░██▓░░       ░░                    
+        ▒░░     ▓▓▓▓                            
+        ░█     ▓████░░ ▓▓▓                      
+      ▓▓▓▒░        ░▓▓░▓▓▓░                     
+      ░░ ░░      ▒▒▓██░ ▒██    SH               
+            █░   █▓████▓▒░    ▓░                
+       ▒█▒ ░███░▓█░▒░██▓▓     ░░                
+████░░     ░██░ ░░                              
+▓▓░ ░▒▒░     ░░                                 
+░▒░░▓▓▓░   ▓░▓█                                 
+ ▓▒░▓▒▓    ██                 ▒▒                
+   ░▓█▓░             ▓  ▓▓    █▓                
+   ▒▓██           ▒█▒▓░ ▓█░    ▓█               
+              █░  ███▓░ ░░     ░░               
+       █▓▓   ░██     ▓░        ██               
+       ██░ ██▓▓█   ███         ██               
+           ░░ ░░   ░░                           
+              ▒██       ▒▓▒                     
+                        ▒▓▒░ ░░                 
+← W ~24 km/h   echo motion, upstream forecast
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

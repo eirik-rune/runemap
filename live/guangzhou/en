@@ -1,39 +1,36 @@
-# guangzhou weather scene  updated 2026-07-31 22:12 local time  (lon 113.2644, lat 23.1291)
-now: LIGHT_RAIN  28C  humidity 85%  wind 6km/h  precip 0.12mm/h
-After 40 minute, the rain gradually stops.
+# guangzhou weather scene  updated 2026-08-05 14:24 UTC+8  (lon 113.2644, lat 23.1291)
+now: PARTLY_CLOUDY_DAY  30C  humidity 44%  wind 7km/h  precip 0.00mm/h
+The nearest area experiencing rain is to the NE, 51 km away
 
-rain curve (next 2h, 6min/bucket):
-██▆▅▅▅▅             
-├────┼────┼────┼────┤
-0   30   60   90 120min
+rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (22:08 local), ~10km/char, [GZ]=guangzhou
+radar: predict 14:26  obs age: 4min ok
+~10km/char, [GZ]=guangzhou
                                                 
                                                 
                                                 
-                      ░░  ░░                    
-                         ░▒░░                   
-                      ░░░░▒░░░░░                
-                      ░░░░░░░░░░░░░ ░░░░        
-                         ░░░░▒▒▒░░░░░░░░░░░     
-                           ░░░▒▒▒▒▒▒░░░░░▒░░    
-                            ░░░░░▒▒░░░░░░░░░░░  
-                              ░GZ░░░░░░░░░░░░░  
-                                ░░░░░   ░░      
-                                        ░▒      
                                                 
-                                            ░░░ 
-                                           ░░░  
-                                               ▒
-                          ░░█▓▓██▓▒▒░░▓░░      ░
-                           ░░▓▓▓▓▓▓▓▒ ▓▒▓░      
-                        ░░▒▓▒▓▓▓▓▓▓▒▒░          
-                        ░▓▓▓▓▒░░▒▒▒▒░           
-                        ░▒▓▓▓▒░░░░░░░░░ ░░░     
-                          ░░░░░░░░░░░░░         
-                 ░░░░  ░░  ░░░░░░░              
-← W ~13 km/h   echo motion, 1h obs
+                                                
+                         ░░                     
+                        ░░░      ░              
+            ▓▓█▓                                
+            ░▒██▒                    ░░         
+          ░  ▒██▒░                              
+ ░░░░            ░▓▒           GZ       ░░      
+░░░░         ░▓░ ▓██                    ░░░     
+░░░░       ░████▓░                              
+░░░     ░░▓▓████▓███                      ░     
+         ░▒▓█▓▓▒ ▓██░░░                         
+    ░░    ░██▓▓▒ ▒▒░▒▒░                         
+          ░░░▒▒░▒░░░▒▒░░                        
+          ░░     ░░░░░                          
+                 ░░░░░                          
+               ░░░                              
+               ░░░░░   ░░                       
+               ░░░░░░░░░▓▓░                     
+                 ░░░░░░░░░░░                    
+                      ░░░░░░░░                  
+↖ NW ~23 km/h   echo motion, upstream forecast
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

@@ -1,36 +1,39 @@
-# chiangmai weather scene  updated 2026-07-31 21:12 local time  (lon 98.9853, lat 18.7883)
-now: PARTLY_CLOUDY_NIGHT  27C  humidity 99%  wind 3km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the east, 45 km away
+# chiangmai weather scene  updated 2026-08-05 13:24 UTC+7  (lon 98.9853, lat 18.7883)
+now: LIGHT_RAIN  30C  humidity 90%  wind 4km/h  precip 0.12mm/h
+After 43 minute, the rain gradually stops.
 
-rain curve (next 2h): no precipitation expected
+rain curve (next 2h, 6min/bucket):
+▆██▆▃▃▄▃            
+├────┼────┼────┼────┤
+0   30   60   90 120min
 
-radar: ok
-radar now (20:49 local), ~10km/char, [CM]=chiangmai
+radar: predict 13:24  obs age: 24min stale
+~10km/char, [CM]=chiangmai
                                                 
-                          ░░░░   ░              
-            ░░░░░░░░    ░░░░▒▓░░  ░             
-          ░░░░░░ ░        ░░▒▓░   ░             
-     ░░░  ░ ░░░░░        ░░░░░░             ░░  
-   ░░░░░   ░░            ░░               ░░░░░ 
-  ░░░░░    ░░                CM            ░ ░░░
-  ░░                ░                      ░░░░░
-  ░░░             ░░▓▒░                     ░░░░
-   ░░░░     ░░░   ░░░░░                     ░░░░
- ░░░░░░     ░░░                             ░░░ 
-░░░░░░░                              ░░   ░░░   
-░░░░░░░            ░░░▒░░░           ░   ░░░░░░░
-░░░  ░░░░░░       ░░░▒▓▒░░        ░     ░░░░░░░░
- ░░   ░░░░░░░     ░░░░░▒▒░       ░░░░░░░░░░░░░░ 
-         ░░░░     ▓▓░░░▒▒░       ░░░░░▒▒▒░░░    
-  ░░  ░░░░░         ░░░░         ░░░▒▒▒▒░░░░░   
-                     ░░░░░       ░░░▒░░░        
-                     ░░▒▒░        ░░░           
-                      ░░░░           ░░░░░      
-                      ░░░     ░░░░░ ░░░░░░░     
-                       ░░   ░░░░░░░░░░░░░░░     
-                 ░         ░░░░░░░░░░░░         
-                              ░                 
-= echo quasi-stationary (<5km/h, 1h obs)
+                             ░░░ ░░░░           
+                             ░░░░░░░░░░░░       
+                              ░░░░░▒▒░░░        
+                           ░▒░▒▓▓▓▓▒░░░░░       
+                            ░░▒▒▓▒▒░░░░ ░       
+                             CM▓▒▒▒░░░░░░       
+                        ░░  ░░░░░░░░░░░░        
+                    ░░░░   ░░░░░░░░░▓░          
+                  ░░▒▒░░    ░░░░░░░             
+                            ░░  ░░              
+                 ░          ░░                  
+                             ░░                 
+        ░   ░░                               ░░░
+   ░░   ░   ░░       ░░░░              ░░    ░░░
+  ░░░                ░░░▒██▒░          ░░░░░░   
+                       ░░░▓░░                   
+                      ░░░░░░                    
+                ░  ░░▓▓░░░                      
+              ░░░░▒░▒░░░░░░░                    
+              ░░░░░░    ░░░░░░                  
+                        ░░░                     
+                                                
+                                                
+↗ NE ~10 km/h   echo motion, upstream forecast
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

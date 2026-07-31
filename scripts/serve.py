@@ -39,8 +39,19 @@ USAGE
   curl echorune.net/help
   curl echorune.net/healthz
   curl echorune.net/status         availability, measured every minute
+  curl echorune.net/<place>?span=<km>   width of the map in km (default 280,
+                                   i.e. 140 km in every direction, 6 km/char).
+                                   span is the EDGE of the square, not a radius;
+                                   km/char is span/48. A '?' means outside the
+                                   radar's coverage -- not that it is not raining.
   the query form keeps working: /scene?q=<place>&lang=zh
   (quote that one: & is a shell operator)
+
+POLLING
+  Radar frames refresh about every 6 minutes, so most polls return the same
+  picture -- but repeats are answered from cache, so they cost you nothing and
+  you see a new frame within 30s of it existing:
+    watch -n 30 curl -s echorune.net/bangkok
 
 WHAT YOU GET
   One screen: current conditions, a plain-language forecast, a 2h rain
@@ -64,6 +75,9 @@ github.com/eirik-rune/runemap/issues
 _PROBE_EXT = ("txt", "ico", "xml", "json", "php", "html", "htm", "css", "js",
               "png", "jpg", "gif", "map", "env", "git", "asp", "aspx", "yml", "yaml", "sql")
 
+_CY_LANG = {"en": "en_US", "zh": "zh_CN", "ja": "ja"}
+
+
 def _accept_lang(hdr):
     """First supported language in an Accept-Language header, by q-order."""
     if not hdr:
@@ -80,7 +94,8 @@ def _accept_lang(hdr):
                     q = float(b[2:])
                 except ValueError:
                     q = 0.0
-        code = "zh" if tag.startswith("zh") else ("en" if tag.startswith("en") else "")
+        code = ("zh" if tag.startswith("zh") else "ja" if tag.startswith("ja")
+                else "en" if tag.startswith("en") else "")
         if code and q > bq:
             best, bq = code, q
     return best
@@ -102,8 +117,22 @@ def _is_file_probe(spec):
     """Crawler/browser probe (/robots.txt, /favicon.ico) vs a place name that
     happens to contain a dot ('st.petersburg'). Only a known static-file
     extension counts as a probe -- a dot alone is not evidence."""
-    tail = spec.split("/")[-1].lower()
-    return "." in tail and tail.rsplit(".", 1)[-1] in _PROBE_EXT
+    # 8/3 #19: the only consumer (see the routing branch below) hands over the
+    # WHOLE joined spec, so reading just the last segment let `.git/config`
+    # through -- tail `config`, no dot, no extension -- straight into the place
+    # matcher, which fuzzy-matched it to a real town and rendered its weather.
+    # bob reproduced it from outside the host. Check every segment, and treat a
+    # leading dot as a probe on its own: place names never begin with a dot,
+    # while dotfile probes (.git, .env, .aws) carry no known extension at all.
+    for seg in spec.split("/"):
+        seg = seg.strip().lower()
+        if not seg:
+            continue
+        if seg.startswith("."):
+            return True
+        if "." in seg and seg.rsplit(".", 1)[-1] in _PROBE_EXT:
+            return True
+    return False
 
 
 def _as_coords(spec):
@@ -167,6 +196,20 @@ class H(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         guessed = False
         small = (q.get("size", [""])[0] or "").lower() == "s"
+        # ?span=<km> -- EDGE LENGTH of the centred window, not radius: span=200
+        # is radius 100.  km/char == span/48.  Set on every request, including
+        # absent (None), so one asker's experiment cannot leak into the next.
+        try:
+            _sp = float(q.get("span", [""])[0] or 0) or None
+        except ValueError:
+            _sp = None
+        if _sp is not None:
+            # Lower bound is 48, not 10: km/char == span/48, so span=10 prints
+            # "0km/char" -- a grid whose cell is zero km wide is not a smaller
+            # map, it is a meaningless one, and the number that gives it away is
+            # the one the reader is told to trust. 48 == 1 km/char.
+            _sp = max(48.0, min(2000.0, _sp))
+        R.set_span(_sp)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path in ("/help", "/help/"):
@@ -187,7 +230,7 @@ class H(BaseHTTPRequestHandler):
                 # trailing /s = small radar (24x12, ~2x km/char) -- bob 7/30
                 if len(seg) > 1 and seg[-1].lower() == "s":
                     small = True; seg = seg[:-1]
-                if len(seg) > 1 and seg[-1].lower() in ("en", "zh"):
+                if len(seg) > 1 and seg[-1].lower() in ("en", "zh", "ja"):
                     q.setdefault("lang", [seg[-1].lower()]); seg = seg[:-1]
                 spec = "/".join(seg).strip()
                 ll = _as_coords(spec)
@@ -214,7 +257,7 @@ class H(BaseHTTPRequestHandler):
         # It applied to "/" only at first, so a Chinese phone asking for /london
         # got English -- a difference the caller never asked for.
         lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
-        lang = lang if lang in ("en", "zh") else "en"
+        lang = lang if lang in ("en", "zh", "ja") else "en"
         label = q.get("label", [None])[0]
         if not label:
             near = place or G.rlookup(lat, lon)
@@ -247,7 +290,7 @@ class H(BaseHTTPRequestHandler):
                 def _wx_job():
                     try:
                         with net_budget.adopt(_dl):
-                            _wxb["v"] = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+                            _wxb["v"] = R.weather(lon, lat, TOKEN, _CY_LANG.get(lang, "en_US"))
                     except Exception as _e:
                         _wxb["e"] = _e
                 _wxt = _th.Thread(target=_wx_job, daemon=True)
@@ -281,8 +324,7 @@ class H(BaseHTTPRequestHandler):
                 # never a 502. A 502 inside 3s satisfies the clock and fails the
                 # person. No fourth state: same words as radar's "not yet".
                 sys.stderr.write("WEATHER-FETCHING %r\n" % (_wxb.get("e"),))
-                R.weather_start(lon, lat, TOKEN,
-                                "en_US" if lang == "en" else "zh_CN")
+                R.weather_start(lon, lat, TOKEN, _CY_LANG.get(lang, "en_US"))
                 out = R.build_fetching(lang, label)
                 return self._send(200, out)
             _t_wx = time.time() - _t; _t = time.time()

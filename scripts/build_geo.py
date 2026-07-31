@@ -69,7 +69,7 @@ def main():
             c.executemany("INSERT INTO alias VALUES(?,?,?)", aliases); aliases = []
     c.executemany("INSERT INTO place VALUES(?,?,?,?,?,?,?,?,?)", places)
     c.executemany("INSERT INTO alias VALUES(?,?,?)", aliases)
-    c.executescript("CREATE INDEX ix_alias ON alias(key, pop DESC); CREATE INDEX ix_pop ON place(pop DESC);")
+    c.executescript("CREATE INDEX ix_alias ON alias(key, pop DESC); CREATE INDEX ix_pop ON place(pop DESC); CREATE INDEX ix_alias_sq ON alias(replace(key,' ',''), pop DESC);  -- 8/5: /newyork; +22MB, 1.0s")
     c.commit()
     print("places=%d aliases=%d admin=%d  %.1fs  %.0fMB  ->  %s/%s"
           % (n, c.execute("SELECT count(*) FROM alias").fetchone()[0], len(adm),

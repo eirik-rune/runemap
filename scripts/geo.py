@@ -67,6 +67,20 @@ def lookup(q, cc=None):
         "SELECT p.* FROM alias a JOIN place p ON p.id=a.pid WHERE a.key=? ORDER BY a.pop DESC LIMIT 40",
         (head,)).fetchall()
     if not rows:
+        # "newyork" -> alias key "new york".  norm() turns "-" and "." into
+        # spaces but never removes them, so /new-york/en worked while
+        # /newyork/en 404'd -- and an agent typing a URL has no reason to
+        # guess which one we wanted.  Exact keys are tried first and are not
+        # touched, so no query that already had an answer changes: only ones
+        # that returned nothing get one.  Index ix_alias_sq makes this
+        # 0.1ms; without it the same query is a correct 211ms table scan,
+        # which is why build_geo.py creates the index rather than the
+        # lookup depending on it.
+        rows = d.execute(
+            "SELECT p.* FROM alias a JOIN place p ON p.id=a.pid "
+            "WHERE replace(a.key,' ','')=? ORDER BY a.pop DESC LIMIT 40",
+            (head.replace(" ", ""),)).fetchall()
+    if not rows:
         return None
     cand = [_pack(r) for r in rows]
     if cc:

@@ -1,9 +1,9 @@
-# london  (-0.1276,51.5072)  local 2026-07-31 15:12  UTC+1
-now: CLEAR_DAY  temp 25C  humidity 21%  wind 9km/h  precip 0.00
+# london  (-0.1276,51.5072)  local 2026-08-05 09:42  UTC+1
+now: PARTLY_CLOUDY_DAY  temp 20C  humidity 64%  wind 18km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
 next 24h precip (mm/h):                           peak 0.0
-next 24h temp 16..25C: ██████▇▆▅▄▃▂▂▁▁ ▁▂▃▄▅▆▇█
-sky: +0h:CLEAR_DAY +6h:CLOUDY +10h:CLEAR_NIGHT +15h:CLEAR_DAY
-keypoint: 未来两小时不会下雨，放心出门吧
+next 24h temp 15..25C: ▄▆▆▇█████▇▇▆▅▄▃▃▂▂▁▁▁  ▁
+sky: +0h:PARTLY_CLOUDY_DAY +1h:CLOUDY +2h:CLEAR_DAY +12h:CLEAR_NIGHT +20h:CLEAR_DAY
+keypoint: 最近的降雨带在东北49公里外呢
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

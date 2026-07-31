@@ -1,36 +1,36 @@
-# beijing weather scene  updated 2026-07-31 22:12 local time  (lon 116.4074, lat 39.9042)
-now: PARTLY_CLOUDY_NIGHT  29C  humidity 69%  wind 4km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the SW, 42 km away
+# beijing weather scene  updated 2026-08-05 14:24 UTC+8  (lon 116.4074, lat 39.9042)
+now: CLEAR_DAY  36C  humidity 39%  wind 8km/h  precip 0.00mm/h
+The nearest area experiencing rain is to the NW, 46 km away
 
 rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (22:08 local), ~10km/char, [BJ]=beijing
-                           ░░                   
-                          ░░░░░                 
-                         ▓▓▒▒░░░░░░░            
-                 ░░▒▒░   ▒░▓░░ ░░░░░            
-               ░▒▒▒▓▒░░░ ░                      
-               ░▒▒░░    ░░░░░             ░     
-               ░░░░░   ░░░░░            ░░░░    
-         ░░░░░░░░ ░   ░░░░░            ░░░░░    
-         ░░░░░░░░░░░░  ░            ▒▓░░░░░     
-           ░░░░   ░                 ▓▓░░▒░░     
-        ░░  ░░░                        ░░░░     
-        ░░ ░░░         BJ                ░░     
-           ░░                                   
-                    ░▓▒                         
-                                           ▓▓   
-           ░░                 ░░░░      ░▒ ▒▒   
-        ░░░░░░              ░▒▓▒▒▒░▒▒░          
-        ░░░░░░       ░░░░ ░░▓▓▓▓▓▓▓░▒░ ▓▓       
-         ░░░░░░░░▒▒▒▒▓▒▓▓▓██▓▓▓▓▓▓▓░░ ░░░       
-        ░░░░░░░░░░░░▒▓▓▓▓▓██▓▓▓▓▓▓▒  ░░         
-         ░ ░░░░░▒▒▒▓▓▓▓▓▓▓▓▓▓▓▒▒▒░░  ░░         
-        ░░▒▒▒░░░░░▒▒▓▓▒▒▒▓▓▓▒░▒▒▓▒              
-          ░░░░░░░░░░░░▒░▒▒·░░░░░▒▒▒▒░░          
-              ░░░░░░░░░░░░░░░░░░░░░▒▒           
-↗ NE ~14 km/h   echo motion, 1h obs
+radar: predict 14:26  obs age: 3min ok
+~10km/char, [BJ]=beijing
+                                                
+                                                
+                                                
+         ░░             ░                       
+                     ░ █▓                       
+               ▒▒  ░▓▓                          
+     ░░      ██▓                                
+    ░░░░░░  ▒██                                 
+    ░░  ░░  ██ ▓██    ░░                        
+  ▒▒░       ▓ ░░██  ███░                        
+ ░███                                           
+ ▒██                   BJ                       
+                                                
+                              ███░              
+                              ▓░                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+= echo motion: undetermined (frames not correlated)
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

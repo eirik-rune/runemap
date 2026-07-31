@@ -6,7 +6,7 @@ Usage:
 
 Prints one screen to stdout: headline + 2h rain curve + radar map + legend.
 No files written, no service exposed. You bring your own caiyunapp.com token."""
-import argparse, os, sys, time
+import argparse, os, sys, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_scene as R
@@ -15,6 +15,19 @@ import render_scene as R
 import hashlib, json as _json
 CACHE = os.environ.get("RUNEMAP_CACHE", os.path.expanduser("~/.cache/runemap"))
 os.makedirs(CACHE, exist_ok=True)
+# A png entry is a timestamped, immutable object: a 14:09 frame is still that
+# frame an hour later, byte for byte. A freshness TTL on it answers the wrong
+# question -- "how old is this file" instead of "is this frame still useful" --
+# and usefulness is already answered at render time by obs age, which is
+# printed on the page. So why is 1800 still here? Because the cost of it is
+# zero: measured 2026-08-03 11:42, across the 9 cities whose list the service
+# could still see, 234 candidate frames, exactly 0 were on disk but past this
+# TTL. Frame URLs come out of the list, so a fresh list implies fresh frames.
+# The one combination this TTL can bite is "list fresh, frames old". Watch for
+# it if radar_json's TTL is ever lowered, or if frames stop coming from the
+# list (separate caches). Until one of those happens, leave it alone -- and do
+# not file a card for it: a card gets picked up as a TODO and spends real time
+# on a 0/234 problem.
 _TTL = {"radar_json": 300, "png": 1800, "weather": 300}   # radar refreshes ~6min; png urls are timestamped
 _orig_get = R._get
 
@@ -34,6 +47,49 @@ def _track_outbound():
 
 _STALE_MAX = 6          # serve a stale-but-good entry up to 6x TTL when upstream is sick
 
+# --- stale-while-revalidate -------------------------------------------------
+# Serving a stale entry and scheduling its refresh were two halves of one job,
+# and only the first half existed: a list 10 minutes old was served, over and
+# over, for up to _STALE_MAX x TTL, while nothing asked upstream. The frame
+# timestamps we print come from that list, so the observation time froze while
+# the wall clock ran on -- measured 8/2: 19 of 24 servable lists were past TTL,
+# p50 12.9min, and re-fetching moved the observation forward by 5-18 minutes.
+#
+# Not a shorter TTL: that trades staleness for "fetching", which is worse.
+_SWR_LOCK = threading.Lock()
+_SWR_INFLIGHT = set()
+_SWR_BUDGET = 45.0        # background, outlives the response, like _radar_warm
+
+
+def _swr_refresh(url):
+    try:
+        with R.net_budget.request_budget(_SWR_BUDGET):
+            _cached_get(url, 20)          # writes the pool when the payload is usable
+    except Exception as e:
+        sys.stderr.write("SWR-REFRESH-FAILED %r\n" % (e,))
+    finally:
+        # finally, not end-of-happy-path: a url left in the set is a coordinate
+        # that can never be refreshed again, and nothing would ever say so.
+        with _SWR_LOCK:
+            _SWR_INFLIGHT.discard(url)
+
+
+def _swr_schedule(url, kind):
+    """Refresh a past-TTL entry off the response path. Never blocks the reader."""
+    if kind == "png":
+        return            # timestamped immutable object: re-fetching buys nothing
+    with _SWR_LOCK:
+        if url in _SWR_INFLIGHT:
+            return
+        _SWR_INFLIGHT.add(url)
+    try:
+        threading.Thread(target=_swr_refresh, args=(url,), daemon=True).start()
+    except Exception as e:
+        with _SWR_LOCK:
+            _SWR_INFLIGHT.discard(url)
+        sys.stderr.write("SWR-SPAWN-FAILED %r\n" % (e,))
+
+
 def _usable(kind, b):
     """A payload is cacheable only if it is actually usable. Upstream returns
     HTTP 200 with {"status":"failed"} (24 bytes) -- caching that poisons the
@@ -41,7 +97,15 @@ def _usable(kind, b):
     if not b:
         return False
     if kind == "png":
-        return len(b) > 512
+        # Measured 8/2 12:16, bangkok: a rainless sky is a VALID 268-byte png
+        # (223x217, colortype 6, one distinct byte after inflate -- fully
+        # transparent). The old `len(b) > 512` read that as garbage, so the
+        # frame was fetched, judged unusable, never stored; _peek missed for
+        # ever and the sky sat in "fetching -- ask again in ~60s" permanently.
+        # Every dry sky, not one city. Size was standing in for validity: the
+        # emptier the sky the smaller the file, so the test was strictest on
+        # exactly the answer it should have accepted. Judge the container.
+        return b[:8] == b"\x89PNG\r\n\x1a\n" and b[-8:-4] == b"IEND"
     try:
         j = _json.loads(b)
     except Exception:
@@ -52,9 +116,27 @@ def _usable(kind, b):
         return False
     return True
 
+def _ckey(url):
+    """The key must name the CONTENT, not the signature.
+
+    Frame urls carry auth_key=<epoch>-<hash>, re-signed on every request, so
+    sha1(full url) rotated the entire keyspace each time the images API was
+    refreshed: the 1800s png TTL was never reachable and every request paid a
+    full download. Measured 2026-08-01 on 6 pairs of cached json snapshots
+    299s-2699s apart: for the same frame timestamp the path is byte-identical
+    (88/88 frames), so the in-path hash is content-addressed and auth_key is
+    the only volatile part. Strip only that -- other params (hourlysteps, the
+    weather token in the path) are part of the identity of what was asked.
+    """
+    head, sep, q = url.partition("?")
+    if not sep:
+        return url
+    keep = [kv for kv in q.split("&") if not kv.startswith("auth_key=")]
+    return head + ("?" + "&".join(keep) if keep else "")
+
 def _cached_get(url, timeout=15):
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
-    key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
+    key = os.path.join(CACHE, hashlib.sha1(_ckey(url).encode()).hexdigest() + "." + kind)
     have = os.path.exists(key)
     age = (time.time() - os.path.getmtime(key)) if have else None
     if have and age < _TTL[kind]:
@@ -96,13 +178,15 @@ def _cached_peek(url):
     and the frame carries its own timestamp so nobody is misled about its age.
     """
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
-    key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
+    key = os.path.join(CACHE, hashlib.sha1(_ckey(url).encode()).hexdigest() + "." + kind)
     try:
         age = time.time() - os.path.getmtime(key)
     except OSError:
         return None
     if age >= _TTL[kind] * _STALE_MAX:
         return None
+    if age >= _TTL[kind]:
+        _swr_schedule(url, kind)      # serve it AND ask for a fresh one
     try:
         b = open(key, "rb").read()
     except OSError:

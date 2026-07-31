@@ -50,8 +50,10 @@ legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
 ```
 
-(real output, captured live 2026-07-29 12:20 UTC -- get a fresh one:
-`curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en`)
+(Format example, deliberately frozen -- a pasted "live" sample starts lying
+six minutes after it is pasted. For the real thing, run the curl:
+curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en
+or curl echorune.net/guangzhou)
 
 
 ## live service (updated every 6 minutes)

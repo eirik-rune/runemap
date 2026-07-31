@@ -1,11 +1,11 @@
-# newyork weather scene  updated 2026-07-31 10:12 local time  (lon -74.006, lat 40.7128)
-now: CLEAR_DAY  25C  humidity 60%  wind 4km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the NE, 44 km away
+# newyork weather scene  updated 2026-08-05 02:24 UTC-4  (lon -74.006, lat 40.7128)
+now: CLEAR_NIGHT  22C  humidity 59%  wind 4km/h  precip 0.00mm/h
+To your north, 25 kilometers away, a light rain is occurring
 
 rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (10:00 local), ~10km/char, [NY]=newyork
+radar: predict 02:23  obs age: 9min ok
+~10km/char, [NY]=newyork
                                                 
                                                 
                                                 
@@ -16,20 +16,21 @@ radar now (10:00 local), ~10km/char, [NY]=newyork
                            NY                   
                                                 
                                                 
-                ░          ░                    
-                           ░                    
-                        ░░░                     
-                       ░                        
-                       ░░░░                     
-                        ░░░                     
-                       ░                        
-                    ░▒                          
-                    ░▒                          
                                                 
                                                 
                                                 
+   ░░                                           
                                                 
                                                 
+                                                
+            ░░       ░▓░░░░                     
+            ░░        ░░                        
+       ░░░░                         ░           
+      ░░░░░                                     
+                                                
+                                                
+                                                
+= echo motion: n/a (no echo to track)
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)

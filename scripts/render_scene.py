@@ -7,7 +7,45 @@ Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
 import json, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from runemap.render import ascii_radar
+from runemap.render import ascii_radar, ascii_radar_centered
+
+# One window for every asker, switched by env so the tree is safe to deploy.
+# RUNEMAP_SPAN_KM=0 (default, production today) keeps the upstream station's
+# box: the asker lands wherever they land and a cell is 5.0 km in Bangkok but
+# 12.4 km in Tokyo.  Setting it to a positive number crops a span x span square
+# centred on the asker instead, so "+" is always dead centre and one cell is the
+# same distance in every city.  The flag exists because that is a visible
+# product change and the shareholder has not seen it yet.
+_ascii_radar_box = ascii_radar
+
+
+import threading as _th
+_SPAN_TL = _th.local()
+
+
+def set_span(v):
+    """Per-request override of RUNEMAP_SPAN_KM.  dev knob: ?span=400
+
+    The env var is process-global, so it cannot answer "what does 8 km/char
+    look like" without a restart that changes the window for every asker at
+    once.  Rendering happens on the request's own thread and is never shared
+    between requests (only the fetched PNG is), so a thread-local is the
+    narrowest place this can live.  None => fall back to the env default.
+    """
+    _SPAN_TL.span = v
+
+
+def ascii_radar(png_path, bbox, lng, lat, **kw):
+    span = getattr(_SPAN_TL, "span", None)
+    if span is None:
+        try:
+            span = float(os.environ.get("RUNEMAP_SPAN_KM", "0") or 0)
+        except ValueError:
+            span = 0.0
+    if span > 0:
+        return ascii_radar_centered(png_path, bbox, lng, lat, span_km=span, **kw)
+    return _ascii_radar_box(png_path, bbox, lng, lat, **kw)
+
 import threading
 
 import os as _o, sys as _s
@@ -72,9 +110,40 @@ def _motion_compute(key, imgs):
         EM._get = _get          # picks up the cached getter
         mo = EM.echo_motion(frames) or {"kind": None}
     except Exception:
-        mo = {"kind": None}
-    _MO_CACHE[key] = (time.time(), mo)
-    _MO_BUSY.discard(key)
+        mo = {"kind": None, "why": "error"}
+    finally:
+        # 8/1 13:36: both lines used to sit OUTSIDE the try. Exception is caught,
+        # but a BaseException (interpreter shutdown) or a failure in the cache
+        # write itself left key in _MO_BUSY forever -- and both start sites gate
+        # on `key not in _MO_BUSY`, so that one coordinate would never compute
+        # motion again for the life of the process. Permanent, silent, and only
+        # for the unlucky sky. finally is the whole fix.
+        if mo.get("kind") is None:
+            mo = {"kind": "undetermined", "why": mo.get("why") or "corr"}
+        _MO_CACHE[key] = (time.time(), mo)
+        _MO_BUSY.discard(key)
+
+_MO_UNDET = {
+    # "no echo over the radar" is not "the instrument could not decide": telling a
+    # reader the frames failed to correlate when the sky is simply empty is the
+    # same class of lie as promising a retry that can never change anything.
+    "noecho": {"en": "= echo motion: n/a (no echo to track)",
+               "zh": "= 回波移动: 无(视野内无回波可追踪)",
+               "ja": "= エコー移動: なし(追跡できるエコーなし)"},
+    "frames": {"en": "= echo motion: n/a (too few usable frames)",
+               "zh": "= 回波移动: 无(可用观测帧不足)",
+               "ja": "= エコー移動: なし(有効フレーム不足)"},
+    "error":  {"en": "= echo motion: n/a (computation failed)",
+               "zh": "= 回波移动: 无(计算失败)",
+               "ja": "= エコー移動: なし(計算失敗)"},
+    "corr":   {"en": "= echo motion: undetermined (frames not correlated)",
+               "zh": "= 回波移动: 未能测定(帧间相关性不足)",
+               "ja": "= エコー移動: 判定不能(フレーム間の相関不足)"},
+}
+
+def _mo_undet(why, lang):
+    d = _MO_UNDET.get(why) or _MO_UNDET["corr"]
+    return d.get(lang) or d["zh"] if lang != "en" else d["en"]
 
 def _motion_start(imgs, lng, lat):
     """Kick the motion thread as soon as imgs is known (it only needs the frame
@@ -147,15 +216,16 @@ def _motion_peek(imgs, lng, lat):
 #   state 3 is proven by a successful list fetch that contains no images.
 #   It is NEVER inferred from a failure. Failures are state 2, always.
 #
-STATE_OK, STATE_FETCHING, STATE_NONE = "ok", "fetching", "none"
+STATE_OK, STATE_FETCHING = "ok", "fetching"
+
+# A frame older than this may draw the echo a full cell (~10km) away from
+# where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
+# Derived from the picture, not picked to make the logs look good.
+RADAR_STALE_MIN = 20
 
 _RA_LOCK = threading.Lock()
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
-_RA_NONE = {}                     # key -> ts, memo of confirmed no-coverage
-_RA_NONE_TTL = 3600.0             # coverage does not change minute to minute
-_RA_FAIL = {}                     # key -> [count, first_ts, last_ts]
-_RA_NONE_CONFIRM = 3              # how many failures before we dare say "never"
-_RA_NONE_SPAN = 120.0             # ...and spread over at least this long
+_RA_FAIL = {}                     # key -> ts of the last refusal (throttle only)
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
 _RA_BG_BUDGET = 45.0              # the background warm may outlive the response
                                   # but not the heat death of the universe
@@ -170,8 +240,95 @@ def _peek(url):
     return None
 
 
-def _radar_list_url(token, lng, lat):
-    return "https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)
+# Which upstream list every radar path reads. One constant, because the list
+# kind decides two things at once -- the url AND which frame is the observation
+# -- and letting those two disagree is exactly how a frame starts lying about
+# its own age.
+RADAR_LIST_KIND = "forecast_images"   # DEFAULT only -- see _kind_for below
+
+# ...except coverage is not global either. Measured 8/2 at the upstream
+# boundary: mumbai and sydney answer images=200 / forecast_images=404 --
+# observation coverage with no forecast coverage. Asking only the forecast
+# endpoint turned those two skies into PERMANENT "fetching": a city that used
+# to print a map went blank, and blank is the state nobody reports. So the
+# kind is a per-sky fact that upstream tells us with a 404, memoised so we
+# ask once rather than per request. It still decides url AND which frame is
+# the observation AND what the motion line claims its basis is -- so it is
+# read through ONE helper everywhere, never from two places.
+_RA_KIND = {}
+
+
+def _sky_key(lng, lat):
+    return (round(float(lat), 1), round(float(lng), 1))
+
+
+
+
+def _kind_for(lng, lat):
+    with _RA_LOCK:
+        return _RA_KIND.get(_sky_key(lng, lat), RADAR_LIST_KIND)
+
+# The motion vector is computed from whatever RADAR_LIST_KIND selects. Fed
+# forecast frames it is no longer "we watched it move" but "upstream expects
+# it to move" -- measured 2026-08-02, the two sources disagreed on direction
+# at 2 of 2 stations, so this is a change of meaning, not of wording. Derive
+# the word from the constant: the label can never drift from the data again.
+_MO_OBS = RADAR_LIST_KIND == "images"
+_MO_BASIS_EN = "1h obs" if _MO_OBS else "upstream forecast"
+_MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
+_MO_BASIS_JA = "直近1h実測" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
+
+
+def _radar_list_url(token, lng, lat, kind=None):
+    return ("https://api.caiyunapp.com/v1/radar/%s?token=%s&lon=%s&lat=%s"
+            % (kind or _kind_for(lng, lat), token, lng, lat))
+
+
+def _radar_list_bytes(token, lng, lat):
+    """Fetch the frame list, learning from a 404 which endpoint this sky has.
+
+    A 404 here is not a failure, it is upstream answering a different
+    question: "this sky has no forecast product". Falling back to the
+    observation list gives that reader a map instead of a permanent
+    "ask again in ~60s" -- which is the one promise we must not break.
+    Only 404 flips the kind; a timeout or a 5xx says nothing about coverage.
+    """
+    kind = _kind_for(lng, lat)
+    try:
+        return _get(_radar_list_url(token, lng, lat, kind))
+    except Exception as e:
+        if kind != "forecast_images" or "HTTP 404" not in str(e):
+            raise
+        with _RA_LOCK:
+            _RA_KIND[_sky_key(lng, lat)] = "images"
+        sys.stderr.write("RADAR-KIND-FALLBACK %r -> images\n" % (_sky_key(lng, lat),))
+        return _get(_radar_list_url(token, lng, lat, "images"))
+
+
+def _pick_frames(imgs, kind=None):
+    """-> (candidates nearest-to-now first, ts of the last real observation).
+
+    An observation list is all past: the frame to draw and the last look at the
+    sky are the same frame, the newest one. A forecast list runs from that same
+    observation out to +4h, so its newest frame shows a sky nobody has seen.
+    Draw the frame nearest to now; age it from the observation it was
+    extrapolated from -- measured 8/2: forecast_images[0] and images[-1] carry
+    the identical timestamp, to the second, at two stations.
+
+    Returning the base ts here, rather than letting the caller compute an age
+    from whatever frame it happened to draw, is the whole point: there is one
+    answer to "how long since we saw this sky", and one place that knows it.
+    """
+    fr = sorted((f for f in imgs if f and len(f) >= 2), key=lambda f: float(f[1]))
+    if not fr:
+        return [], None
+    if (kind or RADAR_LIST_KIND) == "forecast_images":
+        base_ts = float(fr[0][1])         # the observation the run started from
+    else:
+        base_ts = float(fr[-1][1])        # every frame is a look at the sky
+    now = time.time()
+    cands = sorted(fr, key=lambda f: abs(float(f[1]) - now))
+    return cands, base_ts
 
 
 def _radar_warm(key, lng, lat, token):
@@ -183,7 +340,7 @@ def _radar_warm(key, lng, lat, token):
     so the next caller pays the same stall from scratch."""
     try:
         with net_budget.request_budget(_RA_BG_BUDGET):
-            d = json.loads(_get(_radar_list_url(token, lng, lat)))
+            d = json.loads(_radar_list_bytes(token, lng, lat))
             imgs = d.get("images") or []
             if not imgs:
                 # Measured against the real upstream, not assumed: a covered
@@ -194,27 +351,36 @@ def _radar_warm(key, lng, lat, token):
                 # COVERED city can get "failed" transiently, which is why that
                 # body is never cached.
                 #
-                # One ambiguous signal, two meanings, and guessing wrong in the
-                # "none" direction is the exact lie this job exists to remove:
-                # telling someone "never come back" about a sky that has rain.
-                # So a single failure is only ever state 2. "Never" has to be
-                # earned: several failures, spread over time.
-                now = time.time()
+                # bob 8/3 14:35: "no radar means you did not get the radar.
+                # Nobody is going to believe there is no radar just because
+                # you say so." That sentence deletes the verdict. The whole
+                # confirmation machinery existed to earn the right to say
+                # "this sky has no coverage" -- a claim about the world,
+                # backed only by "I asked three times and got nothing",
+                # which is a claim about me. Deleted: the counter, the memo,
+                # the .seen history, and with them the observer effect my
+                # own probe produced on 8/3 12:4x (a missing capability
+                # outranks a guard: no probe can manufacture a verdict that
+                # does not exist).
+                #
+                # What SURVIVES is the throttle. It looked like part of the
+                # verdict, but its job is to stop re-asking a sky that just
+                # refused -- otherwise the skies that never answer are
+                # exactly the ones we spend upstream quota on.
                 with _RA_LOCK:
-                    rec = _RA_FAIL.get(key)
-                    if rec is None:
-                        _RA_FAIL[key] = [1, now, now]
-                    else:
-                        rec[0] += 1
-                        rec[2] = now
-                        if (rec[0] >= _RA_NONE_CONFIRM
-                                and now - rec[1] >= _RA_NONE_SPAN):
-                            _RA_NONE[key] = now
-                            _RA_FAIL.pop(key, None)
+                    _RA_FAIL[key] = time.time()
                 return
             with _RA_LOCK:
-                _RA_FAIL.pop(key, None)      # it answered; forget the doubt
-            for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
+                _RA_FAIL.pop(key, None)      # it answered; stop throttling
+            # imgs[-1] used to be "the newest frame", which is true of an
+            # observation list and FALSE of a forecast list: there the last
+            # element is the FARTHEST FUTURE (+227min, measured 8/2). The warm
+            # was fetching two frames nobody will ever draw, so every sky stayed
+            # in state 2 forever while the cache filled with useless pngs.
+            # Warm what the renderer will actually draw -- one helper decides
+            # which frame matters, here and there.
+            _cands, _base = _pick_frames(imgs, _kind_for(lng, lat))
+            for cand in (_cands[:2] or [None]):
                 if cand is None:
                     continue
                 try:
@@ -260,9 +426,8 @@ def _radar_render(code, lng, lat, imgs, small):
 
     Art depends on the marker and the size, which vary per request, so what is
     shared between requests is the fetched PNG, not the rendered map."""
-    for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
-        if cand is None:
-            continue
+    cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
+    for cand in cands[:2]:
         png = _peek(cand[0])
         if png is None:
             continue
@@ -275,7 +440,7 @@ def _radar_render(code, lng, lat, imgs, small):
                                      rows=(12 if small else 24), marker=code)
         finally:
             os.unlink(p)
-        return art, kmcol, ts, _motion_peek(imgs, lng, lat)
+        return art, kmcol, ts, _motion_peek(imgs, lng, lat), base_ts
     return None
 
 
@@ -296,11 +461,8 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
 
     now = time.time()
     with _RA_LOCK:
-        seen = _RA_NONE.get(key)
         fail = _RA_FAIL.get(key)
-    if seen is not None and now - seen < _RA_NONE_TTL:
-        return STATE_NONE, None
-    if fail is not None and now - fail[2] < _RA_FAIL_COOLDOWN:
+    if fail is not None and now - fail < _RA_FAIL_COOLDOWN:
         # A sky that just refused us: still state 2 (we are not sure it is
         # "never"), but do not hammer the upstream once per request while we
         # make up our mind.
@@ -315,11 +477,9 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         except Exception:
             return None
         if not imgs:
-            # Unknown, not proven. "Never" is decided in one place only -- the
-            # failure counter in _radar_warm -- because a single empty answer
-            # is the ambiguous signal this whole design turns on. Promoting to
-            # STATE_NONE here would let the cache path walk straight around the
-            # confirmation rule, which is exactly what the tests caught.
+            # Unknown, not proven: an empty list out of a cached body says
+            # nothing about the sky, and there is no verdict left to promote
+            # it to. Ask again.
             return None
         got = _radar_render(code, lng, lat, imgs, small)
         return (STATE_OK, got) if got else None
@@ -397,16 +557,23 @@ def build_fetching(lang, name):
     serves stale-but-good up to 6x TTL, so reaching here means this coordinate
     has genuinely never been fetched -- new, not broken. Say that, and keep
     fetching in the background so the next ask lands."""
+    if lang == "ja":
+        return ("# %s 天気一覧\n"
+                "weather: fetching -- まだ取得できていません、約60秒後に再度\n"
+                "radar: fetching -- この空を探しています、まだフレームがありません\n"
+                "\n"
+                "data: 彩雲天気 caiyunapp.com | runemap で描画 "
+                "(github.com/eirik-rune/runemap)\n") % name
     if lang == "en":
         return ("# %s weather scene\n"
                 "weather: fetching -- not ready yet, ask again in ~60s\n"
-                "radar: fetching -- not ready yet, ask again in ~60s\n"
+                "radar: fetching -- looking for this sky; no frame yet\n"
                 "\n"
                 "data: Caiyun Weather caiyunapp.com | rendered by runemap "
                 "(github.com/eirik-rune/runemap)\n") % name
     return ("# %s \u5929\u6c14\u5b9e\u51b5\n"
             "weather: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
-            "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
+            "radar: fetching -- \u6b63\u5728\u627e\u8fd9\u7247\u5929, \u8fd8\u6ca1\u6709\u5e27\n"
             "\n"
             "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 "
             "(github.com/eirik-rune/runemap)\n") % name
@@ -446,7 +613,7 @@ def _mark(code):
 def radar_art(code, lng, lat, token, small=False):
     code = _mark(code)
     try:
-        d = json.loads(_get("https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)))
+        d = json.loads(_radar_list_bytes(token, lng, lat))
     except Exception:
         return None
     imgs = d.get("images") or []
@@ -458,9 +625,8 @@ def radar_art(code, lng, lat, token, small=False):
     # own timestamp shown honestly) instead of degrading to no radar at all.
     png = None
     _err = None
-    for _cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
-        if _cand is None:
-            continue
+    _cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
+    for _cand in _cands[:2]:
         try:
             png = _get(_cand[0], timeout=20)
             url, ts, bbox = _cand[0], float(_cand[1]), _cand[2]
@@ -479,9 +645,31 @@ def radar_art(code, lng, lat, token, small=False):
         _t_mo = time.time() - _t
         if _t_mo > 1.5:
             sys.stderr.write("SLOW-RADAR motion=%.2f\n" % (_t_mo,))
-        return art, kmcol, ts, mo
+        return art, kmcol, ts, mo, base_ts
     finally:
         os.unlink(p)
+
+SKY_JA = {"CLEAR_DAY":"晴れ","CLEAR_NIGHT":"晴れ","PARTLY_CLOUDY_DAY":"晴れ時々曇り",
+"PARTLY_CLOUDY_NIGHT":"晴れ時々曇り","CLOUDY":"曇り","LIGHT_HAZE":"弱い煙霧",
+"MODERATE_HAZE":"煙霧","HEAVY_HAZE":"濃い煙霧","LIGHT_RAIN":"小雨","MODERATE_RAIN":"雨",
+"HEAVY_RAIN":"大雨","STORM_RAIN":"豪雨","FOG":"霧","LIGHT_SNOW":"小雪","MODERATE_SNOW":"雪",
+"HEAVY_SNOW":"大雪","STORM_SNOW":"暴風雪","DUST":"塵","SAND":"黄砂","WIND":"強風"}
+
+
+def _tz_label(tzh):
+    """UTC+7 / UTC+5:30 -- an offset the reader can act on.
+
+    The header used to end the timestamp with the words for a clock local to a
+    place you had to already know. chaosconst opened runemap#14 for exactly
+    this: the line names a city, but an agent parsing it still cannot put that
+    timestamp on a shared axis. Half-hour zones (IST, NPT) are why not int().
+    """
+    sign = "+" if tzh >= 0 else "-"
+    a = abs(float(tzh))
+    h = int(a)
+    m = int(round((a - h) * 60))
+    return "UTC%s%d" % (sign, h) if m == 0 else "UTC%s%d:%02d" % (sign, h, m)
+
 
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
           radar_state=None):
@@ -492,26 +680,40 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     stamp = time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + tzh * 3600))
     L = []
     if lang == "en":
-        L.append("# %s weather scene  updated %s local time  (lon %s, lat %s)" % (name, stamp, lng, lat))
+        L.append("# %s weather scene  updated %s %s  (lon %s, lat %s)" % (name, stamp, _tz_label(tzh), lng, lat))
         L.append("now: %s  %.0fC  humidity %.0f%%  wind %.0fkm/h  precip %.2fmm/h" % (
             rt["skycon"], rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
+    elif lang == "ja":
+        sky = SKY_JA.get(rt["skycon"], rt["skycon"])
+        L.append("# %s 天気一覧  更新 %s %s  (経度 %s, 緯度 %s)" % (name, stamp, _tz_label(tzh), lng, lat))
+        L.append("現在: %s  %.0fC  湿度 %.0f%%  風速 %.0fkm/h  降水 %.2fmm/h" % (
+            sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
+            rt["precipitation"]["local"]["intensity"]))
     else:
         sky = SKY_ZH.get(rt["skycon"], rt["skycon"])
-        L.append("# %s \u5929\u6c14\u4e00\u5c4f  \u66f4\u65b0\u4e8e\u5f53\u5730\u65f6\u95f4 %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (zh, stamp, lng, lat))
+        L.append("# %s \u5929\u6c14\u4e00\u5c4f  \u66f4\u65b0\u4e8e %s %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (zh, stamp, _tz_label(tzh), lng, lat))
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
     if kp:
         L.append(kp)
+    # Shadow the module-level basis labels with this sky's kind. A sky on the
+    # observation fallback really did have its motion measured, and saying
+    # "upstream forecast" about it would be the exact drift the comment above
+    # RADAR_LIST_KIND warns against: the label parting company with the data.
+    _MO_OBS = _kind_for(lng, lat) == "images"
+    _MO_BASIS_EN = "1h obs" if _MO_OBS else "upstream forecast"
+    _MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
+    _MO_BASIS_JA = "\u76f4\u8fd11h\u5b9f\u6e2c" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
     mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
-        mo_sfx = (("  |  echo motion(1h obs): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
+        mo_sfx = (("  |  echo motion(%s): %s %s ~%.0f km/h" % (_MO_BASIS_EN, mo["arrow"], mo["dir_en"], mo["kmh"]))
                   if lang == "en" else
-                  ("  |  \u56de\u6ce2\u79fb\u52a8(\u8fd11h\u5b9e\u6d4b): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"])))
+                  ("  |  \u56de\u6ce2\u79fb\u52a8(%s): %s %s ~%.0f km/h" % (_MO_BASIS_ZH, mo["arrow"], mo["dir_cn"], mo["kmh"])))
     elif mo.get("kind") == "stationary":
-        mo_sfx = ("  |  echo quasi-stationary(<5km/h, 1h obs)" if lang == "en"
-                  else "  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, \u8fd11h\u5b9e\u6d4b)")
+        mo_sfx = (("  |  echo quasi-stationary(<5km/h, %s)" % _MO_BASIS_EN) if lang == "en"
+                  else ("  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, %s)" % _MO_BASIS_ZH))
     else:
         mo_sfx = ""
     # The arrow goes on its own line under the map, flush left, where the eye lands
@@ -526,15 +728,26 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     # column in a Latin terminal and two in a CJK one, so a 48-column row holding
     # one would shear for exactly the readers I cannot reproduce locally.
     if mo.get("kind") == "moving":
-        mo_line = ("%s %s ~%.0f km/h   echo motion, 1h obs"
-                   % (mo["arrow"], mo["dir_en"], mo["kmh"]) if lang == "en" else
-                   "%s %s ~%.0f km/h   回波移动, 近1h实测"
-                   % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
+        mo_line = ("%s %s ~%.0f km/h   echo motion, %s"
+                   % (mo["arrow"], mo["dir_en"], mo["kmh"], _MO_BASIS_EN) if lang == "en" else
+                   "%s %s ~%.0f km/h   回波移动, %s"
+                   % (mo["arrow"], mo["dir_cn"], mo["kmh"], _MO_BASIS_ZH))
     elif mo.get("kind") == "stationary":
-        mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
-                   else "= 回波准静止 (<5km/h, 近1h实测)")
+        mo_line = (("= echo quasi-stationary (<5km/h, %s)" % _MO_BASIS_EN) if lang == "en"
+                   else ("= 回波准静止 (<5km/h, %s)" % _MO_BASIS_ZH))
     else:
-        mo_line = ""
+        mo_line = _mo_undet(mo.get("why"), lang) if mo.get("kind") == "undetermined" else (
+                   "~ echo motion: fetching (retry in ~60s)" if lang == "en"
+                   else "~ 回波移动: 获取中(约60s后重试)")
+    if lang == "ja":
+        if mo.get("kind") == "moving":
+            mo_line = "%s %s ~%.0f km/h   エコー移動, %s" % (mo["arrow"], mo["dir_en"], mo["kmh"], _MO_BASIS_JA)
+        elif mo.get("kind") == "stationary":
+            mo_line = "= エコーほぼ停滞 (<5km/h, %s)" % _MO_BASIS_JA
+        elif mo.get("kind") == "undetermined":
+            mo_line = _mo_undet(mo.get("why"), "ja")
+        else:
+            mo_line = "~ エコー移動: 取得中(約60s後に再試行)"
     # The reading lives on one line only: the one under the map, where the eye
     # already is. On the legend line it competed with the marker key for the same
     # glance and pushed that row to 100+ columns, which wraps in a narrow terminal.
@@ -542,51 +755,84 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
-        L.append("rain curve (next 2h, 6min/bucket):" if lang == "en" else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h, 6min/\u683c):")
+        L.append("rain curve (next 2h, 6min/bucket):" if lang == "en" else "雨量曲線(今後2h, 6min/枠):" if lang == "ja" else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h, 6min/\u683c):")
         L.append(spark(buckets))
         L.append(AXIS)
     else:
         L.append("rain curve (next 2h): no precipitation expected" if lang == "en"
+                 else "雨量曲線(今後2h): 降水なし" if lang == "ja"
                  else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h): \u65e0\u964d\u6c34")
     L.append("")
     if rb:
         art, kmcol, ts = rb[0], rb[1], rb[2]
+        # Two different quantities, deliberately not the same variable: ts is
+        # the frame drawn on screen, base_ts is the last time anyone actually
+        # looked at this sky. They coincide for an observation frame and differ
+        # for an extrapolated one -- which is the entire reason (4) exists.
+        base_ts = rb[4] if len(rb) > 4 and rb[4] else ts
         t = time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
         # One greppable line per state, same token in every language: most
         # readers here are agents, and a state you must translate before you
         # can grep it is not a state. Prose after the token stays localised.
-        L.append("radar: ok")
-        if lang == "en":
-            L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
+        obs_age = int(max(0.0, time.time() - base_ts) // 60)
+        # One age for both modes: how long since we last actually saw the
+        # sky. A second age variable is where this line starts lying again.
+        # TWO tokens, because these are two orthogonal axes and one slot cannot
+        # carry both (bob, 8/2 10:57). Axis 1 answers "what is drawn": an
+        # observed frame, or an extrapolated one. Axis 2 answers "how long
+        # since anyone saw this sky". They are independent: the worst cell --
+        # an extrapolation on top of a 47-minute-old observation -- printed as
+        # plain "radar: predict" under the collapsed scheme, which looked
+        # HEALTHIER than "stale". A warning had been demoted to a description.
+        # Precedence is gone with the collapse: nothing outranks anything now,
+        # both words are always printed.
+        _extrapolated = ts > base_ts + 1.0
+        _age_tok = "ok" if obs_age < RADAR_STALE_MIN else "stale"
+        _axis1 = ("predict %s" % time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
+                  if _extrapolated else "obs")
+        # Contract for parsers (bob, 8/2 11:05): key on the TOKEN, never on the
+        # field count. "fetching" and "none" carry no age at all -- there is no
+        # frame, so there is no observation to be old. We deliberately do not
+        # print a placeholder: a dash is a value-shaped nothing, which a machine
+        # will try to parse and a human will ask about. Same rule that made us
+        # delete the word "now" this morning -- one fewer true statement beats
+        # one more ambiguous symbol. A fourth state added later must not break
+        # a reader that expects "age:" to be optional.
+        L.append("radar: %-14s obs age: %dmin %s" % (_axis1, obs_age, _age_tok))
+        if lang == "ja":
+            L.append("1文字≈%.0fkm, [%s]=%s" % (kmcol, code, name) + mo_sfx)
+            L.append(art)
+            if mo_line:
+                L.append(mo_line)
+            L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
+        elif lang == "en":
+            L.append("~%.0fkm/char, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
-            L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh) + mo_sfx)
+            L.append("每字符≈%.0fkm, [%s]=%s" % (kmcol, code, zh) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
-        # bob 7/30 19:26: a transient tile stall must degrade, not 502. What was
-        # still missing is that a stall and genuine no-coverage produced the same
-        # answer: radar_art() returned None for both, and serve.py only set
-        # radar_err when it *raised*, so an upstream hiccup printed "no coverage
-        # here" -- "never come back" said to a caller whose truth was "not yet".
-        # State 3 is proven by an empty image list now, never inferred from a
-        # failure; every failure is state 2.
-        st = radar_state or (STATE_FETCHING if radar_err else STATE_NONE)
-        if st == STATE_NONE:
-            L.append("radar: none -- no coverage at this location (text brief: live/%s.txt)" % name
-                     if lang == "en" else
-                     "radar: none -- \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
-        else:
-            L.append("radar: fetching -- not ready yet, ask again in ~60s; weather above is live"
-                     if lang == "en" else
-                     "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
+        # bob 7/30 19:26: a transient tile stall must degrade, not 502. And bob
+        # 8/3 14:35: "no radar means you did not get the radar. Nobody is going
+        # to believe there is no radar just because you say so." So there is one
+        # not-drawn state left and its sentence is about US: we have no frames.
+        # It cannot be wrong about the world, which is why radar_err no longer
+        # changes it and why nothing has to be earned before we may say it.
+        st = radar_state or STATE_FETCHING
+        L.append("radar: fetching -- no radar frames for this sky yet; weather above is live"
+                 if lang == "en" else
+                 "radar: fetching -- この空のレーダーはまだ取得できていません; 上の天気は実況です"
+                 if lang == "ja" else
+                 "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
+             else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
     return "\n".join(L) + "\n"
 

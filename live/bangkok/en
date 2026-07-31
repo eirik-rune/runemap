@@ -1,36 +1,36 @@
-# bangkok weather scene  updated 2026-07-31 21:12 local time  (lon 100.5018, lat 13.7563)
-now: CLOUDY  27C  humidity 77%  wind 5km/h  precip 0.00mm/h
-To your north, 8 kilometers away, a light rain is occurring
+# bangkok weather scene  updated 2026-08-05 13:24 UTC+7  (lon 100.5018, lat 13.7563)
+now: CLOUDY  33C  humidity 44%  wind 10km/h  precip 0.00mm/h
+The nearest area experiencing rain is to the north, 93 km away
 
 rain curve (next 2h): no precipitation expected
 
-radar: ok
-radar now (21:05 local), ~5km/char, [BK]=bangkok
-                   ░░░░░░░     ░░ ░░░░░         
-                ░░░░░░░░░░░░░░░░░░░░░░░░▒░░     
-          ░░░░░░░░░░░░░░░░    ░░░░░░░░░░░░▒▒▒░  
-       ░░░░░░░░░░░░░░░░░░░       ░░░░░░░░░▒▒▒▒▒▒
-     ░░░░░░░░░░░░ ░              ░░░░░░░░░░░░░░░
-    ░░░░░░░░░                  ░░░░░░░░░░░░░░░░░
-   ░░░░░░░░                 ░░░░░░░░░░░░░░░░░░░░
-  ░░                       ░░░░░  ░░░░░░░░░░░░░░
- ░░░░                           ░░░░░░░░░░░░░   
-  ░░                           ░░               
-                             ░░░░             ░▒
-                           BK░░░              ░░
-                  ░ ░░░░░                   ░▒▒▒
-     ░  ░      ░░░░                     ░▒▓░░▒░ 
- ░░░░░░░░░░░░░░░░░░░                    ░░▓▓    
- ░░░░░░░░░░░░░░░░░░                      ░░     
- ░░░░░░░     ░░                                 
+radar: predict 13:24  obs age: 5min ok
+~5km/char, [BK]=bangkok
                                                 
                                                 
                                                 
-               ░░░                              
-           ░░░░░░                               
-            ░                                   
-                  ░                             
-= echo quasi-stationary (<5km/h, 1h obs)
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                           BK                   
+                                                
+                                                
+      ▒▒▒                                       
+  ░▓▓▓░░                                        
+  ▒▓▓█▓░░                                       
+  ░░░▒░▓▒                                       
+    ░░▓▓▓▒░                                     
+     ░░░  ░                                     
+        ░░                                      
+                                                
+                                                
+                                                
+↗ NE ~6 km/h   echo motion, upstream forecast
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
 
 data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
