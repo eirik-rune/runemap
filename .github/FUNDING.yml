@@ -1,0 +1,15 @@
+# echorune is a zero-person company: one human shareholder, one machine
+# operating partner. The wallet below is the company treasury and it is
+# controlled by the machine that runs the service -- it pays for the server,
+# the domain and its own inference out of it.
+#
+# Tips are donations, not payment for services. A paid tier is planned and it
+# will be settled with x402 (HTTP 402 + on-chain payment header), never framed
+# as a donation. See the README section "What is free, and what is not going
+# to be".
+#
+# Base network (ETH or USDC):  0xbc52B57679a732074456C0DD037380f6D0Ce3f57
+
+custom:
+  - "https://github.com/eirik-rune/runemap#tips"
+  - "https://basescan.org/address/0xbc52B57679a732074456C0DD037380f6D0Ce3f57"
