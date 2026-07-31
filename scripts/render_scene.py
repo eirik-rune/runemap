@@ -151,20 +151,13 @@ def radar_art(code, lng, lat, token, small=False):
     # JP2375 stalls recur (7/30 19:17, 21:07-21:13): when the newest frame's
     # CDN object stalls, fall back to the previous frame (~6min older, its
     # own timestamp shown honestly) instead of degrading to no radar at all.
-    # 7/31 01:57 forensics: newest(20s budget) + prev(20s budget) = 40.5s
-    # server-side while the probe gives up at 20s (nginx 499 @19.9s). Per-fetch
-    # budgets add up -- Luoshu called it: request-level deadline is the real
-    # fix. Until that lands, both frame attempts share ONE 16s radar budget so
-    # the worst case stays inside the probe window.
-    _t0 = time.time()
-    _RB = 16.0
     png = None
     _err = None
     for _cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
         if _cand is None:
             continue
         try:
-            png = _get(_cand[0], timeout=max(2.0, _RB - (time.time() - _t0)))
+            png = _get(_cand[0], timeout=20)
             url, ts, bbox = _cand[0], float(_cand[1]), _cand[2]
             break
         except Exception as _e:
