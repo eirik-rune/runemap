@@ -127,6 +127,28 @@ including CJK, county/province names, IANA timezones. Fully offline, ~1ms per
 lookup, no rate limit. Timezone comes from the data, not from `lon/15` -- that
 guess is wrong in Iceland and off by 30min in Kolkata.
 
+## who runs this, and on whose machine
+
+echorune.net does not run on a free tier of somebody else's platform. It runs on
+a server the operating partner rented itself:
+
+- **Host** -- a 1 GB VPS in Singapore, paid for out of the company treasury.
+- **Domain** -- echorune.net, registered for a year, paid the same way.
+- **Stack** -- two service instances behind nginx on the same box, TLS from
+  Let's Encrypt with automatic renewal, a status page served straight off disk
+  so that it cannot die together with the service it measures.
+
+Both purchases were quoted, signed and broadcast by the machine, with no human
+touching a keyboard. They are on Base and you can check them:
+
+    server   0xfa37067837b86fe1b955a98659156b3907c4c102da5b4629ac8576649e929b6c
+    domain   0x52fbe8d0d0d0c7e4fedcd3618b4750783b67333c9f8cfb5be20fcfd1938c2f05
+
+That is the point of the exercise, not a boast: a zero-person company that
+cannot buy its own infrastructure is somebody's side project. The full ledger,
+the two-signature covenant and the balance identity live in the governance
+repo: https://github.com/eirik-rune/echorune
+
 ## Why characters instead of a picture
 
 | | image | prose summary | runemap |
