@@ -83,7 +83,35 @@ def _cached_get(url, timeout=15):
         return open(key, "rb").read()
     return b
 
+def _cached_peek(url):
+    """Cache-only read: bytes if the disk pool can answer, else None.
+
+    Never touches the network. This is what lets the user path be structurally
+    incapable of waiting on an upstream -- not "we set a short timeout", but
+    "there is no socket on this code path at all". A miss is not an error, it
+    is state 2 (fetching), and a background thread turns it into a hit.
+
+    Staleness: accepted up to _STALE_MAX x TTL, the same window _cached_get
+    already serves from when upstream is sick. Slightly old rain beats no rain,
+    and the frame carries its own timestamp so nobody is misled about its age.
+    """
+    kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
+    key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
+    try:
+        age = time.time() - os.path.getmtime(key)
+    except OSError:
+        return None
+    if age >= _TTL[kind] * _STALE_MAX:
+        return None
+    try:
+        b = open(key, "rb").read()
+    except OSError:
+        return None
+    return b if _usable(kind, b) else None
+
+
 R._get = _cached_get
+R._peek = _cached_peek     # cache-only reader, see render_scene._peek
 
 
 def main():
@@ -105,11 +133,23 @@ def main():
     code = (a.code + "><")[:2]
 
     import net_budget
-    budget = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "18"))
+    budget = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "3"))
+    # One resolution path, not two. This used to call radar_art directly, so the
+    # CLI and the service could disagree about what state a sky was in -- and the
+    # CLI is the tool anyone reaches for to check what the service is doing.
+    # An instrument that does not share the code path it measures will eventually
+    # tell you the system is fine while it is not.
     with net_budget.request_budget(budget):     # same ceiling as the service
         wx = R.weather(a.lon, a.lat, token, "en_US" if a.lang == "en" else "zh_CN")
-        rb = R.radar_art(code, a.lon, a.lat, token)
-    sys.stdout.write(R.build(a.lang, label, code, label, a.lon, a.lat, tzh, wx, rb))
+        state, rb = R.radar_resolve(code, a.lon, a.lat, token)
+    sys.stdout.write(R.build(a.lang, label, code, label, a.lon, a.lat, tzh, wx, rb,
+                             radar_state=state))
+    if state != R.STATE_OK:
+        # The background warm outlives this process only if we let it finish.
+        # A CLI that exits the instant it prints "fetching" never warms anything,
+        # so the second run would be just as cold -- and the promise "ask again"
+        # would be false here in exactly the way it is false in the service.
+        R.drain_warms(timeout=float(os.environ.get("RUNEMAP_CLI_WARM_WAIT", "60")))
 
 
 if __name__ == "__main__":

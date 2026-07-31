@@ -11,7 +11,7 @@ import scene_at as SA          # installs the radar cache layer on render_scene.
 import render_scene as R
 import net_budget
 
-SCENE_BUDGET = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "18"))
+SCENE_BUDGET = float(os.environ.get("RUNEMAP_SCENE_BUDGET", "3"))   # the 3s wall
 import geo as G
 try:
     import geoip as GI          # ip -> lat/lon (DB-IP Lite, local sqlite, no third party)
@@ -252,23 +252,41 @@ class H(BaseHTTPRequestHandler):
                 _wxt = _th.Thread(target=_wx_job, daemon=True)
                 _wxt.start()
                 radar_err = None
+                radar_state = None
                 try:
-                    rb = R.radar_art(code, lon, lat, TOKEN, small=small)
+                    # No upstream call happens on this thread any more: resolve
+                    # reads the disk pool and hands misses to a background warm.
+                    # That is what makes the 3s ceiling structural rather than a
+                    # timeout we hope is short enough.
+                    radar_state, rb = R.radar_resolve(code, lon, lat, TOKEN,
+                                                      small=small)
                 except Exception as _re:
-                    # bob 7/30: no radar tile -> retry (hedge inside _get) or give
-                    # up and ship weather with a notice, never 502 the request.
+                    # Should not happen (resolve does no IO), but a bug here must
+                    # not become "no coverage": unknown is state 2, never state 3.
                     rb = None
+                    radar_state = R.STATE_FETCHING
                     radar_err = type(_re).__name__
-                    sys.stderr.write("RADAR-DEGRADED %r\n" % (_re,))
+                    sys.stderr.write("RADAR-RESOLVE-FAILED %r\n" % (_re,))
                 _t_rb = time.time() - _t; _t = time.time()
-                _wxt.join(25)
-            if "e" in _wxb:
-                raise _wxb["e"]
+                # Join the remaining deadline, not a flat 25s. The worker
+                # adopts the budget so its fetch is cut at the wall, but a hang
+                # outside net_budget's reach (CPU, getaddrinfo) would otherwise
+                # walk straight through the ceiling on the join itself.
+                _wxt.join(max(0.05, _dl.left() - 0.1))
             wx = _wxb.get("v")
             if wx is None:
-                raise RuntimeError("weather fetch did not return")
+                # eirik 7/31: weather gets stale-but-good (already, via the disk
+                # pool's 6x TTL window) and, when even that is empty, state 2 --
+                # never a 502. A 502 inside 3s satisfies the clock and fails the
+                # person. No fourth state: same words as radar's "not yet".
+                sys.stderr.write("WEATHER-FETCHING %r\n" % (_wxb.get("e"),))
+                R.weather_start(lon, lat, TOKEN,
+                                "en_US" if lang == "en" else "zh_CN")
+                out = R.build_fetching(lang, label)
+                return self._send(200, out)
             _t_wx = time.time() - _t; _t = time.time()
-            out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb, radar_err=radar_err)
+            out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb,
+                          radar_err=radar_err, radar_state=radar_state)
             _t_bd = time.time() - _t
             # Per-stage timing, always logged. Cold renders of fresh cities ranged
             # from 0.5s to 13.3s on this box and calling the render functions

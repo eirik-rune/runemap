@@ -123,6 +123,287 @@ def _motion_now(imgs, lng, lat):
     hit = _MO_CACHE.get(key)
     return (hit[1] if hit else {"kind": None})
 
+# ---------------------------------------------------------------- radar states
+#
+# Three states, and the whole point is that 2 and 3 are different answers:
+#   ok       - frames are in hand, map rendered
+#   fetching - not here yet; come back in ~60s. A background thread is on it.
+#   none     - this location has no radar coverage. Coming back will not help.
+#
+# Before this, both of the latter collapsed -- and in the worst direction.
+# radar_art() returned None both when the frame list came back empty (real
+# no-coverage) and when fetching that list raised (a stall). serve.py only set
+# radar_err when radar_art *raised*, so a transient upstream hiccup rendered as
+# "no coverage here": we told the user "never" when the truth was "not yet".
+# Hence the rule below, which is the only load-bearing line in this section:
+#
+#   state 3 is proven by a successful list fetch that contains no images.
+#   It is NEVER inferred from a failure. Failures are state 2, always.
+#
+STATE_OK, STATE_FETCHING, STATE_NONE = "ok", "fetching", "none"
+
+_RA_LOCK = threading.Lock()
+_RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
+_RA_NONE = {}                     # key -> ts, memo of confirmed no-coverage
+_RA_NONE_TTL = 3600.0             # coverage does not change minute to minute
+_RA_FAIL = {}                     # key -> [count, first_ts, last_ts]
+_RA_NONE_CONFIRM = 3              # how many failures before we dare say "never"
+_RA_NONE_SPAN = 120.0             # ...and spread over at least this long
+_RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
+_RA_BG_BUDGET = 45.0              # the background warm may outlive the response
+                                  # but not the heat death of the universe
+_RA_WAIT = float(os.environ.get("RUNEMAP_RADAR_WAIT", "1.2"))
+
+
+def _peek(url):
+    """Cache-only read. Overwritten by scene_at with the disk-pool reader, the
+    same way _get is. The bare CLI keeps this stub, so every lookup misses and
+    everything reports state 2 -- correct, just less useful."""
+    return None
+
+
+def _radar_list_url(token, lng, lat):
+    return "https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)
+
+
+def _radar_warm(key, lng, lat, token):
+    """Fetch list + newest frame into the disk pool, off the response path.
+
+    Runs with its own budget, not the request's: it is meant to outlive the
+    response. That is the difference between "ask again in ~60s" being a
+    promise and being a lie -- today nothing keeps fetching after we say it,
+    so the next caller pays the same stall from scratch."""
+    try:
+        with net_budget.request_budget(_RA_BG_BUDGET):
+            d = json.loads(_get(_radar_list_url(token, lng, lat)))
+            imgs = d.get("images") or []
+            if not imgs:
+                # Measured against the real upstream, not assumed: a covered
+                # city answers {"status":"ok"} with 20 frames; open ocean, the
+                # Sahara and the pole all answer {"status":"failed"}, 24 bytes,
+                # no images. So "failed" IS the no-coverage signal -- except
+                # scene_at._usable already records, from an incident, that a
+                # COVERED city can get "failed" transiently, which is why that
+                # body is never cached.
+                #
+                # One ambiguous signal, two meanings, and guessing wrong in the
+                # "none" direction is the exact lie this job exists to remove:
+                # telling someone "never come back" about a sky that has rain.
+                # So a single failure is only ever state 2. "Never" has to be
+                # earned: several failures, spread over time.
+                now = time.time()
+                with _RA_LOCK:
+                    rec = _RA_FAIL.get(key)
+                    if rec is None:
+                        _RA_FAIL[key] = [1, now, now]
+                    else:
+                        rec[0] += 1
+                        rec[2] = now
+                        if (rec[0] >= _RA_NONE_CONFIRM
+                                and now - rec[1] >= _RA_NONE_SPAN):
+                            _RA_NONE[key] = now
+                            _RA_FAIL.pop(key, None)
+                return
+            with _RA_LOCK:
+                _RA_FAIL.pop(key, None)      # it answered; forget the doubt
+            for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
+                if cand is None:
+                    continue
+                try:
+                    _get(cand[0], timeout=20)
+                    break
+                except Exception as e:
+                    sys.stderr.write("RADAR-WARM-FRAME %r\n" % (e,))
+            _motion_start(imgs, lng, lat)
+    except Exception as e:
+        # Leave the cache cold: the next request is state 2 again and will
+        # start another warm. Never memo no-coverage from a failure.
+        sys.stderr.write("RADAR-WARM-FAILED %r\n" % (e,))
+    finally:
+        # try/finally, not "at the end of the happy path": a key left marked
+        # in-flight is a sky that silently never leaves state 2 again, and
+        # nothing in the output would ever say so.
+        with _RA_LOCK:
+            ev = _RA_INFLIGHT.pop(key, None)
+        if ev is not None:
+            ev.set()
+
+
+def _radar_start(key, lng, lat, token):
+    """Single-flight. Returns the Event for whoever is already fetching.
+
+    The claim happens under the lock; only the thread start is outside it.
+    The old motion code did `if key not in busy: busy.add(key)` unlocked, so
+    N concurrent requests for one cold sky each spawned a fetch -- which is
+    exactly the 60-requests-must-not-mean-60-fetches case."""
+    with _RA_LOCK:
+        ev = _RA_INFLIGHT.get(key)
+        if ev is not None:
+            return ev
+        ev = threading.Event()
+        _RA_INFLIGHT[key] = ev
+    threading.Thread(target=_radar_warm, args=(key, lng, lat, token),
+                     daemon=True).start()
+    return ev
+
+
+def _radar_render(code, lng, lat, imgs, small):
+    """Render from cached bytes only. Returns None if the frames are not local.
+
+    Art depends on the marker and the size, which vary per request, so what is
+    shared between requests is the fetched PNG, not the rendered map."""
+    for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
+        if cand is None:
+            continue
+        png = _peek(cand[0])
+        if png is None:
+            continue
+        url, ts, bbox = cand[0], float(cand[1]), cand[2]
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(png); p = f.name
+        try:
+            art, kmcol = ascii_radar(p, bbox, lng, lat,
+                                     cols=(24 if small else 48),
+                                     rows=(12 if small else 24), marker=code)
+        finally:
+            os.unlink(p)
+        return art, kmcol, ts, _motion_now(imgs, lng, lat)
+    return None
+
+
+def radar_resolve(code, lng, lat, token, small=False, wait=None):
+    """(state, payload) -- and no upstream call on this thread, ever.
+
+    Everything read here comes from the disk pool. Anything missing is handed
+    to a background thread and reported as state 2. That is what makes the 3s
+    ceiling structural: there is no socket on the caller's path to be slow."""
+    code = _mark(code)
+    key = (round(float(lat), 1), round(float(lng), 1))
+    wait = _RA_WAIT if wait is None else wait
+
+    now = time.time()
+    with _RA_LOCK:
+        seen = _RA_NONE.get(key)
+        fail = _RA_FAIL.get(key)
+    if seen is not None and now - seen < _RA_NONE_TTL:
+        return STATE_NONE, None
+    if fail is not None and now - fail[2] < _RA_FAIL_COOLDOWN:
+        # A sky that just refused us: still state 2 (we are not sure it is
+        # "never"), but do not hammer the upstream once per request while we
+        # make up our mind.
+        return STATE_FETCHING, None
+
+    def _from_cache():
+        raw = _peek(_radar_list_url(token, lng, lat))
+        if raw is None:
+            return None                      # unknown: not proof of anything
+        try:
+            imgs = (json.loads(raw).get("images") or [])
+        except Exception:
+            return None
+        if not imgs:
+            # Unknown, not proven. "Never" is decided in one place only -- the
+            # failure counter in _radar_warm -- because a single empty answer
+            # is the ambiguous signal this whole design turns on. Promoting to
+            # STATE_NONE here would let the cache path walk straight around the
+            # confirmation rule, which is exactly what the tests caught.
+            return None
+        got = _radar_render(code, lng, lat, imgs, small)
+        return (STATE_OK, got) if got else None
+
+    hit = _from_cache()
+    if hit is not None:
+        return hit
+
+    ev = _radar_start(key, lng, lat, token)
+    # Bounded wait, and bounded by the request deadline too if one is set --
+    # a warm city whose frames just expired should not lose its map over a
+    # few hundred milliseconds, but nobody waits past the wall.
+    _dl = net_budget.current_deadline()
+    if _dl is not None:
+        # keep a margin for rendering and the weather join; the wall is the
+        # wall, and being 200ms late with a map is the failure we are here for
+        wait = max(0.0, min(wait, _dl.left() - 0.25))
+    if wait > 0:
+        ev.wait(wait)
+    hit = _from_cache()
+    return hit if hit is not None else (STATE_FETCHING, None)
+
+
+_WX_LOCK = threading.Lock()
+_WX_INFLIGHT = {}
+
+
+def _weather_warm(key, lng, lat, token, lang):
+    try:
+        with net_budget.request_budget(_RA_BG_BUDGET):
+            weather(lng, lat, token, lang)
+    except Exception as e:
+        sys.stderr.write("WEATHER-WARM-FAILED %r\n" % (e,))
+    finally:
+        with _WX_LOCK:
+            ev = _WX_INFLIGHT.pop(key, None)
+        if ev is not None:
+            ev.set()
+
+
+def weather_start(lng, lat, token, lang):
+    """Single-flight background warm for weather, same discipline as radar.
+
+    Without it, "ask again in ~60s" on a weather miss is the same empty promise
+    the radar path used to make: nothing keeps fetching after the response, so
+    the next caller pays the identical stall from scratch."""
+    key = (round(float(lat), 1), round(float(lng), 1), lang)
+    with _WX_LOCK:
+        ev = _WX_INFLIGHT.get(key)
+        if ev is not None:
+            return ev
+        ev = threading.Event()
+        _WX_INFLIGHT[key] = ev
+    threading.Thread(target=_weather_warm,
+                     args=(key, lng, lat, token, lang), daemon=True).start()
+    return ev
+
+
+def build_fetching(lang, name):
+    """A 200 that says "not yet", for when even the weather is not in hand.
+
+    The alternative is a 502 inside 3s, which satisfies the clock and fails the
+    person: they asked for the sky and got a stack trace. The disk pool already
+    serves stale-but-good up to 6x TTL, so reaching here means this coordinate
+    has genuinely never been fetched -- new, not broken. Say that, and keep
+    fetching in the background so the next ask lands."""
+    if lang == "en":
+        return ("# %s weather scene\n"
+                "weather: fetching -- not ready yet, ask again in ~60s\n"
+                "radar: fetching -- not ready yet, ask again in ~60s\n"
+                "\n"
+                "data: Caiyun Weather caiyunapp.com | rendered by runemap "
+                "(github.com/eirik-rune/runemap)\n") % name
+    return ("# %s \u5929\u6c14\u5b9e\u51b5\n"
+            "weather: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
+            "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
+            "\n"
+            "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 "
+            "(github.com/eirik-rune/runemap)\n") % name
+
+
+def drain_warms(timeout=60.0):
+    """Block until outstanding background warms finish. For short-lived
+    processes only.
+
+    The warm threads are daemons, so they die with the interpreter. A CLI that
+    exits the moment it prints "fetching" therefore warms nothing, and its own
+    promise -- ask again in ~60s -- is false in exactly the way the service's
+    used to be. The service never calls this: there the process outlives the
+    request, which is the entire point of the design."""
+    with _RA_LOCK:
+        evs = list(_RA_INFLIGHT.values())
+    end = time.time() + timeout
+    for ev in evs:
+        ev.wait(max(0.0, end - time.time()))
+
+
 def _mark(code):
     """The in-grid marker must be strictly single-width, so it is ASCII only.
     Emoji (house, pushpin) are East_Asian_Width=Wide: one character, two columns,
@@ -178,7 +459,8 @@ def radar_art(code, lng, lat, token, small=False):
     finally:
         os.unlink(p)
 
-def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None):
+def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
+          radar_state=None):
     code = _mark(code)   # legend and grid must show the same glyph
     rt = wx["realtime"]
     kp = (wx.get("forecast_keypoint") or wx.get("minutely", {}).get("description", "")).strip()
@@ -246,6 +528,10 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None):
     if rb:
         art, kmcol, ts = rb[0], rb[1], rb[2]
         t = time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
+        # One greppable line per state, same token in every language: most
+        # readers here are agents, and a state you must translate before you
+        # can grep it is not a state. Prose after the token stays localised.
+        L.append("radar: ok")
         if lang == "en":
             L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
             L.append(art)
@@ -259,15 +545,22 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None):
                 L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
-        if radar_err:
-            # bob 7/30 19:26: a transient tile stall must degrade, not 502.
-            # Distinct from genuine no-coverage; probes treat this as FAIL.
-            L.append("radar: temporarily unavailable (upstream stall: %s) -- weather above is live, retry in a minute" % radar_err
+        # bob 7/30 19:26: a transient tile stall must degrade, not 502. What was
+        # still missing is that a stall and genuine no-coverage produced the same
+        # answer: radar_art() returned None for both, and serve.py only set
+        # radar_err when it *raised*, so an upstream hiccup printed "no coverage
+        # here" -- "never come back" said to a caller whose truth was "not yet".
+        # State 3 is proven by an empty image list now, never inferred from a
+        # failure; every failure is state 2.
+        st = radar_state or (STATE_FETCHING if radar_err else STATE_NONE)
+        if st == STATE_NONE:
+            L.append("radar: none -- no coverage at this location (text brief: live/%s.txt)" % name
                      if lang == "en" else
-                     "雷达: 上游暂时不可用(%s), 以上天气为实时, 请稍后重试" % radar_err)
+                     "radar: none -- \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
         else:
-            L.append("radar: no coverage here (text brief: live/%s.txt)" % name if lang == "en"
-                     else "\u96f7\u8fbe: \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
+            L.append("radar: fetching -- not ready yet, ask again in ~60s; weather above is live"
+                     if lang == "en" else
+                     "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
