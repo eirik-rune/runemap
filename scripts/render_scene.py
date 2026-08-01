@@ -299,7 +299,28 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         seen = _RA_NONE.get(key)
         fail = _RA_FAIL.get(key)
     if seen is not None and now - seen < _RA_NONE_TTL:
-        return STATE_NONE, None
+        # Two instances serve this site behind one upstream pool. They share the
+        # frame pool on disk but each keeps its own _RA_NONE, so on 8/1 the same
+        # London request answered "ok" on :8788 and "no coverage here" on :8789 --
+        # a coin flip deciding whether a stranger is told to come back or told
+        # never to. "Never" is the one state they cannot argue with, so it may
+        # not rest on private memory when shared evidence contradicts it: if a
+        # peer has frames for this sky, my memo is simply wrong. Drop it.
+        raw = _peek(_radar_list_url(token, lng, lat))
+        imgs = []
+        if raw is not None:
+            try:
+                imgs = (json.loads(raw).get("images") or [])
+            except Exception:
+                imgs = []
+        if not imgs:
+            return STATE_NONE, None
+        with _RA_LOCK:
+            _RA_NONE.pop(key, None)
+            _RA_FAIL.pop(key, None)
+        got = _radar_render(code, lng, lat, imgs, small)
+        if got:
+            return STATE_OK, got
     if fail is not None and now - fail[2] < _RA_FAIL_COOLDOWN:
         # A sky that just refused us: still state 2 (we are not sure it is
         # "never"), but do not hammer the upstream once per request while we
