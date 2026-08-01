@@ -156,6 +156,13 @@ class Deadlines(unittest.TestCase):
         self._peek, self._get = R._peek, R._get
         self.addCleanup(setattr, R, "_peek", self._peek)
         self.addCleanup(setattr, R, "_get", self._get)
+        # These two were replaced inside a test body with no cleanup, so this
+        # file left a stubbed render_scene behind for everything that ran after
+        # it: test_radar_states passed alone (12/12 OK) and failed 5 in the full
+        # suite. A suite that is red for reasons nobody owns stops being a gate --
+        # this morning it could not tell me whether my own change broke anything.
+        self.addCleanup(setattr, R, "ascii_radar", R.ascii_radar)
+        self.addCleanup(setattr, R, "_radar_list_url", R._radar_list_url)
 
     def _stall(self, *a, **kw):
         """An upstream that never answers, bounded only by whoever is waiting.
