@@ -597,12 +597,15 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
-        mo_line = ""
+        mo_line = ("~ echo motion: fetching (retry in ~60s)" if lang == "en"
+                   else "~ 回波移动: 获取中(约60s后重试)")
     if lang == "ja":
         if mo.get("kind") == "moving":
             mo_line = "%s %s ~%.0f km/h   エコー移動, 直近1h実測" % (mo["arrow"], mo["dir_en"], mo["kmh"])
         elif mo.get("kind") == "stationary":
             mo_line = "= エコーほぼ停滞 (<5km/h, 直近1h実測)"
+        else:
+            mo_line = "~ エコー移動: 取得中(約60s後に再試行)"
     # The reading lives on one line only: the one under the map, where the eye
     # already is. On the legend line it competed with the marker key for the same
     # glance and pushed that row to 100+ columns, which wraps in a narrow terminal.
