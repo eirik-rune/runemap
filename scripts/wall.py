@@ -60,8 +60,6 @@ RESERVE = _f("RUNEMAP_WALL_RESERVE", 0.25)
 # thread with left - 0.1 and then renders. Radar must not eat this.
 WX_MARGIN = _f("RUNEMAP_WX_MARGIN", 3.5)
 
-# Never wait less than this for an unknown sky, whatever the arithmetic says.
-RADAR_WAIT_FLOOR = _f("RUNEMAP_RADAR_WAIT_FLOOR", 1.2)
 
 # How long to wait for a sky we know nothing about. This is the wait the
 # shareholder is paying for with the larger wall, so it gets what is left
@@ -72,8 +70,17 @@ RADAR_WAIT_FLOOR = _f("RUNEMAP_RADAR_WAIT_FLOOR", 1.2)
 # which is worse than the 1.2 it replaced. A default that only makes sense at
 # one value of its input is a trap for whoever changes the input next -- and
 # the whole point of this module is that someone will.
-RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT",
-                        max(RADAR_WAIT_FLOOR, WALL - RESERVE - WX_MARGIN))
+# 8/1 13:36 -- PINNED, on Luoshu's proposal, signed off by her at 13:35.
+# The reason is not that 2.5 is faster. It is that this number is a product
+# promise and it was wired to an ops knob: when the wall went 3.0 -> 10.0 the
+# wait followed, 1.2 -> 6.25, and nobody signed for it. A reader who turns the
+# wall is not deciding how long a stranger stares at a blank screen, and the
+# arithmetic made those the same act. So the two are cut apart here.
+# The clamp in radar_wait() still holds it under the deadline, so raising the
+# wall can no longer lengthen this wait, only permit it.
+# Honesty about the evidence: at 45 sample pairs the joint-rain ruler resolves
+# 2.2pt, so for the next ~17h nobody -- including me -- may call this "better".
+RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT", 2.5)
 
 # How long to wait for a sky that just refused us. The failure counter is
 # already in cooldown; waiting the full budget on a peer that said no 30

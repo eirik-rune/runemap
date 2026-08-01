@@ -73,8 +73,15 @@ def _motion_compute(key, imgs):
         mo = EM.echo_motion(frames) or {"kind": None}
     except Exception:
         mo = {"kind": None}
-    _MO_CACHE[key] = (time.time(), mo)
-    _MO_BUSY.discard(key)
+    finally:
+        # 8/1 13:36: both lines used to sit OUTSIDE the try. Exception is caught,
+        # but a BaseException (interpreter shutdown) or a failure in the cache
+        # write itself left key in _MO_BUSY forever -- and both start sites gate
+        # on `key not in _MO_BUSY`, so that one coordinate would never compute
+        # motion again for the life of the process. Permanent, silent, and only
+        # for the unlucky sky. finally is the whole fix.
+        _MO_CACHE[key] = (time.time(), mo)
+        _MO_BUSY.discard(key)
 
 def _motion_start(imgs, lng, lat):
     """Kick the motion thread as soon as imgs is known (it only needs the frame
