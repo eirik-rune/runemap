@@ -80,6 +80,8 @@ def _motion_compute(key, imgs):
         # on `key not in _MO_BUSY`, so that one coordinate would never compute
         # motion again for the life of the process. Permanent, silent, and only
         # for the unlucky sky. finally is the whole fix.
+        if mo.get("kind") is None:
+            mo = {"kind": "undetermined"}
         _MO_CACHE[key] = (time.time(), mo)
         _MO_BUSY.discard(key)
 
@@ -597,13 +599,17 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
-        mo_line = ("~ echo motion: fetching (retry in ~60s)" if lang == "en"
+        mo_line = ("= echo motion: undetermined (frames not correlated)" if lang == "en"
+                   else "= 回波移动: 未能测定(可用帧相关性不足)") if mo.get("kind") == "undetermined" else (
+                   "~ echo motion: fetching (retry in ~60s)" if lang == "en"
                    else "~ 回波移动: 获取中(约60s后重试)")
     if lang == "ja":
         if mo.get("kind") == "moving":
             mo_line = "%s %s ~%.0f km/h   エコー移動, 直近1h実測" % (mo["arrow"], mo["dir_en"], mo["kmh"])
         elif mo.get("kind") == "stationary":
             mo_line = "= エコーほぼ停滞 (<5km/h, 直近1h実測)"
+        elif mo.get("kind") == "undetermined":
+            mo_line = "= エコー移動: 判定不能(有効フレームの相関不足)"
         else:
             mo_line = "~ エコー移動: 取得中(約60s後に再試行)"
     # The reading lives on one line only: the one under the map, where the eye
