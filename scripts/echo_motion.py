@@ -67,7 +67,7 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     Returns dict {kind: 'moving'|'stationary'|None, arrow, dir_en, dir_cn, kmh}."""
     frames = [f for f in frames if len(f) >= 3 and f[2]]
     if len(frames) < 4:
-        return {"kind": None}
+        return {"kind": None, "why": "frames"}
     frames = sorted(frames, key=lambda f: f[1])
     bbox = frames[-1][2]
     lat0, lon0, lat1, lon1 = bbox
@@ -80,7 +80,7 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
         if fb[1] - fa[1] >= 600 and key not in seen:
             seen.add(key); pairs.append((fa, fb))
     if not pairs:
-        return {"kind": None}
+        return {"kind": None, "why": "frames"}
     cache = {}
     # The two frames are pure IO -- fetch them concurrently.
     def _try(u):
@@ -116,6 +116,7 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
             cache[f[0]] = _load_lv(f[0])
         return cache[f[0]]
     good = []
+    _echo_seen = False
     for fa, fb in pairs:
         try:
             a, b = _pool(lv(fa), pool_k), _pool(lv(fb), pool_k)
@@ -123,11 +124,12 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
             continue
         if float((a > 0.1).mean()) < 0.01:
             continue
+        _echo_seen = True
         dx, dy, c = _shift_corr(a, b)
         if c > min_corr:
             good.append((dx, dy, c, fb[1] - fa[1]))
     if not good:
-        return {"kind": None}
+        return {"kind": None, "why": ("corr" if _echo_seen else "noecho")}
     h, w = next(iter(cache.values())).shape
     km_x = (lon1 - lon0) * 111 * math.cos(math.radians((lat0 + lat1) / 2)) / (w / pool_k)
     km_y = (lat1 - lat0) * 111 / (h / pool_k)

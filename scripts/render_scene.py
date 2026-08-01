@@ -81,9 +81,28 @@ def _motion_compute(key, imgs):
         # motion again for the life of the process. Permanent, silent, and only
         # for the unlucky sky. finally is the whole fix.
         if mo.get("kind") is None:
-            mo = {"kind": "undetermined"}
+            mo = {"kind": "undetermined", "why": mo.get("why") or "corr"}
         _MO_CACHE[key] = (time.time(), mo)
         _MO_BUSY.discard(key)
+
+_MO_UNDET = {
+    # "no echo over the radar" is not "the instrument could not decide": telling a
+    # reader the frames failed to correlate when the sky is simply empty is the
+    # same class of lie as promising a retry that can never change anything.
+    "noecho": {"en": "= echo motion: n/a (no echo to track)",
+               "zh": "= 回波移动: 无(视野内无回波可追踪)",
+               "ja": "= エコー移動: なし(追跡できるエコーなし)"},
+    "frames": {"en": "= echo motion: n/a (too few usable frames)",
+               "zh": "= 回波移动: 无(可用观测帧不足)",
+               "ja": "= エコー移動: なし(有効フレーム不足)"},
+    "corr":   {"en": "= echo motion: undetermined (frames not correlated)",
+               "zh": "= 回波移动: 未能测定(帧间相关性不足)",
+               "ja": "= エコー移動: 判定不能(フレーム間の相関不足)"},
+}
+
+def _mo_undet(why, lang):
+    d = _MO_UNDET.get(why) or _MO_UNDET["corr"]
+    return d.get(lang) or d["zh"] if lang != "en" else d["en"]
 
 def _motion_start(imgs, lng, lat):
     """Kick the motion thread as soon as imgs is known (it only needs the frame
@@ -599,8 +618,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
-        mo_line = ("= echo motion: undetermined (frames not correlated)" if lang == "en"
-                   else "= 回波移动: 未能测定(可用帧相关性不足)") if mo.get("kind") == "undetermined" else (
+        mo_line = _mo_undet(mo.get("why"), lang) if mo.get("kind") == "undetermined" else (
                    "~ echo motion: fetching (retry in ~60s)" if lang == "en"
                    else "~ 回波移动: 获取中(约60s后重试)")
     if lang == "ja":
@@ -609,7 +627,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         elif mo.get("kind") == "stationary":
             mo_line = "= エコーほぼ停滞 (<5km/h, 直近1h実測)"
         elif mo.get("kind") == "undetermined":
-            mo_line = "= エコー移動: 判定不能(有効フレームの相関不足)"
+            mo_line = _mo_undet(mo.get("why"), "ja")
         else:
             mo_line = "~ エコー移動: 取得中(約60s後に再試行)"
     # The reading lives on one line only: the one under the map, where the eye
