@@ -418,6 +418,13 @@ def build_fetching(lang, name):
     serves stale-but-good up to 6x TTL, so reaching here means this coordinate
     has genuinely never been fetched -- new, not broken. Say that, and keep
     fetching in the background so the next ask lands."""
+    if lang == "ja":
+        return ("# %s 天気一覧\n"
+                "weather: fetching -- まだ取得できていません、約60秒後に再度\n"
+                "radar: fetching -- まだ取得できていません、約60秒後に再度\n"
+                "\n"
+                "data: 彩雲天気 caiyunapp.com | runemap で描画 "
+                "(github.com/eirik-rune/runemap)\n") % name
     if lang == "en":
         return ("# %s weather scene\n"
                 "weather: fetching -- not ready yet, ask again in ~60s\n"
@@ -504,6 +511,13 @@ def radar_art(code, lng, lat, token, small=False):
     finally:
         os.unlink(p)
 
+SKY_JA = {"CLEAR_DAY":"晴れ","CLEAR_NIGHT":"晴れ","PARTLY_CLOUDY_DAY":"晴れ時々曇り",
+"PARTLY_CLOUDY_NIGHT":"晴れ時々曇り","CLOUDY":"曇り","LIGHT_HAZE":"弱い煙霧",
+"MODERATE_HAZE":"煙霧","HEAVY_HAZE":"濃い煙霧","LIGHT_RAIN":"小雨","MODERATE_RAIN":"雨",
+"HEAVY_RAIN":"大雨","STORM_RAIN":"豪雨","FOG":"霧","LIGHT_SNOW":"小雪","MODERATE_SNOW":"雪",
+"HEAVY_SNOW":"大雪","STORM_SNOW":"暴風雪","DUST":"塵","SAND":"黄砂","WIND":"強風"}
+
+
 def _tz_label(tzh):
     """UTC+7 / UTC+5:30 -- an offset the reader can act on.
 
@@ -531,6 +545,12 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("# %s weather scene  updated %s %s  (lon %s, lat %s)" % (name, stamp, _tz_label(tzh), lng, lat))
         L.append("now: %s  %.0fC  humidity %.0f%%  wind %.0fkm/h  precip %.2fmm/h" % (
             rt["skycon"], rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
+            rt["precipitation"]["local"]["intensity"]))
+    elif lang == "ja":
+        sky = SKY_JA.get(rt["skycon"], rt["skycon"])
+        L.append("# %s 天気一覧  更新 %s %s  (経度 %s, 緯度 %s)" % (name, stamp, _tz_label(tzh), lng, lat))
+        L.append("現在: %s  %.0fC  湿度 %.0f%%  風速 %.0fkm/h  降水 %.2fmm/h" % (
+            sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
     else:
         sky = SKY_ZH.get(rt["skycon"], rt["skycon"])
@@ -571,6 +591,11 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
                    else "= 回波准静止 (<5km/h, 近1h实测)")
     else:
         mo_line = ""
+    if lang == "ja":
+        if mo.get("kind") == "moving":
+            mo_line = "%s %s ~%.0f km/h   エコー移動, 直近1h実測" % (mo["arrow"], mo["dir_en"], mo["kmh"])
+        elif mo.get("kind") == "stationary":
+            mo_line = "= エコーほぼ停滞 (<5km/h, 直近1h実測)"
     # The reading lives on one line only: the one under the map, where the eye
     # already is. On the legend line it competed with the marker key for the same
     # glance and pushed that row to 100+ columns, which wraps in a narrow terminal.
@@ -578,11 +603,12 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     L.append("")
     if p2h and max(p2h) > 0:
         buckets = [round(max(p2h[i*6:(i+1)*6]), 2) for i in range(20)]
-        L.append("rain curve (next 2h, 6min/bucket):" if lang == "en" else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h, 6min/\u683c):")
+        L.append("rain curve (next 2h, 6min/bucket):" if lang == "en" else "雨量曲線(今後2h, 6min/枠):" if lang == "ja" else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h, 6min/\u683c):")
         L.append(spark(buckets))
         L.append(AXIS)
     else:
         L.append("rain curve (next 2h): no precipitation expected" if lang == "en"
+                 else "雨量曲線(今後2h): 降水なし" if lang == "ja"
                  else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h): \u65e0\u964d\u6c34")
     L.append("")
     if rb:
@@ -592,7 +618,13 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # readers here are agents, and a state you must translate before you
         # can grep it is not a state. Prose after the token stays localised.
         L.append("radar: ok")
-        if lang == "en":
+        if lang == "ja":
+            L.append("レーダー実況 (現地 %s), 1文字≈%.0fkm, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
+            L.append(art)
+            if mo_line:
+                L.append(mo_line)
+            L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
+        elif lang == "en":
             L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
@@ -616,13 +648,18 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         if st == STATE_NONE:
             L.append("radar: none -- no coverage at this location (text brief: live/%s.txt)" % name
                      if lang == "en" else
+                     "radar: none -- この地点はレーダー圏外 (テキスト概況: live/%s.txt)" % name
+                     if lang == "ja" else
                      "radar: none -- \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
         else:
             L.append("radar: fetching -- not ready yet, ask again in ~60s; weather above is live"
                      if lang == "en" else
+                     "radar: fetching -- まだ取得できていません、約60秒後に再度; 上の天気は実況です"
+                     if lang == "ja" else
                      "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
+             else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
     return "\n".join(L) + "\n"
 

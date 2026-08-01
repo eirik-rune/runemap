@@ -64,6 +64,9 @@ github.com/eirik-rune/runemap/issues
 _PROBE_EXT = ("txt", "ico", "xml", "json", "php", "html", "htm", "css", "js",
               "png", "jpg", "gif", "map", "env", "git", "asp", "aspx", "yml", "yaml", "sql")
 
+_CY_LANG = {"en": "en_US", "zh": "zh_CN", "ja": "ja"}
+
+
 def _accept_lang(hdr):
     """First supported language in an Accept-Language header, by q-order."""
     if not hdr:
@@ -80,7 +83,8 @@ def _accept_lang(hdr):
                     q = float(b[2:])
                 except ValueError:
                     q = 0.0
-        code = "zh" if tag.startswith("zh") else ("en" if tag.startswith("en") else "")
+        code = ("zh" if tag.startswith("zh") else "ja" if tag.startswith("ja")
+                else "en" if tag.startswith("en") else "")
         if code and q > bq:
             best, bq = code, q
     return best
@@ -187,7 +191,7 @@ class H(BaseHTTPRequestHandler):
                 # trailing /s = small radar (24x12, ~2x km/char) -- bob 7/30
                 if len(seg) > 1 and seg[-1].lower() == "s":
                     small = True; seg = seg[:-1]
-                if len(seg) > 1 and seg[-1].lower() in ("en", "zh"):
+                if len(seg) > 1 and seg[-1].lower() in ("en", "zh", "ja"):
                     q.setdefault("lang", [seg[-1].lower()]); seg = seg[:-1]
                 spec = "/".join(seg).strip()
                 ll = _as_coords(spec)
@@ -214,7 +218,7 @@ class H(BaseHTTPRequestHandler):
         # It applied to "/" only at first, so a Chinese phone asking for /london
         # got English -- a difference the caller never asked for.
         lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
-        lang = lang if lang in ("en", "zh") else "en"
+        lang = lang if lang in ("en", "zh", "ja") else "en"
         label = q.get("label", [None])[0]
         if not label:
             near = place or G.rlookup(lat, lon)
@@ -247,7 +251,7 @@ class H(BaseHTTPRequestHandler):
                 def _wx_job():
                     try:
                         with net_budget.adopt(_dl):
-                            _wxb["v"] = R.weather(lon, lat, TOKEN, "en_US" if lang == "en" else "zh_CN")
+                            _wxb["v"] = R.weather(lon, lat, TOKEN, _CY_LANG.get(lang, "en_US"))
                     except Exception as _e:
                         _wxb["e"] = _e
                 _wxt = _th.Thread(target=_wx_job, daemon=True)
@@ -281,8 +285,7 @@ class H(BaseHTTPRequestHandler):
                 # never a 502. A 502 inside 3s satisfies the clock and fails the
                 # person. No fourth state: same words as radar's "not yet".
                 sys.stderr.write("WEATHER-FETCHING %r\n" % (_wxb.get("e"),))
-                R.weather_start(lon, lat, TOKEN,
-                                "en_US" if lang == "en" else "zh_CN")
+                R.weather_start(lon, lat, TOKEN, _CY_LANG.get(lang, "en_US"))
                 out = R.build_fetching(lang, label)
                 return self._send(200, out)
             _t_wx = time.time() - _t; _t = time.time()
