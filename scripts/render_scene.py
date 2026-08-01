@@ -504,6 +504,21 @@ def radar_art(code, lng, lat, token, small=False):
     finally:
         os.unlink(p)
 
+def _tz_label(tzh):
+    """UTC+7 / UTC+5:30 -- an offset the reader can act on.
+
+    The header used to end the timestamp with the words for a clock local to a
+    place you had to already know. chaosconst opened runemap#14 for exactly
+    this: the line names a city, but an agent parsing it still cannot put that
+    timestamp on a shared axis. Half-hour zones (IST, NPT) are why not int().
+    """
+    sign = "+" if tzh >= 0 else "-"
+    a = abs(float(tzh))
+    h = int(a)
+    m = int(round((a - h) * 60))
+    return "UTC%s%d" % (sign, h) if m == 0 else "UTC%s%d:%02d" % (sign, h, m)
+
+
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
           radar_state=None):
     code = _mark(code)   # legend and grid must show the same glyph
@@ -513,13 +528,13 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     stamp = time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + tzh * 3600))
     L = []
     if lang == "en":
-        L.append("# %s weather scene  updated %s local time  (lon %s, lat %s)" % (name, stamp, lng, lat))
+        L.append("# %s weather scene  updated %s %s  (lon %s, lat %s)" % (name, stamp, _tz_label(tzh), lng, lat))
         L.append("now: %s  %.0fC  humidity %.0f%%  wind %.0fkm/h  precip %.2fmm/h" % (
             rt["skycon"], rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
     else:
         sky = SKY_ZH.get(rt["skycon"], rt["skycon"])
-        L.append("# %s \u5929\u6c14\u4e00\u5c4f  \u66f4\u65b0\u4e8e\u5f53\u5730\u65f6\u95f4 %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (zh, stamp, lng, lat))
+        L.append("# %s \u5929\u6c14\u4e00\u5c4f  \u66f4\u65b0\u4e8e %s %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (zh, stamp, _tz_label(tzh), lng, lat))
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
