@@ -1,9 +1,9 @@
-# newyork  (-74.006,40.7128)  local 2026-07-31 16:50  UTC-4
-now: CLEAR_DAY  temp 29C  humidity 33%  wind 4km/h  precip 0.00
+# newyork  (-74.006,40.7128)  local 2026-07-31 20:15  UTC-4
+now: CLOUDY  temp 26C  humidity 53%  wind 7km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
 next 24h precip (mm/h):                           peak 0.0
-next 24h temp 22..30C: ██▇▆▅▄▄▄▃▂▂▂▁▁ ▁▂▄▆▇████
-sky: +0h:CLEAR_DAY +1h:PARTLY_CLOUDY_DAY +2h:CLOUDY +5h:PARTLY_CLOUDY_NIGHT +7h:CLEAR_NIGHT +9h:PARTLY_CLOUDY_NIGHT
-keypoint: 最近的降雨带在东北34公里外呢
+next 24h temp 22..30C: ▅▄▄▄▃▂▂▂▁▁ ▁▂▄▆▇█████▇▆▆
+sky: +0h:CLOUDY +1h:PARTLY_CLOUDY_NIGHT +2h:CLEAR_NIGHT +6h:CLOUDY +14h:PARTLY_CLOUDY_DAY +15h:CLOUDY
+keypoint: 您东边7公里正在下小雨哦
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
