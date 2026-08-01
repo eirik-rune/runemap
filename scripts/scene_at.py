@@ -52,9 +52,27 @@ def _usable(kind, b):
         return False
     return True
 
+def _ckey(url):
+    """The key must name the CONTENT, not the signature.
+
+    Frame urls carry auth_key=<epoch>-<hash>, re-signed on every request, so
+    sha1(full url) rotated the entire keyspace each time the images API was
+    refreshed: the 1800s png TTL was never reachable and every request paid a
+    full download. Measured 2026-08-01 on 6 pairs of cached json snapshots
+    299s-2699s apart: for the same frame timestamp the path is byte-identical
+    (88/88 frames), so the in-path hash is content-addressed and auth_key is
+    the only volatile part. Strip only that -- other params (hourlysteps, the
+    weather token in the path) are part of the identity of what was asked.
+    """
+    head, sep, q = url.partition("?")
+    if not sep:
+        return url
+    keep = [kv for kv in q.split("&") if not kv.startswith("auth_key=")]
+    return head + ("?" + "&".join(keep) if keep else "")
+
 def _cached_get(url, timeout=15):
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
-    key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
+    key = os.path.join(CACHE, hashlib.sha1(_ckey(url).encode()).hexdigest() + "." + kind)
     have = os.path.exists(key)
     age = (time.time() - os.path.getmtime(key)) if have else None
     if have and age < _TTL[kind]:
@@ -96,7 +114,7 @@ def _cached_peek(url):
     and the frame carries its own timestamp so nobody is misled about its age.
     """
     kind = "png" if ".png" in url else ("radar_json" if "/radar/" in url else "weather")
-    key = os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + "." + kind)
+    key = os.path.join(CACHE, hashlib.sha1(_ckey(url).encode()).hexdigest() + "." + kind)
     try:
         age = time.time() - os.path.getmtime(key)
     except OSError:
