@@ -72,7 +72,7 @@ def _motion_compute(key, imgs):
         EM._get = _get          # picks up the cached getter
         mo = EM.echo_motion(frames) or {"kind": None}
     except Exception:
-        mo = {"kind": None}
+        mo = {"kind": None, "why": "error"}
     finally:
         # 8/1 13:36: both lines used to sit OUTSIDE the try. Exception is caught,
         # but a BaseException (interpreter shutdown) or a failure in the cache
@@ -95,6 +95,9 @@ _MO_UNDET = {
     "frames": {"en": "= echo motion: n/a (too few usable frames)",
                "zh": "= 回波移动: 无(可用观测帧不足)",
                "ja": "= エコー移動: なし(有効フレーム不足)"},
+    "error":  {"en": "= echo motion: n/a (computation failed)",
+               "zh": "= 回波移动: 无(计算失败)",
+               "ja": "= エコー移動: なし(計算失敗)"},
     "corr":   {"en": "= echo motion: undetermined (frames not correlated)",
                "zh": "= 回波移动: 未能测定(帧间相关性不足)",
                "ja": "= エコー移動: 判定不能(フレーム間の相関不足)"},
