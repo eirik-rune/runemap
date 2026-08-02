@@ -330,9 +330,8 @@ def _radar_render(code, lng, lat, imgs, small):
 
     Art depends on the marker and the size, which vary per request, so what is
     shared between requests is the fetched PNG, not the rendered map."""
-    for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
-        if cand is None:
-            continue
+    cands, base_ts = _pick_frames(imgs)
+    for cand in cands[:2]:
         png = _peek(cand[0])
         if png is None:
             continue
@@ -345,7 +344,7 @@ def _radar_render(code, lng, lat, imgs, small):
                                      rows=(12 if small else 24), marker=code)
         finally:
             os.unlink(p)
-        return art, kmcol, ts, _motion_peek(imgs, lng, lat)
+        return art, kmcol, ts, _motion_peek(imgs, lng, lat), base_ts
     return None
 
 
@@ -556,9 +555,8 @@ def radar_art(code, lng, lat, token, small=False):
     # own timestamp shown honestly) instead of degrading to no radar at all.
     png = None
     _err = None
-    for _cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
-        if _cand is None:
-            continue
+    _cands, base_ts = _pick_frames(imgs)
+    for _cand in _cands[:2]:
         try:
             png = _get(_cand[0], timeout=20)
             url, ts, bbox = _cand[0], float(_cand[1]), _cand[2]
@@ -577,7 +575,7 @@ def radar_art(code, lng, lat, token, small=False):
         _t_mo = time.time() - _t
         if _t_mo > 1.5:
             sys.stderr.write("SLOW-RADAR motion=%.2f\n" % (_t_mo,))
-        return art, kmcol, ts, mo
+        return art, kmcol, ts, mo, base_ts
     finally:
         os.unlink(p)
 
@@ -689,11 +687,16 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     L.append("")
     if rb:
         art, kmcol, ts = rb[0], rb[1], rb[2]
+        # Two different quantities, deliberately not the same variable: ts is
+        # the frame drawn on screen, base_ts is the last time anyone actually
+        # looked at this sky. They coincide for an observation frame and differ
+        # for an extrapolated one -- which is the entire reason (4) exists.
+        base_ts = rb[4] if len(rb) > 4 and rb[4] else ts
         t = time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
         # One greppable line per state, same token in every language: most
         # readers here are agents, and a state you must translate before you
         # can grep it is not a state. Prose after the token stays localised.
-        obs_age = int(max(0.0, time.time() - ts) // 60)
+        obs_age = int(max(0.0, time.time() - base_ts) // 60)
         # One age for both modes: how long since we last actually saw the
         # sky. A second age variable is where this line starts lying again.
         L.append("radar: ok" if obs_age < RADAR_STALE_MIN else "radar: stale")
