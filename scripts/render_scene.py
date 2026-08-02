@@ -210,7 +210,7 @@ def _peek(url):
 # kind decides two things at once -- the url AND which frame is the observation
 # -- and letting those two disagree is exactly how a frame starts lying about
 # its own age.
-RADAR_LIST_KIND = "images"        # "images" | "forecast_images"
+RADAR_LIST_KIND = "forecast_images"   # "images" | "forecast_images"
 
 
 def _radar_list_url(token, lng, lat):
