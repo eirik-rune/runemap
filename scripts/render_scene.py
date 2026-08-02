@@ -206,8 +206,42 @@ def _peek(url):
     return None
 
 
+# Which upstream list every radar path reads. One constant, because the list
+# kind decides two things at once -- the url AND which frame is the observation
+# -- and letting those two disagree is exactly how a frame starts lying about
+# its own age.
+RADAR_LIST_KIND = "images"        # "images" | "forecast_images"
+
+
 def _radar_list_url(token, lng, lat):
-    return "https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)
+    return ("https://api.caiyunapp.com/v1/radar/%s?token=%s&lon=%s&lat=%s"
+            % (RADAR_LIST_KIND, token, lng, lat))
+
+
+def _pick_frames(imgs):
+    """-> (candidates nearest-to-now first, ts of the last real observation).
+
+    An observation list is all past: the frame to draw and the last look at the
+    sky are the same frame, the newest one. A forecast list runs from that same
+    observation out to +4h, so its newest frame shows a sky nobody has seen.
+    Draw the frame nearest to now; age it from the observation it was
+    extrapolated from -- measured 8/2: forecast_images[0] and images[-1] carry
+    the identical timestamp, to the second, at two stations.
+
+    Returning the base ts here, rather than letting the caller compute an age
+    from whatever frame it happened to draw, is the whole point: there is one
+    answer to "how long since we saw this sky", and one place that knows it.
+    """
+    fr = sorted((f for f in imgs if f and len(f) >= 2), key=lambda f: float(f[1]))
+    if not fr:
+        return [], None
+    if RADAR_LIST_KIND == "forecast_images":
+        base_ts = float(fr[0][1])         # the observation the run started from
+    else:
+        base_ts = float(fr[-1][1])        # every frame is a look at the sky
+    now = time.time()
+    cands = sorted(fr, key=lambda f: abs(float(f[1]) - now))
+    return cands, base_ts
 
 
 def _radar_warm(key, lng, lat, token):
@@ -510,7 +544,7 @@ def _mark(code):
 def radar_art(code, lng, lat, token, small=False):
     code = _mark(code)
     try:
-        d = json.loads(_get("https://api.caiyunapp.com/v1/radar/images?token=%s&lon=%s&lat=%s" % (token, lng, lat)))
+        d = json.loads(_get(_radar_list_url(token, lng, lat)))
     except Exception:
         return None
     imgs = d.get("images") or []
