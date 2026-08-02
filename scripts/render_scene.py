@@ -699,7 +699,15 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         obs_age = int(max(0.0, time.time() - base_ts) // 60)
         # One age for both modes: how long since we last actually saw the
         # sky. A second age variable is where this line starts lying again.
-        L.append("radar: ok" if obs_age < RADAR_STALE_MIN else "radar: stale")
+        # Three states, decided in one place. "predict" outranks the age gate
+        # on purpose: a frame nobody observed is a different KIND of claim than
+        # an old one, and collapsing the two would let an extrapolation inherit
+        # the word "ok". Precedence is extrapolated > stale > ok.
+        _extrapolated = ts > base_ts + 1.0
+        if _extrapolated:
+            L.append("radar: predict")
+        else:
+            L.append("radar: ok" if obs_age < RADAR_STALE_MIN else "radar: stale")
         if lang == "ja":
             L.append("レーダー (現地 %s, %d分前), 1文字≈%.0fkm, [%s]=%s" % (t, obs_age, kmcol, code, name) + mo_sfx)
             L.append(art)
