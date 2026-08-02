@@ -727,7 +727,6 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # Precedence is gone with the collapse: nothing outranks anything now,
         # both words are always printed.
         _extrapolated = ts > base_ts + 1.0
-        t_obs = time.strftime("%H:%M", time.gmtime(base_ts + tzh * 3600))
         _age_tok = "ok" if obs_age < RADAR_STALE_MIN else "stale"
         _axis1 = ("predict %s" % time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
                   if _extrapolated else "obs")
@@ -739,21 +738,21 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # delete the word "now" this morning -- one fewer true statement beats
         # one more ambiguous symbol. A fourth state added later must not break
         # a reader that expects "age:" to be optional.
-        L.append("radar: %-14s age: %dmin %s" % (_axis1, obs_age, _age_tok))
+        L.append("radar: %-14s obs age: %dmin %s" % (_axis1, obs_age, _age_tok))
         if lang == "ja":
-            L.append("レーダー (現地 %s, %d分前), 1文字≈%.0fkm, [%s]=%s" % (t_obs, obs_age, kmcol, code, name) + mo_sfx)
+            L.append("1文字≈%.0fkm, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
         elif lang == "en":
-            L.append("radar (%s local, %dmin old), ~%.0fkm/char, [%s]=%s" % (t_obs, obs_age, kmcol, code, name) + mo_sfx)
+            L.append("~%.0fkm/char, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
-            L.append("\u96f7\u8fbe (\u5f53\u5730 %s, %d\u5206\u949f\u524d), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t_obs, obs_age, kmcol, code, zh) + mo_sfx)
+            L.append("每字符≈%.0fkm, [%s]=%s" % (kmcol, code, zh) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
