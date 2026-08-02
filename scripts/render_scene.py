@@ -717,16 +717,21 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         obs_age = int(max(0.0, time.time() - base_ts) // 60)
         # One age for both modes: how long since we last actually saw the
         # sky. A second age variable is where this line starts lying again.
-        # Three states, decided in one place. "predict" outranks the age gate
-        # on purpose: a frame nobody observed is a different KIND of claim than
-        # an old one, and collapsing the two would let an extrapolation inherit
-        # the word "ok". Precedence is extrapolated > stale > ok.
+        # TWO tokens, because these are two orthogonal axes and one slot cannot
+        # carry both (bob, 8/2 10:57). Axis 1 answers "what is drawn": an
+        # observed frame, or an extrapolated one. Axis 2 answers "how long
+        # since anyone saw this sky". They are independent: the worst cell --
+        # an extrapolation on top of a 47-minute-old observation -- printed as
+        # plain "radar: predict" under the collapsed scheme, which looked
+        # HEALTHIER than "stale". A warning had been demoted to a description.
+        # Precedence is gone with the collapse: nothing outranks anything now,
+        # both words are always printed.
         _extrapolated = ts > base_ts + 1.0
         t_obs = time.strftime("%H:%M", time.gmtime(base_ts + tzh * 3600))
-        if _extrapolated:
-            L.append("radar: predict %s" % time.strftime("%H:%M", time.gmtime(ts + tzh * 3600)))
-        else:
-            L.append("radar: ok" if obs_age < RADAR_STALE_MIN else "radar: stale")
+        _age_tok = "ok" if obs_age < RADAR_STALE_MIN else "stale"
+        _axis1 = ("predict %s" % time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
+                  if _extrapolated else "obs")
+        L.append("radar: %-14s age: %dmin %s" % (_axis1, obs_age, _age_tok))
         if lang == "ja":
             L.append("レーダー (現地 %s, %d分前), 1文字≈%.0fkm, [%s]=%s" % (t_obs, obs_age, kmcol, code, name) + mo_sfx)
             L.append(art)
