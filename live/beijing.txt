@@ -1,9 +1,9 @@
-# beijing  (116.4074,39.9042)  local 2026-08-02 20:42  UTC+8
-now: PARTLY_CLOUDY_NIGHT  temp 27C  humidity 90%  wind 5km/h  precip 0.00
+# beijing  (116.4074,39.9042)  local 2026-08-03 00:32  UTC+8
+now: CLEAR_NIGHT  temp 27C  humidity 90%  wind 5km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):    ▂               ▁ █▁   peak 1.2
-next 24h temp 27..33C: ▂▂▁▁▁▁▁▁▁ ▁▂▃▅▆▇████▇▇▅▄
-sky: +0h:PARTLY_CLOUDY_NIGHT +3h:LIGHT_RAIN +4h:CLEAR_NIGHT +9h:CLEAR_DAY +16h:PARTLY_CLOUDY_DAY +20h:CLEAR_DAY
-keypoint: 您东南13公里正在下小雨哦
+next 24h precip (mm/h):                ▁ █▁   ▇▁  peak 1.2
+next 24h temp 26..33C: ▂▂▁▁ ▁▁▂▃▄▅▇▇████▆▄▄▃▃▃▂
+sky: +0h:CLEAR_NIGHT +5h:CLEAR_DAY +12h:PARTLY_CLOUDY_DAY +16h:CLEAR_DAY +17h:MODERATE_RAIN +18h:PARTLY_CLOUDY_DAY
+keypoint: 您东北7公里正在下小雨哦
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
