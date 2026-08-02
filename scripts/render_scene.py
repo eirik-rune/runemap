@@ -180,6 +180,11 @@ def _motion_peek(imgs, lng, lat):
 #
 STATE_OK, STATE_FETCHING, STATE_NONE = "ok", "fetching", "none"
 
+# A frame older than this may draw the echo a full cell (~10km) away from
+# where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
+# Derived from the picture, not picked to make the logs look good.
+RADAR_STALE_MIN = 20
+
 _RA_LOCK = threading.Lock()
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
 _RA_NONE = {}                     # key -> ts, memo of confirmed no-coverage
@@ -654,21 +659,24 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # One greppable line per state, same token in every language: most
         # readers here are agents, and a state you must translate before you
         # can grep it is not a state. Prose after the token stays localised.
-        L.append("radar: ok")
+        obs_age = int(max(0.0, time.time() - ts) // 60)
+        # One age for both modes: how long since we last actually saw the
+        # sky. A second age variable is where this line starts lying again.
+        L.append("radar: ok" if obs_age < RADAR_STALE_MIN else "radar: stale")
         if lang == "ja":
-            L.append("レーダー実況 (現地 %s), 1文字≈%.0fkm, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
+            L.append("レーダー (現地 %s, %d分前), 1文字≈%.0fkm, [%s]=%s" % (t, obs_age, kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
         elif lang == "en":
-            L.append("radar now (%s local), ~%.0fkm/char, [%s]=%s" % (t, kmcol, code, name) + mo_sfx)
+            L.append("radar (%s local, %dmin old), ~%.0fkm/char, [%s]=%s" % (t, obs_age, kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
-            L.append("\u96f7\u8fbe\u5b9e\u51b5 (\u5f53\u5730 %s), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, kmcol, code, zh) + mo_sfx)
+            L.append("\u96f7\u8fbe (\u5f53\u5730 %s, %d\u5206\u949f\u524d), \u6bcf\u5b57\u7b26\u2248%.0fkm, [%s]=%s" % (t, obs_age, kmcol, code, zh) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
