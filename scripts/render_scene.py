@@ -294,7 +294,15 @@ def _radar_warm(key, lng, lat, token):
                 return
             with _RA_LOCK:
                 _RA_FAIL.pop(key, None)      # it answered; forget the doubt
-            for cand in (imgs[-1], imgs[-2] if len(imgs) > 1 else None):
+            # imgs[-1] used to be "the newest frame", which is true of an
+            # observation list and FALSE of a forecast list: there the last
+            # element is the FARTHEST FUTURE (+227min, measured 8/2). The warm
+            # was fetching two frames nobody will ever draw, so every sky stayed
+            # in state 2 forever while the cache filled with useless pngs.
+            # Warm what the renderer will actually draw -- one helper decides
+            # which frame matters, here and there.
+            _cands, _base = _pick_frames(imgs)
+            for cand in (_cands[:2] or [None]):
                 if cand is None:
                     continue
                 try:
