@@ -6,7 +6,7 @@ Usage:
 
 Prints one screen to stdout: headline + 2h rain curve + radar map + legend.
 No files written, no service exposed. You bring your own caiyunapp.com token."""
-import argparse, os, sys, time
+import argparse, os, sys, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_scene as R
@@ -33,6 +33,49 @@ def _track_outbound():
     open(usage_file, "w").write(str(calls + 1))
 
 _STALE_MAX = 6          # serve a stale-but-good entry up to 6x TTL when upstream is sick
+
+# --- stale-while-revalidate -------------------------------------------------
+# Serving a stale entry and scheduling its refresh were two halves of one job,
+# and only the first half existed: a list 10 minutes old was served, over and
+# over, for up to _STALE_MAX x TTL, while nothing asked upstream. The frame
+# timestamps we print come from that list, so the observation time froze while
+# the wall clock ran on -- measured 8/2: 19 of 24 servable lists were past TTL,
+# p50 12.9min, and re-fetching moved the observation forward by 5-18 minutes.
+#
+# Not a shorter TTL: that trades staleness for "fetching", which is worse.
+_SWR_LOCK = threading.Lock()
+_SWR_INFLIGHT = set()
+_SWR_BUDGET = 45.0        # background, outlives the response, like _radar_warm
+
+
+def _swr_refresh(url):
+    try:
+        with R.net_budget.request_budget(_SWR_BUDGET):
+            _cached_get(url, 20)          # writes the pool when the payload is usable
+    except Exception as e:
+        sys.stderr.write("SWR-REFRESH-FAILED %r\n" % (e,))
+    finally:
+        # finally, not end-of-happy-path: a url left in the set is a coordinate
+        # that can never be refreshed again, and nothing would ever say so.
+        with _SWR_LOCK:
+            _SWR_INFLIGHT.discard(url)
+
+
+def _swr_schedule(url, kind):
+    """Refresh a past-TTL entry off the response path. Never blocks the reader."""
+    if kind == "png":
+        return            # timestamped immutable object: re-fetching buys nothing
+    with _SWR_LOCK:
+        if url in _SWR_INFLIGHT:
+            return
+        _SWR_INFLIGHT.add(url)
+    try:
+        threading.Thread(target=_swr_refresh, args=(url,), daemon=True).start()
+    except Exception as e:
+        with _SWR_LOCK:
+            _SWR_INFLIGHT.discard(url)
+        sys.stderr.write("SWR-SPAWN-FAILED %r\n" % (e,))
+
 
 def _usable(kind, b):
     """A payload is cacheable only if it is actually usable. Upstream returns
@@ -129,6 +172,8 @@ def _cached_peek(url):
         return None
     if age >= _TTL[kind] * _STALE_MAX:
         return None
+    if age >= _TTL[kind]:
+        _swr_schedule(url, kind)      # serve it AND ask for a fresh one
     try:
         b = open(key, "rb").read()
     except OSError:
