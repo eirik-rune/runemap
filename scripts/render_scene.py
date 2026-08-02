@@ -210,7 +210,27 @@ def _peek(url):
 # kind decides two things at once -- the url AND which frame is the observation
 # -- and letting those two disagree is exactly how a frame starts lying about
 # its own age.
-RADAR_LIST_KIND = "forecast_images"   # "images" | "forecast_images"
+RADAR_LIST_KIND = "forecast_images"   # DEFAULT only -- see _kind_for below
+
+# ...except coverage is not global either. Measured 8/2 at the upstream
+# boundary: mumbai and sydney answer images=200 / forecast_images=404 --
+# observation coverage with no forecast coverage. Asking only the forecast
+# endpoint turned those two skies into PERMANENT "fetching": a city that used
+# to print a map went blank, and blank is the state nobody reports. So the
+# kind is a per-sky fact that upstream tells us with a 404, memoised so we
+# ask once rather than per request. It still decides url AND which frame is
+# the observation AND what the motion line claims its basis is -- so it is
+# read through ONE helper everywhere, never from two places.
+_RA_KIND = {}
+
+
+def _sky_key(lng, lat):
+    return (round(float(lat), 1), round(float(lng), 1))
+
+
+def _kind_for(lng, lat):
+    with _RA_LOCK:
+        return _RA_KIND.get(_sky_key(lng, lat), RADAR_LIST_KIND)
 
 # The motion vector is computed from whatever RADAR_LIST_KIND selects. Fed
 # forecast frames it is no longer "we watched it move" but "upstream expects
@@ -223,12 +243,33 @@ _MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
 _MO_BASIS_JA = "直近1h実測" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
 
 
-def _radar_list_url(token, lng, lat):
+def _radar_list_url(token, lng, lat, kind=None):
     return ("https://api.caiyunapp.com/v1/radar/%s?token=%s&lon=%s&lat=%s"
-            % (RADAR_LIST_KIND, token, lng, lat))
+            % (kind or _kind_for(lng, lat), token, lng, lat))
 
 
-def _pick_frames(imgs):
+def _radar_list_bytes(token, lng, lat):
+    """Fetch the frame list, learning from a 404 which endpoint this sky has.
+
+    A 404 here is not a failure, it is upstream answering a different
+    question: "this sky has no forecast product". Falling back to the
+    observation list gives that reader a map instead of a permanent
+    "ask again in ~60s" -- which is the one promise we must not break.
+    Only 404 flips the kind; a timeout or a 5xx says nothing about coverage.
+    """
+    kind = _kind_for(lng, lat)
+    try:
+        return _get(_radar_list_url(token, lng, lat, kind))
+    except Exception as e:
+        if kind != "forecast_images" or "HTTP 404" not in str(e):
+            raise
+        with _RA_LOCK:
+            _RA_KIND[_sky_key(lng, lat)] = "images"
+        sys.stderr.write("RADAR-KIND-FALLBACK %r -> images\n" % (_sky_key(lng, lat),))
+        return _get(_radar_list_url(token, lng, lat, "images"))
+
+
+def _pick_frames(imgs, kind=None):
     """-> (candidates nearest-to-now first, ts of the last real observation).
 
     An observation list is all past: the frame to draw and the last look at the
@@ -245,7 +286,7 @@ def _pick_frames(imgs):
     fr = sorted((f for f in imgs if f and len(f) >= 2), key=lambda f: float(f[1]))
     if not fr:
         return [], None
-    if RADAR_LIST_KIND == "forecast_images":
+    if (kind or RADAR_LIST_KIND) == "forecast_images":
         base_ts = float(fr[0][1])         # the observation the run started from
     else:
         base_ts = float(fr[-1][1])        # every frame is a look at the sky
@@ -263,7 +304,7 @@ def _radar_warm(key, lng, lat, token):
     so the next caller pays the same stall from scratch."""
     try:
         with net_budget.request_budget(_RA_BG_BUDGET):
-            d = json.loads(_get(_radar_list_url(token, lng, lat)))
+            d = json.loads(_radar_list_bytes(token, lng, lat))
             imgs = d.get("images") or []
             if not imgs:
                 # Measured against the real upstream, not assumed: a covered
@@ -301,7 +342,7 @@ def _radar_warm(key, lng, lat, token):
             # in state 2 forever while the cache filled with useless pngs.
             # Warm what the renderer will actually draw -- one helper decides
             # which frame matters, here and there.
-            _cands, _base = _pick_frames(imgs)
+            _cands, _base = _pick_frames(imgs, _kind_for(lng, lat))
             for cand in (_cands[:2] or [None]):
                 if cand is None:
                     continue
@@ -348,7 +389,7 @@ def _radar_render(code, lng, lat, imgs, small):
 
     Art depends on the marker and the size, which vary per request, so what is
     shared between requests is the fetched PNG, not the rendered map."""
-    cands, base_ts = _pick_frames(imgs)
+    cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
     for cand in cands[:2]:
         png = _peek(cand[0])
         if png is None:
@@ -561,7 +602,7 @@ def _mark(code):
 def radar_art(code, lng, lat, token, small=False):
     code = _mark(code)
     try:
-        d = json.loads(_get(_radar_list_url(token, lng, lat)))
+        d = json.loads(_radar_list_bytes(token, lng, lat))
     except Exception:
         return None
     imgs = d.get("images") or []
@@ -573,7 +614,7 @@ def radar_art(code, lng, lat, token, small=False):
     # own timestamp shown honestly) instead of degrading to no radar at all.
     png = None
     _err = None
-    _cands, base_ts = _pick_frames(imgs)
+    _cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
     for _cand in _cands[:2]:
         try:
             png = _get(_cand[0], timeout=20)
@@ -646,6 +687,14 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
             rt["precipitation"]["local"]["intensity"]))
     if kp:
         L.append(kp)
+    # Shadow the module-level basis labels with this sky's kind. A sky on the
+    # observation fallback really did have its motion measured, and saying
+    # "upstream forecast" about it would be the exact drift the comment above
+    # RADAR_LIST_KIND warns against: the label parting company with the data.
+    _MO_OBS = _kind_for(lng, lat) == "images"
+    _MO_BASIS_EN = "1h obs" if _MO_OBS else "upstream forecast"
+    _MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
+    _MO_BASIS_JA = "\u76f4\u8fd11h\u5b9f\u6e2c" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
     mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
         mo_sfx = (("  |  echo motion(%s): %s %s ~%.0f km/h" % (_MO_BASIS_EN, mo["arrow"], mo["dir_en"], mo["kmh"]))

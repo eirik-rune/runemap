@@ -67,7 +67,16 @@ class Ablation(unittest.TestCase):
         R._RA_INFLIGHT.clear(); R._RA_NONE.clear(); R._RA_FAIL.clear()
         R._MO_CACHE.clear(); R._MO_BUSY.clear()
         base = "http://127.0.0.1:%d" % self.port
-        R._radar_list_url = lambda token, lng, lat: base + "/radar/images"
+        # 8/2 12:06: setUp hijacks three module attributes but used to restore
+        # only _get. Everything discover ran after this class inherited a fake
+        # _radar_list_url and a _peek that always missed -- they passed, but
+        # against a module nobody was looking at. A leaked monkeypatch does not
+        # fail here, it fails in someone else's test, which is why it survived.
+        self._orig_list_url = R._radar_list_url
+        self._orig_peek = R._peek
+        self.addCleanup(setattr, R, "_radar_list_url", self._orig_list_url)
+        self.addCleanup(setattr, R, "_peek", self._orig_peek)
+        R._radar_list_url = lambda token, lng, lat, kind=None: base + "/radar/images"
         self._orig_get = R._get
 
         def _local(url, timeout=15):
