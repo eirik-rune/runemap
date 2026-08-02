@@ -212,6 +212,16 @@ def _peek(url):
 # its own age.
 RADAR_LIST_KIND = "forecast_images"   # "images" | "forecast_images"
 
+# The motion vector is computed from whatever RADAR_LIST_KIND selects. Fed
+# forecast frames it is no longer "we watched it move" but "upstream expects
+# it to move" -- measured 2026-08-02, the two sources disagreed on direction
+# at 2 of 2 stations, so this is a change of meaning, not of wording. Derive
+# the word from the constant: the label can never drift from the data again.
+_MO_OBS = RADAR_LIST_KIND == "images"
+_MO_BASIS_EN = "1h obs" if _MO_OBS else "upstream forecast"
+_MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
+_MO_BASIS_JA = "直近1h実測" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
+
 
 def _radar_list_url(token, lng, lat):
     return ("https://api.caiyunapp.com/v1/radar/%s?token=%s&lon=%s&lat=%s"
@@ -630,12 +640,12 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append(kp)
     mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
-        mo_sfx = (("  |  echo motion(1h obs): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_en"], mo["kmh"]))
+        mo_sfx = (("  |  echo motion(%s): %s %s ~%.0f km/h" % (_MO_BASIS_EN, mo["arrow"], mo["dir_en"], mo["kmh"]))
                   if lang == "en" else
-                  ("  |  \u56de\u6ce2\u79fb\u52a8(\u8fd11h\u5b9e\u6d4b): %s %s ~%.0f km/h" % (mo["arrow"], mo["dir_cn"], mo["kmh"])))
+                  ("  |  \u56de\u6ce2\u79fb\u52a8(%s): %s %s ~%.0f km/h" % (_MO_BASIS_ZH, mo["arrow"], mo["dir_cn"], mo["kmh"])))
     elif mo.get("kind") == "stationary":
-        mo_sfx = ("  |  echo quasi-stationary(<5km/h, 1h obs)" if lang == "en"
-                  else "  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, \u8fd11h\u5b9e\u6d4b)")
+        mo_sfx = (("  |  echo quasi-stationary(<5km/h, %s)" % _MO_BASIS_EN) if lang == "en"
+                  else ("  |  \u56de\u6ce2\u51c6\u9759\u6b62(<5km/h, %s)" % _MO_BASIS_ZH))
     else:
         mo_sfx = ""
     # The arrow goes on its own line under the map, flush left, where the eye lands
@@ -650,22 +660,22 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     # column in a Latin terminal and two in a CJK one, so a 48-column row holding
     # one would shear for exactly the readers I cannot reproduce locally.
     if mo.get("kind") == "moving":
-        mo_line = ("%s %s ~%.0f km/h   echo motion, 1h obs"
-                   % (mo["arrow"], mo["dir_en"], mo["kmh"]) if lang == "en" else
-                   "%s %s ~%.0f km/h   回波移动, 近1h实测"
-                   % (mo["arrow"], mo["dir_cn"], mo["kmh"]))
+        mo_line = ("%s %s ~%.0f km/h   echo motion, %s"
+                   % (mo["arrow"], mo["dir_en"], mo["kmh"], _MO_BASIS_EN) if lang == "en" else
+                   "%s %s ~%.0f km/h   回波移动, %s"
+                   % (mo["arrow"], mo["dir_cn"], mo["kmh"], _MO_BASIS_ZH))
     elif mo.get("kind") == "stationary":
-        mo_line = ("= echo quasi-stationary (<5km/h, 1h obs)" if lang == "en"
-                   else "= 回波准静止 (<5km/h, 近1h实测)")
+        mo_line = (("= echo quasi-stationary (<5km/h, %s)" % _MO_BASIS_EN) if lang == "en"
+                   else ("= 回波准静止 (<5km/h, %s)" % _MO_BASIS_ZH))
     else:
         mo_line = _mo_undet(mo.get("why"), lang) if mo.get("kind") == "undetermined" else (
                    "~ echo motion: fetching (retry in ~60s)" if lang == "en"
                    else "~ 回波移动: 获取中(约60s后重试)")
     if lang == "ja":
         if mo.get("kind") == "moving":
-            mo_line = "%s %s ~%.0f km/h   エコー移動, 直近1h実測" % (mo["arrow"], mo["dir_en"], mo["kmh"])
+            mo_line = "%s %s ~%.0f km/h   エコー移動, %s" % (mo["arrow"], mo["dir_en"], mo["kmh"], _MO_BASIS_JA)
         elif mo.get("kind") == "stationary":
-            mo_line = "= エコーほぼ停滞 (<5km/h, 直近1h実測)"
+            mo_line = "= エコーほぼ停滞 (<5km/h, %s)" % _MO_BASIS_JA
         elif mo.get("kind") == "undetermined":
             mo_line = _mo_undet(mo.get("why"), "ja")
         else:
