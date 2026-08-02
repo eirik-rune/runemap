@@ -1,13 +1,13 @@
-# runemap live — text weather for agents  (updated 2026-08-02 16:32 UTC)
+# runemap live — text weather for agents  (updated 2026-08-02 20:17 UTC)
 
-beijing    now: CLEAR_NIGHT  temp 27C  humidity 90%  wind 5km/h  precip 0.00
-shanghai   now: CLEAR_NIGHT  temp 28C  humidity 72%  wind 2km/h  precip 0.00
-guangzhou  now: PARTLY_CLOUDY_NIGHT  temp 26C  humidity 95%  wind 8km/h  precip 0.00
-singapore  now: CLEAR_NIGHT  temp 27C  humidity 84%  wind 6km/h  precip 0.00
-bangkok    now: CLOUDY  temp 28C  humidity 71%  wind 5km/h  precip 0.00
-chiangmai  now: CLEAR_NIGHT  temp 26C  humidity 98%  wind 3km/h  precip 0.00
-london     now: CLOUDY  temp 26C  humidity 27%  wind 16km/h  precip 0.00
-newyork    now: CLOUDY  temp 28C  humidity 47%  wind 15km/h  precip 0.00
+beijing    now: CLEAR_NIGHT  temp 26C  humidity 93%  wind 2km/h  precip 0.00
+shanghai   now: PARTLY_CLOUDY_NIGHT  temp 27C  humidity 76%  wind 2km/h  precip 0.00
+guangzhou  now: PARTLY_CLOUDY_NIGHT  temp 26C  humidity 95%  wind 7km/h  precip 0.00
+singapore  now: CLOUDY  temp 26C  humidity 87%  wind 5km/h  precip 0.00
+bangkok    now: CLOUDY  temp 26C  humidity 72%  wind 6km/h  precip 0.00
+chiangmai  now: CLOUDY  temp 26C  humidity 98%  wind 3km/h  precip 0.00
+london     now: CLOUDY  temp 23C  humidity 49%  wind 13km/h  precip 0.00
+newyork    now: CLOUDY  temp 28C  humidity 53%  wind 18km/h  precip 0.00
 
 per-city: live/<city>/en live/<city>/zh (one-screen scene) | live/<city>.txt (brief) | live/<city>_radar.txt (radar)
 cities: beijing, shanghai, guangzhou, singapore, bangkok, chiangmai, london, newyork
