@@ -731,6 +731,14 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         _age_tok = "ok" if obs_age < RADAR_STALE_MIN else "stale"
         _axis1 = ("predict %s" % time.strftime("%H:%M", time.gmtime(ts + tzh * 3600))
                   if _extrapolated else "obs")
+        # Contract for parsers (bob, 8/2 11:05): key on the TOKEN, never on the
+        # field count. "fetching" and "none" carry no age at all -- there is no
+        # frame, so there is no observation to be old. We deliberately do not
+        # print a placeholder: a dash is a value-shaped nothing, which a machine
+        # will try to parse and a human will ask about. Same rule that made us
+        # delete the word "now" this morning -- one fewer true statement beats
+        # one more ambiguous symbol. A fourth state added later must not break
+        # a reader that expects "age:" to be optional.
         L.append("radar: %-14s age: %dmin %s" % (_axis1, obs_age, _age_tok))
         if lang == "ja":
             L.append("レーダー (現地 %s, %d分前), 1文字≈%.0fkm, [%s]=%s" % (t_obs, obs_age, kmcol, code, name) + mo_sfx)
