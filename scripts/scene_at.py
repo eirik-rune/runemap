@@ -41,7 +41,15 @@ def _usable(kind, b):
     if not b:
         return False
     if kind == "png":
-        return len(b) > 512
+        # Measured 8/2 12:16, bangkok: a rainless sky is a VALID 268-byte png
+        # (223x217, colortype 6, one distinct byte after inflate -- fully
+        # transparent). The old `len(b) > 512` read that as garbage, so the
+        # frame was fetched, judged unusable, never stored; _peek missed for
+        # ever and the sky sat in "fetching -- ask again in ~60s" permanently.
+        # Every dry sky, not one city. Size was standing in for validity: the
+        # emptier the sky the smaller the file, so the test was strictest on
+        # exactly the answer it should have accepted. Judge the container.
+        return b[:8] == b"\x89PNG\r\n\x1a\n" and b[-8:-4] == b"IEND"
     try:
         j = _json.loads(b)
     except Exception:
