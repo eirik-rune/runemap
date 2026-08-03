@@ -387,6 +387,13 @@ def _radar_warm(key, lng, lat, token):
                                 rec[1] = now
                             else:
                                 _RA_NONE[key] = now
+                                # The one decision on this path a user can call a lie, and until now it
+                                # left no trace: I only caught london saying "no coverage" nine times on
+                                # 8/03 because I happened to be sampling the user boundary that minute.
+                                # A grep for it in the journal returned 0 -- absence of instrument, not
+                                # of event. Rare by construction (once per key per _RA_NONE_TTL).
+                                sys.stderr.write("RADAR-NONE-CONFIRM %r after %d failures spanning %.0fs\n"
+                                                 % (key, rec[0], now - rec[1]))
                                 _RA_FAIL.pop(key, None)
                 return
             with _RA_LOCK:
