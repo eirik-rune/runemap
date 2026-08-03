@@ -1,9 +1,9 @@
-# bangkok  (100.5018,13.7563)  local 2026-08-04 02:08  UTC+7
-now: CLOUDY  temp 27C  humidity 74%  wind 7km/h  precip 0.00
+# bangkok  (100.5018,13.7563)  local 2026-08-04 05:45  UTC+7
+now: CLOUDY  temp 26C  humidity 71%  wind 6km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
 next 24h precip (mm/h):                           peak 0.0
-next 24h temp 26..33C: ▂▁▁▁ ▁▃▅▆▇███▆▇▅▄▄▃▃▃▂▂▂
-sky: +0h:CLOUDY +10h:PARTLY_CLOUDY_DAY +11h:CLOUDY +12h:PARTLY_CLOUDY_DAY +14h:CLOUDY +18h:PARTLY_CLOUDY_NIGHT
-keypoint: 最近的降雨带在东北38公里外呢
+next 24h temp 26..33C: ▁ ▁▃▅▆▇███▆▇▅▄▄▃▃▃▂▂▂▂▁▁
+sky: +0h:CLOUDY +7h:PARTLY_CLOUDY_DAY +8h:CLOUDY +9h:PARTLY_CLOUDY_DAY +11h:CLOUDY +15h:PARTLY_CLOUDY_NIGHT
+keypoint: 最近的降雨带在北边78公里外呢
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
