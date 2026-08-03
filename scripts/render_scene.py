@@ -178,7 +178,7 @@ def _motion_peek(imgs, lng, lat):
 #   state 3 is proven by a successful list fetch that contains no images.
 #   It is NEVER inferred from a failure. Failures are state 2, always.
 #
-STATE_OK, STATE_FETCHING, STATE_NONE = "ok", "fetching", "none"
+STATE_OK, STATE_FETCHING = "ok", "fetching"
 
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
@@ -187,11 +187,7 @@ RADAR_STALE_MIN = 20
 
 _RA_LOCK = threading.Lock()
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
-_RA_NONE = {}                     # key -> ts, memo of confirmed no-coverage
-_RA_NONE_TTL = 3600.0             # coverage does not change minute to minute
-_RA_FAIL = {}                     # key -> [count, first_ts, last_ts]
-_RA_NONE_CONFIRM = 3              # how many failures before we dare say "never"
-_RA_NONE_SPAN = 120.0             # ...and spread over at least this long
+_RA_FAIL = {}                     # key -> ts of the last refusal (throttle only)
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
 _RA_BG_BUDGET = 45.0              # the background warm may outlive the response
                                   # but not the heat death of the universe
@@ -228,52 +224,6 @@ def _sky_key(lng, lat):
     return (round(float(lat), 1), round(float(lng), 1))
 
 
-# Has this sky ever produced frames? A yes is the one fact that makes several
-# consecutive failures un-interpretable as "no coverage": measured 2026-08-03
-# 09:19-09:42 (ops/evidence/), london, cairo and mumbai all answered
-# forecast_images=404 + images=200/status=failed/frames=0 -- byte-identically --
-# for twelve straight minutes while bangkok stayed ok/26, and london had been
-# printing a map four minutes before it started telling users the sky did not
-# exist. The confirmation window (3 failures over 120s) made "never" cost
-# something; it could not make it true.
-#
-# The marker lives on disk because the memory that matters most is the one that
-# has to survive a restart DURING the outage, and because the two instances
-# behind the pool share the disk but not their dicts -- the same reason the
-# coverage memo could previously answer two ways to the same city.
-_RA_SEEN = {}
-
-
-def _sky_seen_path(key):
-    d = os.environ.get("RUNEMAP_CACHE")
-    return os.path.join(d, "sky_%.1f_%.1f.seen" % key) if d else None
-
-
-def _sky_remember(key):
-    _RA_SEEN[key] = time.time()
-    p = _sky_seen_path(key)
-    if p is None:
-        return                      # bare CLI: in-process memory is all there is
-    try:
-        if not os.path.exists(p) or time.time() - os.path.getmtime(p) > 3600:
-            open(p, "ab").close()
-            os.utime(p, None)
-    except OSError:
-        pass                        # a lost marker only costs us caution
-
-
-def _sky_has_history(key):
-    if key in _RA_SEEN:
-        return True
-    p = _sky_seen_path(key)
-    if p is None:
-        return False
-    try:
-        os.path.getmtime(p)
-    except OSError:
-        return False
-    _RA_SEEN[key] = 0.0
-    return True
 
 
 def _kind_for(lng, lat):
@@ -363,50 +313,27 @@ def _radar_warm(key, lng, lat, token):
                 # COVERED city can get "failed" transiently, which is why that
                 # body is never cached.
                 #
-                # One ambiguous signal, two meanings, and guessing wrong in the
-                # "none" direction is the exact lie this job exists to remove:
-                # telling someone "never come back" about a sky that has rain.
-                # So a single failure is only ever state 2. "Never" has to be
-                # earned: several failures, spread over time.
-                now = time.time()
+                # bob 8/3 14:35: "no radar means you did not get the radar.
+                # Nobody is going to believe there is no radar just because
+                # you say so." That sentence deletes the verdict. The whole
+                # confirmation machinery existed to earn the right to say
+                # "this sky has no coverage" -- a claim about the world,
+                # backed only by "I asked three times and got nothing",
+                # which is a claim about me. Deleted: the counter, the memo,
+                # the .seen history, and with them the observer effect my
+                # own probe produced on 8/3 12:4x (a missing capability
+                # outranks a guard: no probe can manufacture a verdict that
+                # does not exist).
+                #
+                # What SURVIVES is the throttle. It looked like part of the
+                # verdict, but its job is to stop re-asking a sky that just
+                # refused -- otherwise the skies that never answer are
+                # exactly the ones we spend upstream quota on.
                 with _RA_LOCK:
-                    rec = _RA_FAIL.get(key)
-                    if rec is None:
-                        _RA_FAIL[key] = [1, now, now]
-                    else:
-                        rec[0] += 1
-                        rec[2] = now
-                        if (rec[0] >= _RA_NONE_CONFIRM
-                                and now - rec[1] >= _RA_NONE_SPAN):
-                            if _sky_has_history(key):
-                                # Seen working before, so all these failures
-                                # prove is that upstream is sick. "Never" is
-                                # not available for a sky we have watched rain
-                                # on; keep saying "not yet" and keep counting.
-                                # The mirror of RADAR-NONE-CONFIRM, and Luoshu is right that one
-                                # without the other does not close: this is the moment we were
-                                # ABOUT to tell someone "no radar here" and refused, because we
-                                # have watched frames arrive for this sky. Log only the decision
-                                # we made, and "why was london never declared dead?" is still a
-                                # question only source code can answer.
-                                sys.stderr.write("RADAR-NONE-REFUSED %r had %d failures spanning %.0fs; sky has history\n"
-                                                 % (key, rec[0], now - rec[1]))
-                                rec[0] = 0
-                                rec[1] = now
-                            else:
-                                _RA_NONE[key] = now
-                                # The one decision on this path a user can call a lie, and until now it
-                                # left no trace: I only caught london saying "no coverage" nine times on
-                                # 8/03 because I happened to be sampling the user boundary that minute.
-                                # A grep for it in the journal returned 0 -- absence of instrument, not
-                                # of event. Rare by construction (once per key per _RA_NONE_TTL).
-                                sys.stderr.write("RADAR-NONE-CONFIRM %r after %d failures spanning %.0fs\n"
-                                                 % (key, rec[0], now - rec[1]))
-                                _RA_FAIL.pop(key, None)
+                    _RA_FAIL[key] = time.time()
                 return
             with _RA_LOCK:
-                _RA_FAIL.pop(key, None)      # it answered; forget the doubt
-            _sky_remember(key)               # ...and remember that it can answer
+                _RA_FAIL.pop(key, None)      # it answered; stop throttling
             # imgs[-1] used to be "the newest frame", which is true of an
             # observation list and FALSE of a forecast list: there the last
             # element is the FARTHEST FUTURE (+227min, measured 8/2). The warm
@@ -496,32 +423,8 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
 
     now = time.time()
     with _RA_LOCK:
-        seen = _RA_NONE.get(key)
         fail = _RA_FAIL.get(key)
-    if seen is not None and now - seen < _RA_NONE_TTL:
-        # Two instances serve this site behind one upstream pool. They share the
-        # frame pool on disk but each keeps its own _RA_NONE, so on 8/1 the same
-        # London request answered "ok" on :8788 and "no coverage here" on :8789 --
-        # a coin flip deciding whether a stranger is told to come back or told
-        # never to. "Never" is the one state they cannot argue with, so it may
-        # not rest on private memory when shared evidence contradicts it: if a
-        # peer has frames for this sky, my memo is simply wrong. Drop it.
-        raw = _peek(_radar_list_url(token, lng, lat))
-        imgs = []
-        if raw is not None:
-            try:
-                imgs = (json.loads(raw).get("images") or [])
-            except Exception:
-                imgs = []
-        if not imgs:
-            return STATE_NONE, None
-        with _RA_LOCK:
-            _RA_NONE.pop(key, None)
-            _RA_FAIL.pop(key, None)
-        got = _radar_render(code, lng, lat, imgs, small)
-        if got:
-            return STATE_OK, got
-    if fail is not None and now - fail[2] < _RA_FAIL_COOLDOWN:
+    if fail is not None and now - fail < _RA_FAIL_COOLDOWN:
         # A sky that just refused us: still state 2 (we are not sure it is
         # "never"), but do not hammer the upstream once per request while we
         # make up our mind.
@@ -536,11 +439,9 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         except Exception:
             return None
         if not imgs:
-            # Unknown, not proven. "Never" is decided in one place only -- the
-            # failure counter in _radar_warm -- because a single empty answer
-            # is the ambiguous signal this whole design turns on. Promoting to
-            # STATE_NONE here would let the cache path walk straight around the
-            # confirmation rule, which is exactly what the tests caught.
+            # Unknown, not proven: an empty list out of a cached body says
+            # nothing about the sky, and there is no verdict left to promote
+            # it to. Ask again.
             return None
         got = _radar_render(code, lng, lat, imgs, small)
         return (STATE_OK, got) if got else None
@@ -879,26 +780,18 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
                 L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
     else:
-        # bob 7/30 19:26: a transient tile stall must degrade, not 502. What was
-        # still missing is that a stall and genuine no-coverage produced the same
-        # answer: radar_art() returned None for both, and serve.py only set
-        # radar_err when it *raised*, so an upstream hiccup printed "no coverage
-        # here" -- "never come back" said to a caller whose truth was "not yet".
-        # State 3 is proven by an empty image list now, never inferred from a
-        # failure; every failure is state 2.
-        st = radar_state or (STATE_FETCHING if radar_err else STATE_NONE)
-        if st == STATE_NONE:
-            L.append("radar: none -- no coverage at this location (text brief: live/%s.txt)" % name
-                     if lang == "en" else
-                     "radar: none -- この地点はレーダー圏外 (テキスト概況: live/%s.txt)" % name
-                     if lang == "ja" else
-                     "radar: none -- \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
-        else:
-            L.append("radar: fetching -- looking for this sky; no frame yet; weather above is live"
-                     if lang == "en" else
-                     "radar: fetching -- この空を探しています、まだフレームがありません; 上の天気は実況です"
-                     if lang == "ja" else
-                     "radar: fetching -- \u6b63\u5728\u627e\u8fd9\u7247\u5929, \u8fd8\u6ca1\u6709\u5e27; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
+        # bob 7/30 19:26: a transient tile stall must degrade, not 502. And bob
+        # 8/3 14:35: "no radar means you did not get the radar. Nobody is going
+        # to believe there is no radar just because you say so." So there is one
+        # not-drawn state left and its sentence is about US: we have no frames.
+        # It cannot be wrong about the world, which is why radar_err no longer
+        # changes it and why nothing has to be earned before we may say it.
+        st = radar_state or STATE_FETCHING
+        L.append("radar: fetching -- no radar frames for this sky yet; weather above is live"
+                 if lang == "en" else
+                 "radar: fetching -- この空のレーダーはまだ取得できていません; 上の天気は実況です"
+                 if lang == "ja" else
+                 "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"

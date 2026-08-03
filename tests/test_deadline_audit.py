@@ -150,7 +150,7 @@ class Recorder:
 
 class Deadlines(unittest.TestCase):
     def setUp(self):
-        for d in (R._RA_INFLIGHT, R._RA_NONE, R._RA_FAIL, R._MO_CACHE):
+        for d in (R._RA_INFLIGHT, R._RA_FAIL, R._MO_CACHE):
             d.clear()
         R._MO_BUSY.clear()
         self._peek, self._get = R._peek, R._get

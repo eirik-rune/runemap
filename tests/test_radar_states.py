@@ -1,4 +1,9 @@
-"""Three radar states: proven, not inferred; and one fetch per sky.
+"""Two radar states -- drawn, or not drawn yet -- and one fetch per sky.
+
+State 3 ("this sky has no coverage") was deleted 8/3: it was a claim about
+the world backed only by "I asked and got nothing", which is a claim about us.
+What is left of the failure counter is a throttle, and the last class here is
+the test that it survived.
 
 Everything here is offline. The one thing these tests must not do is what my
 Connection: close bug did on 7/30 -- pass 9/9 against a world I invented. So
@@ -16,16 +21,25 @@ import render_scene as R
 class Base(unittest.TestCase):
     def setUp(self):
         R._RA_INFLIGHT.clear()
-        R._RA_NONE.clear()
-        R._RA_SEEN.clear()
         R._RA_FAIL.clear()
-        R._RA_NONE_SPAN = 0.0        # the real one is 120s; shrink, do not skip
         R._RA_FAIL_COOLDOWN = 0.0
         R._MO_CACHE.clear()
         R._MO_BUSY.clear()
         self.calls = []
         self.pool = {}
         R._peek = lambda url: self.pool.get(url)
+        # 8/3: this suite's isolation was accidental. TestFetchingBecomesOk
+        # swaps _radar_render for a fake and never puts the real one back, and
+        # the class that feeds b"PNG" to the renderer only survived because
+        # dir(module) is alphabetical and sorted it AFTER that class. Renaming
+        # one class today (state 3 is gone, so "StateThreeIsEarned" was a lie)
+        # moved it first and it died inside PIL -- a green suite that depended
+        # on class names. Order must not be load-bearing: install the fake
+        # here, and restore the real function no matter how the test exits.
+        self._real_render = R._radar_render
+        self.addCleanup(setattr, R, "_radar_render", self._real_render)
+        R._radar_render = lambda code, lng, lat, imgs, small: (
+            ("ART", 10.0, 1600.0, {"kind": None}) if imgs else None)
 
     def _get_factory(self, list_body=None, raises=None, delay=0.0):
         def _get(url, timeout=15):
@@ -48,7 +62,7 @@ def _settle(timeout=3.0):
         time.sleep(0.02)
 
 
-class TestStateThreeIsEarned(Base):
+class TestARefusalStaysAboutUs(Base):
     def test_one_empty_answer_is_not_yet_none(self):
         """Measured: the upstream says {"status":"failed"} for open ocean AND,
         per scene_at._usable's incident note, transiently for covered cities.
@@ -57,15 +71,7 @@ class TestStateThreeIsEarned(Base):
         st, payload = R.radar_resolve("><", -140.0, -30.0, "T", wait=2.0)
         self.assertEqual(st, R.STATE_FETCHING)
         self.assertIsNone(payload)
-        self.assertEqual(R._RA_NONE, {})
 
-    def test_repeated_refusal_earns_none(self):
-        R._get = self._get_factory(list_body=b'{"status": "failed"}')
-        for _ in range(R._RA_NONE_CONFIRM):
-            R.radar_resolve("><", -140.0, -30.0, "T", wait=0.5)
-            _settle()
-        st, _ = R.radar_resolve("><", -140.0, -30.0, "T", wait=0)
-        self.assertEqual(st, R.STATE_NONE)
 
     def test_a_refusal_then_frames_forgets_the_doubt(self):
         """A covered city that blipped must not accumulate toward "never"."""
@@ -87,20 +93,7 @@ class TestStateThreeIsEarned(Base):
                 R._get = self._get_factory(raises=exc)
                 st, _ = R.radar_resolve("><", 116.39, 39.93, "T", wait=0.6)
                 self.assertEqual(st, R.STATE_FETCHING)
-                self.assertNotIn((round(39.93, 1), round(116.39, 1)), R._RA_NONE)
 
-    def test_none_is_memoised_without_refetch(self):
-        R._get = self._get_factory(list_body=b'{"status": "failed"}')
-        for _ in range(R._RA_NONE_CONFIRM):
-            R.radar_resolve("><", -140.0, -30.0, "T", wait=0.5)
-            _settle()
-        self.assertEqual(R.radar_resolve("><", -140.0, -30.0, "T", wait=0)[0],
-                         R.STATE_NONE)
-        n = len(self.calls)
-        for _ in range(20):
-            st, _ = R.radar_resolve("><", -140.0, -30.0, "T", wait=0)
-            self.assertEqual(st, R.STATE_NONE)
-        self.assertEqual(len(self.calls), n, "no-coverage must not re-query")
 
 
 class TestSingleFlight(Base):
@@ -188,21 +181,21 @@ class CooldownShortensTheWait(unittest.TestCase):
     upstream that same budget buys nothing -- the ablation measures 6.25s and
     still answers "fetching", six seconds spent to say what we knew at once.
 
-    So the fail counter is load-bearing beyond state 3: the first reader pays
+    Throttling is now the counter's ONLY job (state 3 is gone): the first reader
     full price to find out the sky is refusing, and for the next 30s everyone
     else pays 1.5s. Without this the wall change would make a broken upstream
     six times more expensive for readers than it was under the 3s wall.
     """
 
     def setUp(self):
-        for d in (R._RA_INFLIGHT, R._RA_NONE, R._RA_FAIL):
+        for d in (R._RA_INFLIGHT, R._RA_FAIL):
             d.clear()
 
     def test_cooling_sky_waits_the_short_budget(self):
         import wall as W
         key = (1.0, 1.0)
         with R._RA_LOCK:
-            R._RA_FAIL[key] = [1, time.time(), time.time()]
+            R._RA_FAIL[key] = time.time()
         self.assertEqual(W.radar_wait(cooling=True, left=None),
                          W.RADAR_WAIT_COOLDOWN)
         self.assertGreater(W.radar_wait(cooling=False, left=None),

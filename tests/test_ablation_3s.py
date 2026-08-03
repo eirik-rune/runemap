@@ -64,7 +64,7 @@ class Ablation(unittest.TestCase):
         cls.srv.shutdown()
 
     def setUp(self):
-        R._RA_INFLIGHT.clear(); R._RA_NONE.clear(); R._RA_FAIL.clear()
+        R._RA_INFLIGHT.clear(); R._RA_FAIL.clear()
         R._MO_CACHE.clear(); R._MO_BUSY.clear()
         base = "http://127.0.0.1:%d" % self.port
         # 8/2 12:06: setUp hijacks three module attributes but used to restore
