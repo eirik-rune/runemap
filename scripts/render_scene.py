@@ -606,20 +606,20 @@ def build_fetching(lang, name):
     if lang == "ja":
         return ("# %s 天気一覧\n"
                 "weather: fetching -- まだ取得できていません、約60秒後に再度\n"
-                "radar: fetching -- まだ取得できていません、約60秒後に再度\n"
+                "radar: fetching -- この空を探しています、まだフレームがありません\n"
                 "\n"
                 "data: 彩雲天気 caiyunapp.com | runemap で描画 "
                 "(github.com/eirik-rune/runemap)\n") % name
     if lang == "en":
         return ("# %s weather scene\n"
                 "weather: fetching -- not ready yet, ask again in ~60s\n"
-                "radar: fetching -- not ready yet, ask again in ~60s\n"
+                "radar: fetching -- looking for this sky; no frame yet\n"
                 "\n"
                 "data: Caiyun Weather caiyunapp.com | rendered by runemap "
                 "(github.com/eirik-rune/runemap)\n") % name
     return ("# %s \u5929\u6c14\u5b9e\u51b5\n"
             "weather: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
-            "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
+            "radar: fetching -- \u6b63\u5728\u627e\u8fd9\u7247\u5929, \u8fd8\u6ca1\u6709\u5e27\n"
             "\n"
             "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 "
             "(github.com/eirik-rune/runemap)\n") % name
@@ -879,11 +879,11 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
                      if lang == "ja" else
                      "radar: none -- \u8be5\u4f4d\u7f6e\u65e0\u96f7\u8fbe\u8986\u76d6 (\u6587\u672c\u7b80\u62a5: live/%s.txt)" % name)
         else:
-            L.append("radar: fetching -- not ready yet, ask again in ~60s; weather above is live"
+            L.append("radar: fetching -- looking for this sky; no frame yet; weather above is live"
                      if lang == "en" else
-                     "radar: fetching -- まだ取得できていません、約60秒後に再度; 上の天気は実況です"
+                     "radar: fetching -- この空を探しています、まだフレームがありません; 上の天気は実況です"
                      if lang == "ja" else
-                     "radar: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
+                     "radar: fetching -- \u6b63\u5728\u627e\u8fd9\u7247\u5929, \u8fd8\u6ca1\u6709\u5e27; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6")
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
