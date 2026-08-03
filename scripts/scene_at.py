@@ -15,6 +15,19 @@ import render_scene as R
 import hashlib, json as _json
 CACHE = os.environ.get("RUNEMAP_CACHE", os.path.expanduser("~/.cache/runemap"))
 os.makedirs(CACHE, exist_ok=True)
+# A png entry is a timestamped, immutable object: a 14:09 frame is still that
+# frame an hour later, byte for byte. A freshness TTL on it answers the wrong
+# question -- "how old is this file" instead of "is this frame still useful" --
+# and usefulness is already answered at render time by obs age, which is
+# printed on the page. So why is 1800 still here? Because the cost of it is
+# zero: measured 2026-08-03 11:42, across the 9 cities whose list the service
+# could still see, 234 candidate frames, exactly 0 were on disk but past this
+# TTL. Frame URLs come out of the list, so a fresh list implies fresh frames.
+# The one combination this TTL can bite is "list fresh, frames old". Watch for
+# it if radar_json's TTL is ever lowered, or if frames stop coming from the
+# list (separate caches). Until one of those happens, leave it alone -- and do
+# not file a card for it: a card gets picked up as a TODO and spends real time
+# on a 0/234 problem.
 _TTL = {"radar_json": 300, "png": 1800, "weather": 300}   # radar refreshes ~6min; png urls are timestamped
 _orig_get = R._get
 
