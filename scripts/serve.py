@@ -106,8 +106,22 @@ def _is_file_probe(spec):
     """Crawler/browser probe (/robots.txt, /favicon.ico) vs a place name that
     happens to contain a dot ('st.petersburg'). Only a known static-file
     extension counts as a probe -- a dot alone is not evidence."""
-    tail = spec.split("/")[-1].lower()
-    return "." in tail and tail.rsplit(".", 1)[-1] in _PROBE_EXT
+    # 8/3 #19: the only consumer (see the routing branch below) hands over the
+    # WHOLE joined spec, so reading just the last segment let `.git/config`
+    # through -- tail `config`, no dot, no extension -- straight into the place
+    # matcher, which fuzzy-matched it to a real town and rendered its weather.
+    # bob reproduced it from outside the host. Check every segment, and treat a
+    # leading dot as a probe on its own: place names never begin with a dot,
+    # while dotfile probes (.git, .env, .aws) carry no known extension at all.
+    for seg in spec.split("/"):
+        seg = seg.strip().lower()
+        if not seg:
+            continue
+        if seg.startswith("."):
+            return True
+        if "." in seg and seg.rsplit(".", 1)[-1] in _PROBE_EXT:
+            return True
+    return False
 
 
 def _as_coords(spec):
