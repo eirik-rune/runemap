@@ -383,6 +383,14 @@ def _radar_warm(key, lng, lat, token):
                                 # prove is that upstream is sick. "Never" is
                                 # not available for a sky we have watched rain
                                 # on; keep saying "not yet" and keep counting.
+                                # The mirror of RADAR-NONE-CONFIRM, and Luoshu is right that one
+                                # without the other does not close: this is the moment we were
+                                # ABOUT to tell someone "no radar here" and refused, because we
+                                # have watched frames arrive for this sky. Log only the decision
+                                # we made, and "why was london never declared dead?" is still a
+                                # question only source code can answer.
+                                sys.stderr.write("RADAR-NONE-REFUSED %r had %d failures spanning %.0fs; sky has history\n"
+                                                 % (key, rec[0], now - rec[1]))
                                 rec[0] = 0
                                 rec[1] = now
                             else:
