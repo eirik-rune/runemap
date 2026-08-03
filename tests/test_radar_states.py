@@ -17,6 +17,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         R._RA_INFLIGHT.clear()
         R._RA_NONE.clear()
+        R._RA_SEEN.clear()
         R._RA_FAIL.clear()
         R._RA_NONE_SPAN = 0.0        # the real one is 120s; shrink, do not skip
         R._RA_FAIL_COOLDOWN = 0.0

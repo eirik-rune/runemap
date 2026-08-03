@@ -228,6 +228,54 @@ def _sky_key(lng, lat):
     return (round(float(lat), 1), round(float(lng), 1))
 
 
+# Has this sky ever produced frames? A yes is the one fact that makes several
+# consecutive failures un-interpretable as "no coverage": measured 2026-08-03
+# 09:19-09:42 (ops/evidence/), london, cairo and mumbai all answered
+# forecast_images=404 + images=200/status=failed/frames=0 -- byte-identically --
+# for twelve straight minutes while bangkok stayed ok/26, and london had been
+# printing a map four minutes before it started telling users the sky did not
+# exist. The confirmation window (3 failures over 120s) made "never" cost
+# something; it could not make it true.
+#
+# The marker lives on disk because the memory that matters most is the one that
+# has to survive a restart DURING the outage, and because the two instances
+# behind the pool share the disk but not their dicts -- the same reason the
+# coverage memo could previously answer two ways to the same city.
+_RA_SEEN = {}
+
+
+def _sky_seen_path(key):
+    d = os.environ.get("RUNEMAP_CACHE")
+    return os.path.join(d, "sky_%.1f_%.1f.seen" % key) if d else None
+
+
+def _sky_remember(key):
+    _RA_SEEN[key] = time.time()
+    p = _sky_seen_path(key)
+    if p is None:
+        return                      # bare CLI: in-process memory is all there is
+    try:
+        if not os.path.exists(p) or time.time() - os.path.getmtime(p) > 3600:
+            open(p, "ab").close()
+            os.utime(p, None)
+    except OSError:
+        pass                        # a lost marker only costs us caution
+
+
+def _sky_has_history(key):
+    if key in _RA_SEEN:
+        return True
+    p = _sky_seen_path(key)
+    if p is None:
+        return False
+    try:
+        os.path.getmtime(p)
+    except OSError:
+        return False
+    _RA_SEEN[key] = 0.0
+    return True
+
+
 def _kind_for(lng, lat):
     with _RA_LOCK:
         return _RA_KIND.get(_sky_key(lng, lat), RADAR_LIST_KIND)
@@ -330,11 +378,20 @@ def _radar_warm(key, lng, lat, token):
                         rec[2] = now
                         if (rec[0] >= _RA_NONE_CONFIRM
                                 and now - rec[1] >= _RA_NONE_SPAN):
-                            _RA_NONE[key] = now
-                            _RA_FAIL.pop(key, None)
+                            if _sky_has_history(key):
+                                # Seen working before, so all these failures
+                                # prove is that upstream is sick. "Never" is
+                                # not available for a sky we have watched rain
+                                # on; keep saying "not yet" and keep counting.
+                                rec[0] = 0
+                                rec[1] = now
+                            else:
+                                _RA_NONE[key] = now
+                                _RA_FAIL.pop(key, None)
                 return
             with _RA_LOCK:
                 _RA_FAIL.pop(key, None)      # it answered; forget the doubt
+            _sky_remember(key)               # ...and remember that it can answer
             # imgs[-1] used to be "the newest frame", which is true of an
             # observation list and FALSE of a forecast list: there the last
             # element is the FARTHEST FUTURE (+227min, measured 8/2). The warm
