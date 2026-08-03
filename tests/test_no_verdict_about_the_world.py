@@ -34,20 +34,23 @@ WORLD_CLAIMS = ("no coverage", "coverage at this location", "\u30ec\u30fc\u30c0\
                 "\u65e0\u96f7\u8fbe\u8986\u76d6")
 
 
+_CLEAR_NAMES = ("_RA_INFLIGHT", "_RA_FAIL", "_MO_CACHE", "_MO_BUSY")
+_RESTORE_NAMES = ("_RA_FAIL_COOLDOWN",)
+# The authority for "must not exist" -- deleted by bob 2026-08-03 14:35.
+GONE_BY_DECREE = ("STATE_NONE", "_RA_NONE", "_RA_NONE_TTL", "_RA_NONE_CONFIRM",
+                  "_RA_NONE_SPAN", "_RA_SEEN", "_sky_remember", "_sky_has_history",
+                  "_sky_seen_path")
+
 class Base(unittest.TestCase):
     def setUp(self):
         # getattr-guarded so this file runs both before and after the deletion.
-        for n in ("_RA_INFLIGHT", "_RA_NONE", "_RA_SEEN", "_RA_FAIL",
-                  "_MO_CACHE", "_MO_BUSY"):
-            d = getattr(R, n, None)
-            if d is not None:
-                d.clear()
+        for n in _CLEAR_NAMES:
+            getattr(R, n).clear()
         # Restore, do not just set: leaving a mutated module global is the
         # exact bug this suite was just caught having (see test_radar_states).
-        for n in ("_RA_NONE_SPAN", "_RA_FAIL_COOLDOWN"):
-            if hasattr(R, n):
-                self.addCleanup(setattr, R, n, getattr(R, n))
-                setattr(R, n, 0.0)
+        for n in _RESTORE_NAMES:
+            self.addCleanup(setattr, R, n, getattr(R, n))
+            setattr(R, n, 0.0)
         self.calls = []
         self.pool = {}
         R._peek = lambda url: self.pool.get(url)
@@ -75,10 +78,19 @@ class NoVerdictAboutTheWorld(unittest.TestCase):
     def test_the_machinery_is_absent_not_merely_unused(self):
         # A missing capability outranks a guard (Luoshu): with no verdict at all,
         # no probe of mine or anyone else can manufacture one again.
-        for gone in ("STATE_NONE", "_RA_NONE", "_RA_NONE_TTL", "_RA_NONE_CONFIRM",
-                     "_RA_NONE_SPAN", "_RA_SEEN", "_sky_remember", "_sky_has_history",
-                     "_sky_seen_path"):
+        for gone in GONE_BY_DECREE:
             self.assertFalse(hasattr(R, gone), "%s still exists" % gone)
+
+    def test_setup_does_not_tend_the_dead(self):
+        # Luoshu 8/3 23:32: half sentinel, half fallback in one file is two
+        # eras of it stacked. The setUp lists are the half that goes quiet --
+        # hasattr skips a name that died and nothing reports it, so the guard
+        # keeps performing a caution that no longer exists.
+        for n in _CLEAR_NAMES + _RESTORE_NAMES:
+            self.assertNotIn(n, GONE_BY_DECREE,
+                             "%s was deleted by decree; setUp still tends it" % n)
+            self.assertTrue(hasattr(R, n),
+                            "%s is in setUp but absent from render_scene" % n)
 
 
 class RepeatedFailuresStayAboutMe(Base):
