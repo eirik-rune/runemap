@@ -1,9 +1,9 @@
-# chiangmai  (98.9853,18.7883)  local 2026-08-03 06:45  UTC+7
-now: PARTLY_CLOUDY_DAY  temp 25C  humidity 98%  wind 3km/h  precip 0.00
+# chiangmai  (98.9853,18.7883)  local 2026-08-03 19:42  UTC+7
+now: PARTLY_CLOUDY_NIGHT  temp 29C  humidity 97%  wind 3km/h  precip 0.00
 next 2h rain (per min, max=0.00):                         
 rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):                           peak 0.0
-next 24h temp 25..31C: ▁▁▁▃▄▅█████▆▅▅▄▄▃▂▂▂▁▁▁ 
-sky: +0h:PARTLY_CLOUDY_DAY +3h:CLOUDY +14h:PARTLY_CLOUDY_NIGHT +18h:CLOUDY
-keypoint: 未来两小时不会下雨，放心出门吧
+next 24h precip (mm/h):                    █▄     peak 1.8
+next 24h temp 25..31C: ▅▄▄▃▂▂▂▁▁▁▁ ▁▂▄▅▆██▇▇█▆▅
+sky: +0h:PARTLY_CLOUDY_NIGHT +1h:CLOUDY +2h:PARTLY_CLOUDY_NIGHT +3h:CLOUDY +6h:PARTLY_CLOUDY_NIGHT +7h:CLOUDY
+keypoint: 您东边8公里正在下小雨哦
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
