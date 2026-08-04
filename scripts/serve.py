@@ -42,6 +42,12 @@ USAGE
   the query form keeps working: /scene?q=<place>&lang=zh
   (quote that one: & is a shell operator)
 
+POLLING
+  Radar frames refresh about every 6 minutes, so polling faster than that
+  returns the same picture. If you want a live view, 300s is the sweet spot:
+    watch -n 300 curl -s echorune.net/bangkok
+  Faster is not rejected -- it is just answered from cache.
+
 WHAT YOU GET
   One screen: current conditions, a plain-language forecast, a 2h rain
   sparkline, and a 48x24 character radar map with lon/lat axes, plus the
