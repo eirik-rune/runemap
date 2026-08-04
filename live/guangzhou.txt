@@ -1,9 +1,9 @@
-# guangzhou  (113.2644,23.1291)  local 2026-08-04 16:10  UTC+8
-now: MODERATE_RAIN  temp 28C  humidity 87%  wind 9km/h  precip 0.30
-next 2h rain (per min, max=0.38): ▇▇██▇▇▇▆▆▆▅▄▄▃▄▄▃▅▆▄▄▄▅▄
-rain probability 30min bins: 100% 96% 96% 100%
-next 24h precip (mm/h): █▃▄▁▁▂▂▁▁   ▁             peak 1.7
-next 24h temp 26..33C: ▃▂▃▂▂▂▂▂▂▁▁▁▁▁ ▁▁▂▄▅▇▇██
-sky: +0h:MODERATE_RAIN +1h:LIGHT_RAIN +9h:PARTLY_CLOUDY_NIGHT +10h:CLOUDY +12h:LIGHT_RAIN +13h:CLEAR_NIGHT
-keypoint: 雨渐大，10分钟后转为大雨，不过16分钟后雨会再次变小
+# guangzhou  (113.2644,23.1291)  local 2026-08-05 00:25  UTC+8
+now: PARTLY_CLOUDY_NIGHT  temp 27C  humidity 79%  wind 4km/h  precip 0.00
+next 2h rain (per min, max=0.00):                         
+rain probability 30min bins: 0% 0% 0% 0%
+next 24h precip (mm/h):     ▂                     peak 0.1
+next 24h temp 26..31C: ▂▁▁▁▁▁▁ ▂▃▆▇██▇█▇▇▇▆▅▄▃▃
+sky: +0h:PARTLY_CLOUDY_NIGHT +2h:CLOUDY +4h:LIGHT_RAIN +5h:CLEAR_NIGHT +6h:PARTLY_CLOUDY_DAY +7h:CLOUDY
+keypoint: 最近的降雨带在东北52公里外呢
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
