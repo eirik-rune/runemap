@@ -1,9 +1,9 @@
-# shanghai  (121.4737,31.2304)  local 2026-08-05 00:25  UTC+8
-now: STORM_RAIN  temp 30C  humidity 75%  wind 3km/h  precip 0.54
-next 2h rain (per min, max=0.54): █▇▄▃▂▁▂                 
-rain probability 30min bins: 98% 10% 0% 0%
-next 24h precip (mm/h): █                         peak 2.9
-next 24h temp 29..35C: ▁▁▁▁▁ ▁▂▄▆▇█████▇▆▅▄▃▃▂▂
-sky: +0h:MODERATE_RAIN +1h:CLOUDY +2h:PARTLY_CLOUDY_NIGHT +5h:CLOUDY +7h:PARTLY_CLOUDY_DAY +15h:CLEAR_DAY
-keypoint: 12分钟后雨渐小，转为小雨，直到33分钟后雨停
+# shanghai  (121.4737,31.2304)  local 2026-08-05 04:58  UTC+8
+now: PARTLY_CLOUDY_NIGHT  temp 29C  humidity 84%  wind 4km/h  precip 0.00
+next 2h rain (per min, max=0.00):                         
+rain probability 30min bins: 0% 0% 0% 0%
+next 24h precip (mm/h):                           peak 0.0
+next 24h temp 29..36C: ▁ ▁▂▄▆▇█▇████▆▅▄▃▃▂▂▁▁▁▁
+sky: +0h:PARTLY_CLOUDY_NIGHT +1h:CLOUDY +4h:PARTLY_CLOUDY_DAY +11h:CLEAR_DAY +12h:PARTLY_CLOUDY_DAY +14h:CLEAR_NIGHT
+keypoint: 最近的降雨带在东南37公里外呢
 data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
