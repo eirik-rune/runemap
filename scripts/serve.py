@@ -43,10 +43,10 @@ USAGE
   (quote that one: & is a shell operator)
 
 POLLING
-  Radar frames refresh about every 6 minutes, so polling faster than that
-  returns the same picture. If you want a live view, 300s is the sweet spot:
-    watch -n 300 curl -s echorune.net/bangkok
-  Faster is not rejected -- it is just answered from cache.
+  Radar frames refresh about every 6 minutes, so most polls return the same
+  picture -- but repeats are answered from cache, so they cost you nothing and
+  you see a new frame within 30s of it existing:
+    watch -n 30 curl -s echorune.net/bangkok
 
 WHAT YOU GET
   One screen: current conditions, a plain-language forecast, a 2h rain
