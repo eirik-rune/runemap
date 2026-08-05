@@ -52,32 +52,10 @@ data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
 
 (Format example, deliberately frozen -- a pasted "live" sample starts lying
 six minutes after it is pasted. For the real thing, run the curl:
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en
-or curl echorune.net/guangzhou)
+curl echorune.net/guangzhou)
 
 
-## live service (updated every 6 minutes)
-
-Text weather briefs + ascii radar, curlable by any agent — no key, no signup:
-
-```
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/en        # one-screen scene, English
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou/zh        # same scene, Chinese
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/index.txt           # all cities overview
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou.txt       # city brief (24h curves)
-curl -s https://raw.githubusercontent.com/eirik-rune/runemap/live/live/guangzhou_radar.txt # 3-frame radar: t-1h / now / t+1h
-```
-
-Cities: beijing shanghai guangzhou london newyork singapore chiangmai bangkok.
-Radar maps (48x24, lon/lat axes, three frames: t-1h obs / now / t+1h forecast) for 7 of 8
-cities — global radar coverage (newyork has none; its file says so and points to the text brief).
-Each brief: current conditions, next-2h minutely rain sparkline, 24h precip/temp curves, sky transitions.
-
-Endpoints per city: `live/<city>/en` and `live/<city>/zh` (one-screen scene: headline + 2h rain
-curve + radar + legend), `live/<city>.txt` (brief), `live/<city>_radar.txt` (3-frame radar).
-Data: caiyunapp.com (attribution preserved). Cadence: server cron every 6 min (live branch, rolling commit) + GitHub Actions every 30 min (main, backup).
-
-## public service (https://echorune.net)
+## the service: echorune.net
 
     curl echorune.net                 # your location, guessed from your IP
     curl echorune.net/bangkok         # by name
