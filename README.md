@@ -80,8 +80,8 @@ prints the one-line escape. The access log stores only the first three octets.
 
 ## any coordinate
 
-The files above are pre-rendered for a fixed city list. For an arbitrary point,
-render it yourself -- bring your own caiyunapp.com token:
+The service above renders any point on demand. To render one yourself, without
+the service, bring your own caiyunapp.com token:
 
     CAIYUN_TOKEN=xxx python3 scripts/scene_at.py --lat 18.7883 --lon 98.9853 --lang zh
 
