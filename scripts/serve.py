@@ -199,7 +199,11 @@ class H(BaseHTTPRequestHandler):
         except ValueError:
             _sp = None
         if _sp is not None:
-            _sp = max(10.0, min(2000.0, _sp))
+            # Lower bound is 48, not 10: km/char == span/48, so span=10 prints
+            # "0km/char" -- a grid whose cell is zero km wide is not a smaller
+            # map, it is a meaningless one, and the number that gives it away is
+            # the one the reader is told to trust. 48 == 1 km/char.
+            _sp = max(48.0, min(2000.0, _sp))
         R.set_span(_sp)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
