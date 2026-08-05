@@ -1,90 +1,12 @@
-# newyork radar  center=(-74.006,40.7128) marked '+'  48x24 ascii, ~9.9km/col
-# local 2026-08-05 04:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
-# echo motion: quasi-stationary (<5 km/h) over last hour
+This file is retired (2026-08-05).
 
-## t-1h obs (03:41)
- 42.01|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                           +                    
-      |                                                
-      |                    ░  ░░░ ░░                   
-      |                     ░                          
-      |   ░░░                                          
- 39.84|     ░░                       ░                 
-      |  ░░░░░                     ░░░░                
-      |░░░░░░░                    ░░ ░                 
-      |░░░░░▓▒░░                                       
-      |  ░░░░░░░░   ░    ░                             
-      |   ░░░░░░░░░░░     ░░                           
-      |   ░░▒▒▒▒░                                      
-      |    ░▒▓▒░░                                      
-      |     ▒▓░          ▓  ░░ ░░                      
-      |                ░░                              
-      |                                                
- 37.85|                                                
-      +------------------------------------------------
-       -77.19               -74.41               -71.63
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (04:36)
- 42.01|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                           +                    
-      |                                                
-      |   ░░░                ░ ░░   ░                  
-      |                             ░                  
-      | ░                          ░░░  ░░             
- 39.84| ░              ░            ░░░░░░             
-      |░   ░░  ░                    ░░░                
-      |▒▒░░▒░▒ ░░░                                     
-      |░░░ ░▒▓░░▒░░▒▓░▒▒ ░░░░░░▒░░                     
-      |    ░▓░░░░░░░▒░▓▓▓▓░░░░░▒░░░░                   
-      |  ░▓▓▓░░▒▒░░              ░                     
-      |   ▓▓▓▓▓▒░░               ░                     
-      |    █▓█▓▒░        ░▓▓▓░░                        
-      |     ░██░                                       
-      |       ░░░                                      
-      |                                                
- 37.85|                                  ░░            
-      +------------------------------------------------
-       -77.19               -74.41               -71.63
+    curl echorune.net/newyork/en
 
-## t+1h forecast (05:44)
- 42.01|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                           +                    
-      |                                                
-      |                                                
-      |  ░░                                            
-      |   ░░░                                          
- 39.84|   ░░░░░                                        
-      |   ░░░░░░░░░░                                   
-      |    ░░░░░░░░░░░▒░░░░░░                          
-      | ░░░░░░░░░░░  ░░░░░░░░░                         
-      | ░▒▒▒▒▒▒▒▒░░                                    
-      |  ▓▓▓▓▓▓▒▒░         ░░░                         
-      |   █▓▓▓▒▒░░         ░░░                         
-      |    ▒▒▒▒░░░    ░░░░░                            
-      |     ░▓▓░░░    ░░░░░                            
-      |       ░░░░                                     
-      |                                                
- 37.85|                                                
-      +------------------------------------------------
-       -77.19               -74.41               -71.63
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

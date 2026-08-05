@@ -1,9 +1,12 @@
-# chiangmai  (98.9853,18.7883)  local 2026-08-05 15:42  UTC+7
-now: CLOUDY  temp 29C  humidity 92%  wind 4km/h  precip 0.00
-next 2h rain (per min, max=0.08):   ▇▅▆▅▇                 
-rain probability 30min bins: 85% 52% 0% 0%
-next 24h precip (mm/h): ▂▂ ▁          ▁           peak 0.1
-next 24h temp 25..31C: ▆▆▅▄▄▄▃▃▂▂▂▁▁▁▁ ▁▂▄▆▇███
-sky: +0h:LIGHT_RAIN +2h:CLOUDY +4h:PARTLY_CLOUDY_NIGHT +7h:CLOUDY +8h:PARTLY_CLOUDY_NIGHT +10h:CLOUDY
-keypoint: 8分钟后开始下小雨，但34分钟后会停
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+This file is retired (2026-08-05).
+
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
+
+    curl echorune.net/chiangmai/en
+
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

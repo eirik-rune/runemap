@@ -1,36 +1,12 @@
-# newyork weather scene  updated 2026-08-05 02:24 UTC-4  (lon -74.006, lat 40.7128)
-now: CLEAR_NIGHT  22C  humidity 59%  wind 4km/h  precip 0.00mm/h
-To your north, 25 kilometers away, a light rain is occurring
+This file is retired (2026-08-05).
 
-rain curve (next 2h): no precipitation expected
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 02:23  obs age: 9min ok
-~10km/char, [NY]=newyork
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                           NY                   
-                                                
-                                                
-                                                
-                                                
-                                                
-   ░░                                           
-                                                
-                                                
-                                                
-            ░░       ░▓░░░░                     
-            ░░        ░░                        
-       ░░░░                         ░           
-      ░░░░░                                     
-                                                
-                                                
-                                                
-= echo motion: n/a (no echo to track)
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+    curl echorune.net/newyork/en
 
-data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

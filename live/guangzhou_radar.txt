@@ -1,90 +1,12 @@
-# guangzhou radar  center=(113.2644,23.1291) marked '+'  48x24 ascii, ~9.6km/col
-# local 2026-08-05 16:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
-# echo motion: quasi-stationary (<5 km/h) over last hour
+This file is retired (2026-08-05).
 
-## t-1h obs (15:44)
- 24.99|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |           ▓▒░                                  
-      |         ▒▓▒▓▓█▓▒▓                              
-      |          ▓▓▓░░░██▓█▓                           
-      |          ▒░░░░    ░░                           
-      |       ░░░▓░  █░░░             +                
-      |       ▓▓▓▓▒▓▒▒░                                
- 22.84|      ░░▒▒▒▓▓▒▒▓▒                               
-      |      ░░░░░░▓▒░░▒▒░                       ░░    
-      |        ░▓▓▓▒░░  ░░                             
-      |          ▒▓▒▒░                                 
-      |          ░░░░░                                 
-      |                ░                               
-      |                ░░░                             
-      |                 ░░                             
-      |               ░░░░░                            
-      |                ░░░░░░░░░░░                     
-      |                 ░░ ░░░░░░░                     
- 20.86|                      ░░░░░░                    
-      +------------------------------------------------
-       110.32               112.56               114.81
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (16:38)
- 24.99|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                ░░░             
-      |       ░▒                        ░              
-      |       ░▒  ░░▒▓▒▒▒                              
-      |          ░▒░ ░▓▓▒░░                            
-      |                                                
-      |    ░▓▓▒▒░░  ░░                +                
-      |    ░▓░▒░░ ░░░░                                 
- 22.84|           ░░▒░                                 
-      |           ░▒▒░                                 
-      |          ░░░░░                                 
-      | ░░      ░░░░░                                  
-      | ░░        ░░░                                  
-      |           ░░                                   
-      |                                                
-      |                 ░░░                            
-      |              ░░░░░░░                           
-      |              ░░░░░░   ░░                       
-      |              ░░       ░░                       
- 20.86|                                                
-      +------------------------------------------------
-       110.32               112.56               114.81
+    curl echorune.net/guangzhou/en
 
-## t+1h forecast (17:44)
- 24.99|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |               ░░                               
-      |               ░░                               
-      |                                                
-      |   ▒▒▓░░                       +                
-      |   ░░░░░                                        
- 22.84|                                                
-      |            ░                                   
-      |          ░░░                                   
-      |          ░░░                                   
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
- 20.86|                                                
-      +------------------------------------------------
-       110.32               112.56               114.81
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

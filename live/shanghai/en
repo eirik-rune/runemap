@@ -1,36 +1,12 @@
-# shanghai weather scene  updated 2026-08-05 14:24 UTC+8  (lon 121.4737, lat 31.2304)
-now: PARTLY_CLOUDY_DAY  35C  humidity 40%  wind 8km/h  precip 0.00mm/h
-To your SW, 27 kilometers away, a light rain is occurring
+This file is retired (2026-08-05).
 
-rain curve (next 2h): no precipitation expected
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 14:25  obs age: 4min ok
-~10km/char, [SH]=shanghai
-               ▒░                               
-             ░▓▓▒                               
-        ░▒░░ ░▒▒░    █▓                         
-        ▒▒    ▒▓░░  ░██▓                        
-            ░▓██▓░░  ███  ░░                    
-         ░░  ░██▓░░       ░░                    
-        ▒░░     ▓▓▓▓                            
-        ░█     ▓████░░ ▓▓▓                      
-      ▓▓▓▒░        ░▓▓░▓▓▓░                     
-      ░░ ░░      ▒▒▓██░ ▒██    SH               
-            █░   █▓████▓▒░    ▓░                
-       ▒█▒ ░███░▓█░▒░██▓▓     ░░                
-████░░     ░██░ ░░                              
-▓▓░ ░▒▒░     ░░                                 
-░▒░░▓▓▓░   ▓░▓█                                 
- ▓▒░▓▒▓    ██                 ▒▒                
-   ░▓█▓░             ▓  ▓▓    █▓                
-   ▒▓██           ▒█▒▓░ ▓█░    ▓█               
-              █░  ███▓░ ░░     ░░               
-       █▓▓   ░██     ▓░        ██               
-       ██░ ██▓▓█   ███         ██               
-           ░░ ░░   ░░                           
-              ▒██       ▒▓▒                     
-                        ▒▓▒░ ░░                 
-← W ~24 km/h   echo motion, upstream forecast
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+    curl echorune.net/shanghai/en
 
-data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

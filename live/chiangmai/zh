@@ -1,39 +1,12 @@
-# 清迈 天气一屏  更新于 2026-08-05 13:24 UTC+7  (经度 98.9853, 纬度 18.7883)
-当前: 小雨  30C  湿度 90%  风速 4km/h  雨强 0.12mm/h
-43分钟后雨渐停
+This file is retired (2026-08-05).
 
-雨量曲线(未来2h, 6min/格):
-▆██▆▃▃▄▃            
-├────┼────┼────┼────┤
-0   30   60   90 120min
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 13:24  obs age: 24min stale
-每字符≈10km, [CM]=清迈
-                                                
-                             ░░░ ░░░░           
-                             ░░░░░░░░░░░░       
-                              ░░░░░▒▒░░░        
-                           ░▒░▒▓▓▓▓▒░░░░░       
-                            ░░▒▒▓▒▒░░░░ ░       
-                             CM▓▒▒▒░░░░░░       
-                        ░░  ░░░░░░░░░░░░        
-                    ░░░░   ░░░░░░░░░▓░          
-                  ░░▒▒░░    ░░░░░░░             
-                            ░░  ░░              
-                 ░          ░░                  
-                             ░░                 
-        ░   ░░                               ░░░
-   ░░   ░   ░░       ░░░░              ░░    ░░░
-  ░░░                ░░░▒██▒░          ░░░░░░   
-                       ░░░▓░░                   
-                      ░░░░░░                    
-                ░  ░░▓▓░░░                      
-              ░░░░▒░▒░░░░░░░                    
-              ░░░░░░    ░░░░░░                  
-                        ░░░                     
-                                                
-                                                
-↗ 向东北 ~10 km/h   回波移动, 上游预报
-图例: · 毛毛雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 暴雨
+    curl echorune.net/chiangmai/zh
 
-数据: 彩云天气 caiyunapp.com | runemap 渲染 (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

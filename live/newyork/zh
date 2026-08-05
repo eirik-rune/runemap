@@ -1,36 +1,12 @@
-# 纽约 天气一屏  更新于 2026-08-05 02:24 UTC-4  (经度 -74.006, 纬度 40.7128)
-当前: 晴  22C  湿度 59%  风速 4km/h  雨强 0.00mm/h
-您北边25公里正在下小雨哦
+This file is retired (2026-08-05).
 
-雨量曲线(未来2h): 无降水
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 02:23  obs age: 9min ok
-每字符≈10km, [NY]=纽约
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                           NY                   
-                                                
-                                                
-                                                
-                                                
-                                                
-   ░░                                           
-                                                
-                                                
-                                                
-            ░░       ░▓░░░░                     
-            ░░        ░░                        
-       ░░░░                         ░           
-      ░░░░░                                     
-                                                
-                                                
-                                                
-= 回波移动: 无(视野内无回波可追踪)
-图例: · 毛毛雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 暴雨
+    curl echorune.net/newyork/zh
 
-数据: 彩云天气 caiyunapp.com | runemap 渲染 (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

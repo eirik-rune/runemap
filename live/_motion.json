@@ -1,1 +1,5 @@
-{"beijing": {"kind": "moving", "arrow": "↗", "dir_en": "NE", "dir_cn": "向东北", "kmh": 50.981360889520786}, "guangzhou": {"kind": "stationary", "kmh": 3.9787644193036993}, "bangkok": {"kind": "moving", "arrow": "↗", "dir_en": "NE", "dir_cn": "向东北", "kmh": 35.052394008903484}, "chiangmai": {"kind": "moving", "arrow": "↘", "dir_en": "SE", "dir_cn": "向东南", "kmh": 9.394896891545272}, "london": {"kind": "moving", "arrow": "→", "dir_en": "E", "dir_cn": "向东", "kmh": 41.92824053659935}, "newyork": {"kind": "stationary", "kmh": 0.0}, "_ts": 1785919388.6052384}
+{
+  "retired": "2026-08-05",
+  "moved_to": "https://echorune.net",
+  "why": "git was the delivery channel; it is not any more"
+}

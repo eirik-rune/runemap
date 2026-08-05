@@ -1,89 +1,12 @@
-# singapore radar  center=(103.8198,1.3521) marked '+'  48x24 ascii, ~10.1km/col
-# local 2026-08-05 16:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
+This file is retired (2026-08-05).
 
-## t-1h obs (15:45)
-  3.55|                                                
-      |                                                
-      |                                                
-      |         ▒▓ ░     ░▓▓                           
-      |         ░▒ ░░    ░▓▓                           
-      |         ░░ ░░░   ░              ░              
-      |            ░░      ░ ▓░         ░░             
-      |                   ▒░░██▓                       
-      | ░                 ░░░█▓░░                      
-      |                      ░▓▓                       
-      |                       ░  ░                     
-      |                      +                         
-  1.25|                                                
-      |         ░ ░█▓                                  
-      |  ░░▒▒   ░░▒▓░░  ▓░                             
-      | ░▓▓░▒░     ░█░  ▓█                             
-      | ░▓▓▓          ░░▒█░                            
-      |  ░░░▒░      ░█▒░▒▓█                            
-      |   ▒▒█░     ░▒█▒░░░                             
-      |     ░░                                         
-      |                                                
-      |                                                
-      |                                                
- -0.85|                                                
-      +------------------------------------------------
-       101.78               103.96               106.15
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (16:30)
-  3.55|                                                
-      |                                                
-      |         ░░█░                                   
-      |         ░▒█░      ░▒░          ░               
-      |          ░                                     
-      |                                                
-      |                    ░▒█▓█▒                      
-      |                   ▒▒░░░█▓                      
-      |   ░              ░░░░░█▓░                      
-      |   ░                   ░░▓░                     
-      |                         ▓░                     
-      |                      +                         
-  1.25|                                                
-      |           ░░▓░                                 
-      |     ▒▓   ▓▓██                                  
-      |    ░▓▓ ░    ░    ░░                            
-      |    ░░▒░░        ░░░░                           
-      |     ░▓▒    ░░░░▓░░░░                           
-      |    ░░░     ░▓░█▓▓                              
-      |    ░░░       ▓▓░                               
-      |                                                
-      |                                                
-      |              ░░                                
- -0.85|              ░░                                
-      +------------------------------------------------
-       101.78               103.96               106.15
+    curl echorune.net/singapore/en
 
-## t+1h forecast (17:45)
-  3.55|                                                
-      |                                                
-      |          ██▓▓                                  
-      |          ██░                                   
-      |                                                
-      |                    ░▒░░██                      
-      |                    ░░░░██░                     
-      |                   ░   ░██                      
-      |                       ░▓                       
-      |                                                
-      |                                                
-      |                      +                         
-  1.25|                                                
-      |           ░▓▓▒                                 
-      |         ░█░██░                                 
-      |     ▓▓   ░                                     
-      |      ░░                                        
-      |                ▒▓                              
-      |              ▒▓░                               
-      |               ░                                
-      |                                                
-      |                                                
-      |                                                
- -0.85|                                                
-      +------------------------------------------------
-       101.78               103.96               106.15
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

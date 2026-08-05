@@ -1,36 +1,12 @@
-# 新加坡 天气一屏  更新于 2026-08-05 14:24 UTC+8  (经度 103.8198, 纬度 1.3521)
-当前: 阴  31C  湿度 64%  风速 13km/h  雨强 0.00mm/h
-最近的降雨带在东边51公里外呢
+This file is retired (2026-08-05).
 
-雨量曲线(未来2h): 无降水
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 14:30  obs age: 9min ok
-每字符≈10km, [SG]=新加坡
-                                                
-                                                
-                                                
-                 ░░                             
-                ░█▓                             
-          ░░░                                   
-         ░░░░                                   
-                                                
-                    ░░░░░                       
-                     ░ ░░                       
-                                                
-                      SG                        
-            ░                                   
-         ░░░░                                   
-                                                
-          ░░░ ██                                
-   ▒░      ░░░████░                             
-  ░          ░░░██                              
-                ░░                              
-                                                
-                                                
-                                                
-                                                
-                                                
-↗ 向东北 ~6 km/h   回波移动, 上游预报
-图例: · 毛毛雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 暴雨
+    curl echorune.net/singapore/zh
 
-数据: 彩云天气 caiyunapp.com | runemap 渲染 (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

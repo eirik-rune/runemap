@@ -1,36 +1,12 @@
-# singapore weather scene  updated 2026-08-05 14:24 UTC+8  (lon 103.8198, lat 1.3521)
-now: CLOUDY  31C  humidity 64%  wind 13km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the east, 51 km away
+This file is retired (2026-08-05).
 
-rain curve (next 2h): no precipitation expected
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 14:30  obs age: 9min ok
-~10km/char, [SG]=singapore
-                                                
-                                                
-                                                
-                 ░░                             
-                ░█▓                             
-          ░░░                                   
-         ░░░░                                   
-                                                
-                    ░░░░░                       
-                     ░ ░░                       
-                                                
-                      SG                        
-            ░                                   
-         ░░░░                                   
-                                                
-          ░░░ ██                                
-   ▒░      ░░░████░                             
-  ░          ░░░██                              
-                ░░                              
-                                                
-                                                
-                                                
-                                                
-                                                
-↗ NE ~6 km/h   echo motion, upstream forecast
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+    curl echorune.net/singapore/en
 
-data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

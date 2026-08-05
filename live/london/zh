@@ -1,9 +1,12 @@
-# 伦敦 天气一屏  更新于 2026-08-05 07:24 UTC+1  (经度 -0.1276, 纬度 51.5072)
-当前: 阴  19C  湿度 78%  风速 15km/h  雨强 0.00mm/h
-阴，今天上午9点钟后转多云，其后晴
+This file is retired (2026-08-05).
 
-雨量曲线(未来2h): 无降水
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时
+    curl echorune.net/london/zh
 
-数据: 彩云天气 caiyunapp.com | runemap 渲染 (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

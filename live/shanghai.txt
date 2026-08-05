@@ -1,9 +1,12 @@
-# shanghai  (121.4737,31.2304)  local 2026-08-05 16:42  UTC+8
-now: CLEAR_DAY  temp 32C  humidity 62%  wind 8km/h  precip 0.00
-next 2h rain (per min, max=0.00):                         
-rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):                    █▁     peak 3.6
-next 24h temp 28..34C: ▆▅▄▃▃▃▄▃▂▂▂▁▁ ▁▂▄▄▆▇▇▇██
-sky: +0h:CLEAR_DAY +3h:CLEAR_NIGHT +4h:PARTLY_CLOUDY_NIGHT +6h:CLOUDY +7h:PARTLY_CLOUDY_NIGHT +10h:CLEAR_NIGHT
-keypoint: 您西边6公里正在下小雨哦
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+This file is retired (2026-08-05).
+
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
+
+    curl echorune.net/shanghai/en
+
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

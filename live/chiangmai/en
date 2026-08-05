@@ -1,39 +1,12 @@
-# chiangmai weather scene  updated 2026-08-05 13:24 UTC+7  (lon 98.9853, lat 18.7883)
-now: LIGHT_RAIN  30C  humidity 90%  wind 4km/h  precip 0.12mm/h
-After 43 minute, the rain gradually stops.
+This file is retired (2026-08-05).
 
-rain curve (next 2h, 6min/bucket):
-▆██▆▃▃▄▃            
-├────┼────┼────┼────┤
-0   30   60   90 120min
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 13:24  obs age: 24min stale
-~10km/char, [CM]=chiangmai
-                                                
-                             ░░░ ░░░░           
-                             ░░░░░░░░░░░░       
-                              ░░░░░▒▒░░░        
-                           ░▒░▒▓▓▓▓▒░░░░░       
-                            ░░▒▒▓▒▒░░░░ ░       
-                             CM▓▒▒▒░░░░░░       
-                        ░░  ░░░░░░░░░░░░        
-                    ░░░░   ░░░░░░░░░▓░          
-                  ░░▒▒░░    ░░░░░░░             
-                            ░░  ░░              
-                 ░          ░░                  
-                             ░░                 
-        ░   ░░                               ░░░
-   ░░   ░   ░░       ░░░░              ░░    ░░░
-  ░░░                ░░░▒██▒░          ░░░░░░   
-                       ░░░▓░░                   
-                      ░░░░░░                    
-                ░  ░░▓▓░░░                      
-              ░░░░▒░▒░░░░░░░                    
-              ░░░░░░    ░░░░░░                  
-                        ░░░                     
-                                                
-                                                
-↗ NE ~10 km/h   echo motion, upstream forecast
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+    curl echorune.net/chiangmai/en
 
-data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

@@ -1,90 +1,12 @@
-# london radar  center=(-0.1276,51.5072) marked '+'  48x24 ascii, ~11.2km/col
-# local 2026-08-05 09:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
-# echo motion: → E(向东) ~42 km/h over last hour (cross-correlation of obs frames)
+This file is retired (2026-08-05).
 
-## t-1h obs (08:45)
- 52.43|                                                
-      |             ░░                                 
-      |              ░                                 
-      |           ░░ ░░                                
-      |           +                                    
-      |   ░░            ░░                             
-      |  ░░░            ░░                             
-      |  ░░    ░░    ░░░░░                             
-      |       ░░░ ░░░░░░             ░░                
-      |    ░░        ░░              ░░     ░░░░░      
-      |   ░░░░        ░░░            ░░    ░░          
-      |              ░░░░         ░░░░░░   ░░          
- 50.00|              ░░░          ░░░░░░  ░░           
-      |              ░░░            ░░░░               
-      |  ░░         ░░░        ░░  ░░░                 
-      | ░░░        ░░░░        ░░  ░░░░                
-      |  ░░       ░░░░░          ░░░░░░░░              
-      |        ░░░░░░             ░░░░                 
-      |        ░░░░░░                                  
-      |        ░░                                      
-      |        ░░                                      
-      |                                                
-      |                         ░░░░░                  
- 47.78|                           ░░                   
-      +------------------------------------------------
-       -1.93                 1.84                  5.62
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (09:05)
- 52.43|                                                
-      |              ░░░                               
-      |               ░░                               
-      |               ░░                               
-      |       ░░  +                                    
-      |     ░░░        ░ ░                             
-      |   ░░░░          ░░░░░                      ░░  
-      |   ░░   ░░░░ ░░░░░░░░                       ░░  
-      |        ░░░░ ░░░░░░            ░░░      ░░░    ░
-      |     ░░        ░ ░░            ░░░    ░░░░░     
-      |    ░░░░        ░▒░           ░░░    ░░░        
-      |                ░░░         ░░░░░░   ░ ░        
- 50.00|                ░░           ░░░▒░░  ░          
-      |               ░░░       ░░░ ░░░░░░             
-      |   ░░░        ░░░░       ░░  ░░░░               
-      | ░░░░░        ░░░░       ░░░░░░░░░░░            
-      |  ░░░       ░░░░░░           ░░░░░░             
-      |  ░░     ░░░░░░         ░░     ░                
-      |          ░ ░░░                                 
-      |       ░ ░░                                     
-      |         ░░                                     
-      |                          ░                     
-      |                          ░░░░░                 
- 47.78|                         ░░                     
-      +------------------------------------------------
-       -1.93                 1.84                  5.62
+    curl echorune.net/london/en
 
-## t+1h forecast (10:45)
- 52.43|                                                
-      |                                                
-      |                                                
-      |                                                
-      |           +                                    
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
- 50.00|                               ░░░              
-      |                               ░░░              
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                               ░░░              
-      |                                                
-      |                                                
- 47.78|                                                
-      +------------------------------------------------
-       -1.93                 1.84                  5.62
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

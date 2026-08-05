@@ -1,90 +1,12 @@
-# beijing radar  center=(116.4074,39.9042) marked '+'  48x24 ascii, ~9.6km/col
-# local 2026-08-05 16:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
-# echo motion: ↗ NE(向东北) ~51 km/h over last hour (cross-correlation of obs frames)
+This file is retired (2026-08-05).
 
-## t-1h obs (15:44)
- 41.88|                                                
-      |                                                
-      |                      ░░   ░▒█▓░                
-      |                   ░░ ▓▓░░▓█▓░░                 
-      |                 ░░░░ ▓█▓░░▓░                   
-      |            ░░░   ░░░░░░                        
-      |     ░░░░░  ▓▓░░░░  ░█▓░                        
-      |    ░▒▒▒░░  ██ ▓▓░░▓██▓                         
-      |    ░▒▒▒▒▒░ ▓████░▒██░                          
-      |  ░░ ▒▒▒▓▒  ██▓▓                                
-      |  ░░░                                           
-      |                       +                        
- 39.72|                                                
-      |                                                
-      |                                                
-      |                           ░                    
-      |                                                
-      |              ░░              ▓▓░               
-      |                               ██               
-      |                         ░░                     
-      |                          ░                     
-      |                                                
-      |                                                
- 37.74|                                                
-      +------------------------------------------------
-       113.78               116.47               119.16
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (16:38)
- 41.88|                                ░░░             
-      |                            ░▓░▒▒░░             
-      |                             ░░▓▒░              
-      |                         ▒▓▓ ██░                
-      |                       █████                    
-      |        ░░░       ░░ ░░░░░                      
-      |       ░░░░░    ░▒▓▓▓░▒▓▒                       
-      |       ░░░▒░███▒░▒░░   ░░                       
-      |░░   ░░    ░██▓█░░                              
-      |░░   ░░     ▓█▓                                 
-      |           ▓█▓                                  
-      |                       +                        
- 39.72|░                                               
-      |░░                                              
-      |░                                               
-      |                                                
-      |                             ░▒▓░               
-      |                             ░▓▓                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
- 37.74|                                                
-      +------------------------------------------------
-       113.78               116.47               119.16
+    curl echorune.net/beijing/en
 
-## t+1h forecast (17:44)
- 41.88|                              ░░░░░             
-      |                           ░░░░░░░░░            
-      |                           ░░▓░░░▒░             
-      |                         ░░░▓▓▓▒                
-      |                         ░▒░▓▒░                 
-      |             ░░░░                               
-      |             ▒░░▒▒░                             
-      | ░░░         ░▓░░                               
-      | ░░░         ▓░░                                
-      | ░░          ▒░                                 
-      |                                                
-      |                       +                        
- 39.72|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
- 37.74|                                                
-      +------------------------------------------------
-       113.78               116.47               119.16
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

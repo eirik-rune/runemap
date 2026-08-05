@@ -1,36 +1,12 @@
-# beijing weather scene  updated 2026-08-05 14:24 UTC+8  (lon 116.4074, lat 39.9042)
-now: CLEAR_DAY  36C  humidity 39%  wind 8km/h  precip 0.00mm/h
-The nearest area experiencing rain is to the NW, 46 km away
+This file is retired (2026-08-05).
 
-rain curve (next 2h): no precipitation expected
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-radar: predict 14:26  obs age: 3min ok
-~10km/char, [BJ]=beijing
-                                                
-                                                
-                                                
-         ░░             ░                       
-                     ░ █▓                       
-               ▒▒  ░▓▓                          
-     ░░      ██▓                                
-    ░░░░░░  ▒██                                 
-    ░░  ░░  ██ ▓██    ░░                        
-  ▒▒░       ▓ ░░██  ███░                        
- ░███                                           
- ▒██                   BJ                       
-                                                
-                              ███░              
-                              ▓░                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-= echo motion: undetermined (frames not correlated)
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+    curl echorune.net/beijing/en
 
-data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help

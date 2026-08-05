@@ -1,89 +1,12 @@
-# shanghai radar  center=(121.4737,31.2304) marked '+'  48x24 ascii, ~9.6km/col
-# local 2026-08-05 16:42  axes: left=lat deg, bottom=lon deg
-# intensity ramp: ' ' none, '.' drizzle, then light->storm as blocks fill
+This file is retired (2026-08-05).
 
-## t-1h obs (15:43)
- 32.81|                ░░░                             
-      |           ░░   ░░▒░                            
-      |           ▒▒▒   ░▓▒                            
-      |           ░░ ▒▒▒░░░                            
-      |              ▒▒▒░                              
-      |             ░ ▒▒▒░       ▒░ ▒▓                 
-      |            ░▒░░░░░  ░█░     ░▓                 
-      |             ▒░░░     ▓░   ░                    
-      |      ░▒▒  ░           ▓▓ ██                    
-      |      ░▒▓░ ▓▓░ ░░░░░░    ░▓█▓▒█+                
-      |       ▒▒░░▒▓█▒░░░▒▓▓    ░██░▓▒                 
-      |       ░▒  ▒███▓░░▓██▓▓▓ ░░                     
- 30.65|       ░▓░ ░████  █▓░ ░░                        
-      |         ▓▓ ▓██                                 
-      |          ░  ░█                                 
-      |                 ▓█░░░   ▒░                     
-      |           ▓▓   ▓▓█▒█▓ ▒▓░▒▒                    
-      |          ░▓█░██▓██░█░ ░█░░                     
-      |         ░▒▓█ ▒▓░░    ░▓░                       
-      |         ░▒▓  ▓█                                
-      |          ▓▒   ██                               
-      |               ██▒                              
-      |               ▓███                             
- 28.67|               ▓░▓█                             
-      +------------------------------------------------
-       118.36               120.76               123.16
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
 
-## now obs (16:36)
- 32.81|                                                
-      |                                                
-      |                                                
-      |                                                
-      |            ░░░                                 
-      |            ░▒▒▒░                               
-      |     ░░ ░   ░▓▓▒▒░                              
-      |    ░░▒ ░░  ░▓▓▒▒░     ░▓░                      
-      |     ▒▒░▒░   ░▒▒░       ▒░ ▓█░                  
-      |       ░▒░░  ░░░░     ░░▓▓░░██░+░               
-      |     ░░ ▒▒░░   ░░░    ░▓▓░ ░▓█▓                 
-      |        ░░▒▓░   ░░     ▓█▓ ░▒▓░                 
- 30.65|      ▓▓ ░░░ ▒▓                                 
-      |      ███ █▓▓▓█▓                                
-      |       ██░██░░▒░                                
-      |        ░▓▓██▒█▓░ ▓░                            
-      |        ▓▓▒░▒▓▒░░ ▓░  █▓                        
-      |       ░▓▓░░░▒░    ░░ █▓░                       
-      |        ▒▒  ░     ░▓██  ▓█░                     
-      |        ░░        ████                          
-      |           ██▒▓▓  ██▓    ░░                     
-      |           ████▓░        ▓▓                     
-      |            ░███▓                               
- 28.67|              ▓▓                                
-      +------------------------------------------------
-       118.36               120.76               123.16
+    curl echorune.net/shanghai/en
 
-## t+1h forecast (17:42)
- 32.81|                                                
-      |                                                
-      |                                                
-      |                                                
-      |                                                
-      |         ░░░░                                   
-      |        ░░░░░                                   
-      |           ░░            ░░                     
-      |     ░                  ░░▓▒░                   
-      |    ░░░░                ░▓█▓▒  +                
-      |      ░                 ░░▓██                   
-      |   ░▓▓   ░░             ▓████░                  
- 30.65|   ░██▓░░▓██▒                                   
-      |   ░▓████▓█▓█░                                  
-      |    ▓███████▓░                                  
-      |      ▒█████▓░                                  
-      |      ▓▒░░▒░░                                   
-      |       ░░░       ▒█▓▓███                        
-      |      ░░░      ░░███░███                        
-      |      ░░░░░   ░███▓░░░░░                        
-      |       ░▒▓▓▓▒░░▓█▓░                             
-      |        ▒▓▓▓▓▓░                                 
-      |           ██▓░                                 
- 28.67|                                                
-      +------------------------------------------------
-       118.36               120.76               123.16
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+    curl echorune.net/help

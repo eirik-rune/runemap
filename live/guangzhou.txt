@@ -1,9 +1,12 @@
-# guangzhou  (113.2644,23.1291)  local 2026-08-05 16:42  UTC+8
-now: PARTLY_CLOUDY_DAY  temp 33C  humidity 56%  wind 6km/h  precip 0.00
-next 2h rain (per min, max=0.00):                         
-rain probability 30min bins: 0% 0% 0% 0%
-next 24h precip (mm/h):                           peak 0.0
-next 24h temp 26..34C: ▇▆▅▅▄▃▂▂▂▂▁▁▁▁ ▁▂▃▄▆▇▇██
-sky: +0h:PARTLY_CLOUDY_DAY +3h:PARTLY_CLOUDY_NIGHT +8h:CLEAR_NIGHT +10h:PARTLY_CLOUDY_NIGHT +11h:CLEAR_NIGHT +14h:CLEAR_DAY
-keypoint: 最近的降雨带在北边94公里外呢
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+This file is retired (2026-08-05).
+
+It used to be re-rendered every 6 minutes by pushing to a git branch.
+Nothing updates it any more, so it would only tell you about weather
+that has already happened. The live service is:
+
+    curl echorune.net/guangzhou/en
+
+That endpoint takes any place name or any coordinate on earth, in en or
+zh, and is not limited to the eight cities that lived here.
+
+    curl echorune.net/help
