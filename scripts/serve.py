@@ -191,6 +191,16 @@ class H(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         guessed = False
         small = (q.get("size", [""])[0] or "").lower() == "s"
+        # ?span=<km> -- EDGE LENGTH of the centred window, not radius: span=200
+        # is radius 100.  km/char == span/48.  Set on every request, including
+        # absent (None), so one asker's experiment cannot leak into the next.
+        try:
+            _sp = float(q.get("span", [""])[0] or 0) or None
+        except ValueError:
+            _sp = None
+        if _sp is not None:
+            _sp = max(10.0, min(2000.0, _sp))
+        R.set_span(_sp)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path in ("/help", "/help/"):

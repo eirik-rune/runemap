@@ -19,11 +19,29 @@ from runemap.render import ascii_radar, ascii_radar_centered
 _ascii_radar_box = ascii_radar
 
 
+import threading as _th
+_SPAN_TL = _th.local()
+
+
+def set_span(v):
+    """Per-request override of RUNEMAP_SPAN_KM.  dev knob: ?span=400
+
+    The env var is process-global, so it cannot answer "what does 8 km/char
+    look like" without a restart that changes the window for every asker at
+    once.  Rendering happens on the request's own thread and is never shared
+    between requests (only the fetched PNG is), so a thread-local is the
+    narrowest place this can live.  None => fall back to the env default.
+    """
+    _SPAN_TL.span = v
+
+
 def ascii_radar(png_path, bbox, lng, lat, **kw):
-    try:
-        span = float(os.environ.get("RUNEMAP_SPAN_KM", "0") or 0)
-    except ValueError:
-        span = 0.0
+    span = getattr(_SPAN_TL, "span", None)
+    if span is None:
+        try:
+            span = float(os.environ.get("RUNEMAP_SPAN_KM", "0") or 0)
+        except ValueError:
+            span = 0.0
     if span > 0:
         return ascii_radar_centered(png_path, bbox, lng, lat, span_km=span, **kw)
     return _ascii_radar_box(png_path, bbox, lng, lat, **kw)
