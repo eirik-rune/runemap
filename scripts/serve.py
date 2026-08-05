@@ -39,6 +39,11 @@ USAGE
   curl echorune.net/help
   curl echorune.net/healthz
   curl echorune.net/status         availability, measured every minute
+  curl echorune.net/<place>?span=<km>   width of the map in km (default 280,
+                                   i.e. 140 km in every direction, 6 km/char).
+                                   span is the EDGE of the square, not a radius;
+                                   km/char is span/48. A '?' means outside the
+                                   radar's coverage -- not that it is not raining.
   the query form keeps working: /scene?q=<place>&lang=zh
   (quote that one: & is a shell operator)
 
