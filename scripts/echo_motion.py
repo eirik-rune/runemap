@@ -137,9 +137,15 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     vy = float(np.median([g[1] / g[3] for g in good])) * km_y * 3600
     speed = math.hypot(vx, vy)
     if speed < min_speed:
-        return {"kind": "stationary", "kmh": speed}
+        return {"kind": "stationary", "kmh": speed, "vx": vx, "vy": vy}
     ang = (math.degrees(math.atan2(-vy, vx)) + 360) % 360
     a8 = min(ARROW8, key=lambda k: min(abs(ang - k), 360 - abs(ang - k)))
     d = COMPASS8[a8]
+    # vx/vy come out too, and they are NOT redundant with dir_en: dir_en is the
+    # 8-way snap, good enough for prose, but a caller that wants to place the
+    # echo on the grid needs the continuous vector -- snapping first and
+    # projecting second would put the mark up to 22.5 degrees off, which at
+    # 100km is ~38km of lie. vx is east-positive, vy is SOUTH-positive (it comes
+    # from image rows), which is why the angle above is atan2(-vy, vx).
     return {"kind": "moving", "arrow": ARROW8[a8], "dir_en": d,
-            "dir_cn": CN8[d], "kmh": speed}
+            "dir_cn": CN8[d], "kmh": speed, "vx": vx, "vy": vy}

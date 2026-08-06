@@ -4,7 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
-import json, os, sys, time, urllib.request, tempfile
+import json, math, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar, ascii_radar_centered
@@ -610,6 +610,88 @@ def _mark(code):
     return c or "><"
 
 
+# ---------------------------------------------------------------- ghost cell
+GHOST = "+"
+GHOST_MIN = 60          # minutes ahead. The number in the legend IS this number.
+
+def _ghost(art, mo, kmcol, code):
+    """Mark the cell of sky that will be over the reader in GHOST_MIN minutes.
+
+    Not "where the rain goes" -- that would mean redrawing the whole field. The
+    reader's question is "does it reach me", so displace the READER backwards
+    along the motion vector and mark the cell that arrives here. One glyph, and
+    the answer is the shade underneath it.
+
+    No arrow: the position of GHOST relative to the marker already carries the
+    direction, continuously. Arrows are East_Asian_Width=Ambiguous and would
+    shear the grid for CJK terminals (see _mark), and an 8-way glyph would throw
+    away resolution the vector still has.
+
+    Returns (art, drawn). Every early return below is a way this could lie:
+      - motion not resolved           -> nothing to say
+      - displacement under one cell   -> rounding up would invent motion
+      - target off the grid           -> clamping to the edge changes the claim
+                                         from "arrives from there" to "arrives
+                                         from the edge"
+      - target has no radar behind it -> "?" means nobody looked; a confident
+                                         "+" on top claims knowledge we lack
+    """
+    if not art or not mo or mo.get("kind") != "moving":
+        return art, False
+    vx, vy = mo.get("vx"), mo.get("vy")
+    if vx is None or vy is None or not kmcol:
+        return art, False
+    rows = [list(r) for r in art.split("\n")]
+    if not rows:
+        return art, False
+    mk = _mark(code)
+    my = mx = None
+    for j, r in enumerate(rows):
+        i = "".join(r).find(mk)
+        if i >= 0:
+            my, mx = j, i
+            break
+    if my is None:
+        return art, False
+    t = GHOST_MIN / 60.0
+    # Where the reader sits in the echo's frame, i.e. me - v*t. vy is
+    # south-positive, so the northward component is -vy; a row index grows
+    # southward, hence the second minus. km per ROW is twice km per COLUMN: a
+    # terminal cell is about twice as tall as wide, so the grid is 1:2
+    # geographically (see ascii_radar_centered). Dividing by kmcol here would
+    # put the mark twice as far north/south as it belongs.
+    fcol = -vx * t / kmcol
+    frow = -vy * t / (2.0 * kmcol)
+    # The refusal has to be tested BEFORE rounding, not after. Testing
+    # `dcol == 0 and drow == 0` tests whether the ROUNDED result vanished, which
+    # lets every component in [0.5, 1.0) through -- rounded up into a full cell
+    # of motion that did not happen. Eirik swept kmcol in {5,12} x 24 bearings x
+    # 5-40 km/h: 169 of 1680 samples drew a ghost for a true displacement under
+    # one cell, worst 0.53 cells shown as 1.00 -- and that cell actually arrives
+    # in 103 minutes while the legend says 60.
+    # hypot, not the two components separately: 0.57 and 0.56 are each under half
+    # a cell and together are 0.80. The diagonal is where this leaks.
+    if math.hypot(fcol, frow) < 1.0:
+        return art, False
+    dcol, drow = int(round(fcol)), int(round(frow))
+    gy, gx = my + drow, mx + dcol
+    if not (0 <= gy < len(rows) and 0 <= gx < len(rows[gy])):
+        return art, False
+    if gy == my and mx <= gx < mx + len(mk):
+        return art, False
+    if rows[gy][gx] == "?":
+        return art, False
+    rows[gy][gx] = GHOST
+    return "\n".join("".join(r) for r in rows), True
+
+
+_GHOST_NOTE = {
+    "en": "%s = the sky that reaches you in ~%dmin (straight-line extrapolation)",
+    "zh": "%s = \u7ea6%d\u5206\u949f\u540e\u98d8\u5230\u4f60\u5934\u4e0a\u7684\u90a3\u5757\u5929(\u76f4\u7ebf\u5916\u63a8)",
+    "ja": "%s = \u7d04%d\u5206\u5f8c\u306b\u3053\u3053\u306b\u6765\u308b\u7a7a(\u76f4\u7dda\u5916\u633f)",
+}
+
+
 def radar_art(code, lng, lat, token, small=False):
     code = _mark(code)
     try:
@@ -765,6 +847,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     L.append("")
     if rb:
         art, kmcol, ts = rb[0], rb[1], rb[2]
+        art, _ghost_on = _ghost(art, mo, kmcol, code)
         # Two different quantities, deliberately not the same variable: ts is
         # the frame drawn on screen, base_ts is the last time anyone actually
         # looked at this sky. They coincide for an observation frame and differ
@@ -802,18 +885,24 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         if lang == "ja":
             L.append("1文字≈%.0fkm, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
+            if _ghost_on:
+                L.append(_GHOST_NOTE["ja"] % (GHOST, GHOST_MIN))
             if mo_line:
                 L.append(mo_line)
             L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
         elif lang == "en":
             L.append("~%.0fkm/char, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
+            if _ghost_on:
+                L.append(_GHOST_NOTE["en"] % (GHOST, GHOST_MIN))
             if mo_line:
                 L.append(mo_line)
             L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
         else:
             L.append("每字符≈%.0fkm, [%s]=%s" % (kmcol, code, zh) + mo_sfx)
             L.append(art)
+            if _ghost_on:
+                L.append(_GHOST_NOTE["zh"] % (GHOST, GHOST_MIN))
             if mo_line:
                 L.append(mo_line)
             L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
