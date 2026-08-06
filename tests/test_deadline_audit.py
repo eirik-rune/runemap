@@ -41,8 +41,14 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
+# Order matters, and it was backwards. insert(0, scripts) followed by
+# insert(0, "..") leaves ".." at index 0, so `import render_scene` resolved to
+# the repo-root copy -- a fossil with 1 commit against 60 on the one serve.py
+# actually runs. The whole suite was green about a file nobody serves. Both
+# dirs still have to be here (scripts holds render_scene/wall/net_budget, ".."
+# holds the runemap package), so ".." goes on first and scripts wins index 0.
 sys.path.insert(0, os.path.join(HERE, ".."))
+sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 import net_budget
 import render_scene as R
 import wall as W
