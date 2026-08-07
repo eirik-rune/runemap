@@ -104,15 +104,32 @@ class TheStampIsActuallyApplied(unittest.TestCase):
             EM.echo_motion = self._em
         self.addCleanup(restore)
 
-    def test_motion_compute_stamps_the_basis_it_measured_from(self):
-        obs = [["https://o/%d.png" % i, 1 + i * 300, [1, 2, 3, 4]] for i in range(20)]
-        R._kind_for = lambda lng, lat: "forecast_images"
-        R._obs_frames = lambda lng, lat: obs
-        R._motion_compute((2.0, 2.0), obs, 98.9, 18.7)
+    # The first version of this test asserted basis == "obs" unconditionally,
+    # because motion was being re-fetched from an observation list. 8/7: bob
+    # pointed out that a forecast pair IS the motion this map predicts, so the
+    # second fetch went away and the label has two legitimate values. What this
+    # file guards is unchanged: the word is stamped where the number is made,
+    # never re-derived at render time from whatever list happens to be around.
+    def _stamp(self, kind, imgs):
+        R._kind_for = lambda lng, lat: kind
+        R._MO_CACHE.clear()
+        R._MO_BUSY.discard((2.0, 2.0))
+        R._motion_compute((2.0, 2.0), imgs, 98.9, 18.7)
         hit = R._MO_CACHE.get((2.0, 2.0))
         self.assertIsNotNone(hit)
-        self.assertEqual(hit[1].get("basis"), "obs",
-                         "measured from observations and did not say so: %r" % (hit[1],))
+        return hit[1]
+
+    def test_forecast_sky_says_forecast(self):
+        fc = [["https://f/%d.png" % i, 1 + i * 300, [1, 2, 3, 4]] for i in range(26)]
+        mo = self._stamp("forecast_images", fc)
+        self.assertEqual(mo.get("basis"), "forecast",
+                         "measured from forecast frames and did not say so: %r" % (mo,))
+
+    def test_observation_sky_says_obs(self):
+        obs = [["https://o/%d.png" % i, 1 + i * 300, [1, 2, 3, 4]] for i in range(20)]
+        mo = self._stamp("images", obs)
+        self.assertEqual(mo.get("basis"), "obs",
+                         "measured from observations and did not say so: %r" % (mo,))
 
 
 if __name__ == "__main__":

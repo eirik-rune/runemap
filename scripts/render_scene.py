@@ -194,8 +194,11 @@ def _obs_frames(lng, lat):
 def _motion_compute(key, imgs, lng=None, lat=None):
     mo = {"kind": None}
     try:
-        if lng is not None and _kind_for(lng, lat) == "forecast_images":
-            imgs = _obs_frames(lng, lat)      # the map may be a forecast; this must not be
+        # Motion is measured from the SAME list the map is drawn from. Fetching
+        # a second, observation-only list (which is what stood here) made the
+        # arrow describe pixels the reader is not looking at -- and cost an
+        # extra upstream list request per sky. A forecast pair IS the motion
+        # this map predicts; that is the product, not a defect.
         if not imgs:
             mo = {"kind": None, "why": "fetch"}
         else:
@@ -208,7 +211,7 @@ def _motion_compute(key, imgs, lng=None, lat=None):
                 # the MAP's list kind is how the label ended up saying
                 # "upstream forecast" about a number measured from two
                 # observation frames, minutes after that very bug was fixed.
-                mo["basis"] = "obs"
+                mo["basis"] = "obs" if _kind_for(lng, lat) != "forecast_images" else "forecast"
     except Exception:
         mo = {"kind": None, "why": "error"}
     finally:

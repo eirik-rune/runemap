@@ -71,14 +71,28 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     frames = sorted(frames, key=lambda f: f[1])
     bbox = frames[-1][2]
     lat0, lon0, lat1, lon1 = bbox
-    now = frames[-1][1]
+    # The pivot is the frame the RENDERER draws -- the one nearest the wall
+    # clock -- not frames[-1]. On an observation list those are the same frame,
+    # which is why frames[-1] was correct when this function was written.
+    # On 8/2 the map switched to forecast_images (a list running from the last
+    # observation out to +4h) in two commits that touched render_scene.py only.
+    # This line kept its meaning and lost its truth: the pivot became the
+    # FARTHEST FUTURE frame. Measured 8/7: chiang mai correlated +45.9 and
+    # +105.9 min while the reader was looking at +0.9. Echo that had drifted
+    # out of those far frames printed 'no echo to track' underneath a map full
+    # of rain -- both sentences true, about two different skies.
+    import time as _time
     nearest = lambda t: min(frames, key=lambda f: abs(f[1] - t))
+    pivot = nearest(_time.time())
+    # One hour of separation. Prefer the hour AHEAD of the drawn frame: on a
+    # forecast list that is the motion the map itself predicts. Fall back to
+    # the hour behind, which is all an observation list can offer.
     pairs, seen = [], set()
-    for b0, b1 in [(3600, 0)]:   # one hour of separation; two frames measure displacement, extra pairs cost a download each and bought no accuracy
-        fa, fb = nearest(now - b0), nearest(now - b1)
+    for cand in (nearest(pivot[1] + 3600), nearest(pivot[1] - 3600)):
+        fa, fb = sorted((pivot, cand), key=lambda f: f[1])
         key = (fa[0], fb[0])
         if fb[1] - fa[1] >= 600 and key not in seen:
-            seen.add(key); pairs.append((fa, fb))
+            seen.add(key); pairs.append((fa, fb)); break
     if not pairs:
         return {"kind": None, "why": "frames"}
     cache = {}
