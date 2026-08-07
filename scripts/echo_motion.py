@@ -118,13 +118,22 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
     good = []
     _echo_seen = False
     _load_failed = 0
+    _sparse = 0
     for fa, fb in pairs:
         try:
             a, b = _pool(lv(fa), pool_k), _pool(lv(fb), pool_k)
         except Exception:
             _load_failed += 1
             continue
-        if float((a > 0.1).mean()) < 0.01:
+        cov = float((a > 0.1).mean())
+        if cov < 0.01:
+            # Echo that is present but too sparse to correlate is not an
+            # empty sky. The gate answers 'can we track it', the sentence
+            # underneath answers 'is anything there' -- two questions, and
+            # a reader watching a screen full of echo can tell them apart
+            # even when we cannot.
+            if cov > 0.0:
+                _sparse += 1
             continue
         _echo_seen = True
         dx, dy, c = _shift_corr(a, b)
@@ -138,6 +147,8 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
             why = "corr"
         elif _load_failed:
             why = "fetch"
+        elif _sparse:
+            why = "sparse"
         else:
             why = "noecho"
         return {"kind": None, "why": why}
