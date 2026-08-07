@@ -113,6 +113,25 @@ _MO_TTL = 600
 _MO_FAIL_TTL = 60
 
 
+# Which lifetime an undecided entry gets is not a question about the word
+# "undetermined". It is one question about the world: did we get to look?
+#
+# noecho / sparse / corr all paid for the same download and ran the same
+# correlation that produces a vector. They are answers about the sky -- "there
+# is nothing to track", "there is echo but too little of it", "the frames do not
+# line up" -- and each is exactly as true five minutes later as a "stationary"
+# computed from those same two frames.
+#
+# fetch / error / frames are the instrument failing to look. Those are the only
+# ones a reader can usefully be told to come back for.
+#
+# 8/7: this file already carried that argument, but only for noecho -- one
+# member exempted, the class left behind. Shanghai then printed "fetching
+# (retry in ~60s)" on 21 of 22 samples with 20 good frames in hand, because its
+# answer was "sparse" and it was being expired at a failure's rate.
+_MO_SKY = frozenset(("noecho", "sparse", "corr"))
+_MO_BLIND = frozenset(("fetch", "error", "frames"))
+
 def _mo_fresh(hit):
     """True if this cache entry may still be served."""
     if not hit:
@@ -126,10 +145,13 @@ def _mo_fresh(hit):
     # "fetching (retry in ~60s)" on 38 of 39 samples while the answer was
     # computed and thrown away each cycle. The wording promises that coming back
     # changes something; at that poll rate it never could. See issue #32.
-    if mo.get("why") == "noecho":
-        return age < _MO_TTL
     undecided = mo.get("kind") in (None, "undetermined")
-    return age < (_MO_FAIL_TTL if undecided else _MO_TTL)
+    if undecided and mo.get("why") not in _MO_SKY:
+        # unknown codes fall here on purpose: a why nobody classified is
+        # treated as a failure, and test_every_why_is_classified fails loudly
+        # rather than letting it inherit a lifetime by accident.
+        return age < _MO_FAIL_TTL
+    return age < _MO_TTL
 # _MO_BUDGET is gone with ede4d59. It was 3.0s of join on the request thread
 # that never consulted the deadline, and 1.2 + 3.0 walked through a 3s wall.
 # The constant and its two joins are deleted rather than left unused: a shape

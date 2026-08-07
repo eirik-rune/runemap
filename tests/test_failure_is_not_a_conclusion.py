@@ -25,8 +25,16 @@ class FailureIsNotAConclusion(unittest.TestCase):
         self.assertTrue(RS._mo_fresh(hit))
 
     def test_a_stale_failure_is_not_served(self):
+        # 8/7 14:33. This list used to be typed out here, and it had "sparse" and
+        # "corr" in it -- codes that cost the same download and the same
+        # correlation as a vector. Shanghai printed "fetching (retry in ~60s)" on
+        # 21 of 22 samples with twenty good frames in hand, and this test was one
+        # of the two places holding that wrong axis in place. A hand-written list
+        # is a second definition; it agrees with the real one only until someone
+        # edits one of them. Derive it.
         age = RS._MO_FAIL_TTL + 5
-        for why in ("fetch", "sparse", "corr", "frames", "error"):
+        self.assertTrue(RS._MO_BLIND, "empty set would make this vacuously true")
+        for why in sorted(RS._MO_BLIND):
             hit = (time.time() - age, {"kind": "undetermined", "why": why})
             self.assertFalse(RS._mo_fresh(hit), why)
 
