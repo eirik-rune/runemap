@@ -128,13 +128,49 @@ def _mo_fresh(hit):
 
 _MO_BUSY = set()
 
-def _motion_compute(key, imgs):
+def _obs_frames(lng, lat):
+    """The frames echo_motion has always asked for, that nobody was passing it.
+
+    Motion means displacement that actually happened. This service draws from
+    forecast_images: that list begins at the last observation and runs out to
+    +4h. echo_motion took whatever list it was handed and called its NEWEST
+    frame "now" -- measured 8/7 at chiang mai, that put BOTH correlated frames
+    in the future (+40.7min and +100.7min, one hour apart). The arrow described
+    two predictions drifting apart from each other, not rain that moved.
+
+    bob, whose company produces the data, caught it by reading one reply.
+
+    The observation list is alive and entirely in the past at the same skies
+    (chiang mai images: -135.1min..-25.1min; tokyo: -103.1..-8.1min), so the
+    obs frames echo_motion's own docstring names were available the whole time.
+
+    Returns None -- never raises -- so the caller can say "fetch failed" rather
+    than "computation failed": a download is not a computation, and the reader
+    can tell those apart.
+    """
+    token = os.environ.get("CAIYUN_TOKEN")
+    if not token:
+        return None
+    try:
+        raw = _get(_radar_list_url(token, lng, lat, "images"), timeout=8)
+        return json.loads(raw).get("images") or None
+    except Exception as e:
+        sys.stderr.write("OBS-LIST-FAILED %r\n" % (e,))
+        return None
+
+
+def _motion_compute(key, imgs, lng=None, lat=None):
     mo = {"kind": None}
     try:
-        frames = [(f[0], float(f[1]), f[2]) for f in imgs if len(f) >= 3 and f[2]]
-        import echo_motion as EM
-        EM._get = _get          # picks up the cached getter
-        mo = EM.echo_motion(frames) or {"kind": None}
+        if lng is not None and _kind_for(lng, lat) == "forecast_images":
+            imgs = _obs_frames(lng, lat)      # the map may be a forecast; this must not be
+        if not imgs:
+            mo = {"kind": None, "why": "fetch"}
+        else:
+            frames = [(f[0], float(f[1]), f[2]) for f in imgs if len(f) >= 3 and f[2]]
+            import echo_motion as EM
+            EM._get = _get          # picks up the cached getter
+            mo = EM.echo_motion(frames) or {"kind": None}
     except Exception:
         mo = {"kind": None, "why": "error"}
     finally:
@@ -211,7 +247,7 @@ def _motion_start(imgs, lng, lat):
         return (key, None)
     if key not in _MO_BUSY:
         _MO_BUSY.add(key)
-        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
+        t = threading.Thread(target=_motion_compute, args=(key, imgs, lng, lat), daemon=True)
         t.start()
         return (key, t)
     return (key, None)
@@ -251,7 +287,7 @@ def _motion_peek(imgs, lng, lat):
         return hit[1]
     if key not in _MO_BUSY:
         _MO_BUSY.add(key)
-        t = threading.Thread(target=_motion_compute, args=(key, imgs), daemon=True)
+        t = threading.Thread(target=_motion_compute, args=(key, imgs, lng, lat), daemon=True)
         t.start()
     return {"kind": None}
 
