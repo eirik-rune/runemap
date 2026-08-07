@@ -117,10 +117,12 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
         return cache[f[0]]
     good = []
     _echo_seen = False
+    _load_failed = 0
     for fa, fb in pairs:
         try:
             a, b = _pool(lv(fa), pool_k), _pool(lv(fb), pool_k)
         except Exception:
+            _load_failed += 1
             continue
         if float((a > 0.1).mean()) < 0.01:
             continue
@@ -129,7 +131,16 @@ def echo_motion(frames, pool_k=4, min_corr=0.35, min_speed=5.0):
         if c > min_corr:
             good.append((dx, dy, c, fb[1] - fa[1]))
     if not good:
-        return {"kind": None, "why": ("corr" if _echo_seen else "noecho")}
+        # A frame we failed to download says nothing about the sky. Reporting
+        # "no echo to track" there is the same class of lie the caller's own
+        # comment forbids: the instrument could not look, so it must say so.
+        if _echo_seen:
+            why = "corr"
+        elif _load_failed:
+            why = "fetch"
+        else:
+            why = "noecho"
+        return {"kind": None, "why": why}
     h, w = next(iter(cache.values())).shape
     km_x = (lon1 - lon0) * 111 * math.cos(math.radians((lat0 + lat1) / 2)) / (w / pool_k)
     km_y = (lat1 - lat0) * 111 / (h / pool_k)
