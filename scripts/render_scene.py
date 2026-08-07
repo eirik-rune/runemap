@@ -94,6 +94,32 @@ def weather(lng, lat, token, lang):
 
 _MO_CACHE = {}
 _MO_TTL = 600
+
+# A failure is not a conclusion, and must not be kept like one.
+#
+# 8/7 11:46 bob sent a screen full of echo under "could not be fetched". I
+# measured the same sky two minutes later: all 20 observation frames answered
+# 200. He was not looking at a live failure, he was looking at the corpse of one
+# that happened ten minutes earlier -- the finally clause below writes every
+# outcome into the cache, and both read sites honoured the same 600s.
+#
+# Upstream fails in bursts (the radar CDN rotates the hostname onto a /24 that
+# is unroutable from here; measured 8/7 11:37, eight addresses, none answering).
+# A burst lasts seconds. Caching its verdict for ten minutes turns a blink into
+# an outage for everyone who asks about that sky, and the reader cannot tell the
+# difference -- which is the same lie this file already fixed one layer down.
+#
+# So: an answer keeps its full life, a failure keeps one refresh cycle.
+_MO_FAIL_TTL = 60
+
+
+def _mo_fresh(hit):
+    """True if this cache entry may still be served."""
+    if not hit:
+        return False
+    age = time.time() - hit[0]
+    undecided = (hit[1] or {}).get("kind") in (None, "undetermined")
+    return age < (_MO_FAIL_TTL if undecided else _MO_TTL)
 # _MO_BUDGET is gone with ede4d59. It was 3.0s of join on the request thread
 # that never consulted the deadline, and 1.2 + 3.0 walked through a 3s wall.
 # The constant and its two joins are deleted rather than left unused: a shape
@@ -156,7 +182,7 @@ def _motion_start(imgs, lng, lat):
     list), so its extra PNG download overlaps ours instead of following it."""
     key = (round(float(lat), 1), round(float(lng), 1))
     hit = _MO_CACHE.get(key)
-    if hit and time.time() - hit[0] < _MO_TTL:
+    if _mo_fresh(hit):
         return (key, None)
     if key not in _MO_BUSY:
         _MO_BUSY.add(key)
@@ -196,7 +222,7 @@ def _motion_peek(imgs, lng, lat):
     """
     key = (round(float(lat), 1), round(float(lng), 1))
     hit = _MO_CACHE.get(key)
-    if hit and time.time() - hit[0] < _MO_TTL:
+    if _mo_fresh(hit):
         return hit[1]
     if key not in _MO_BUSY:
         _MO_BUSY.add(key)
