@@ -118,7 +118,17 @@ def _mo_fresh(hit):
     if not hit:
         return False
     age = time.time() - hit[0]
-    undecided = (hit[1] or {}).get("kind") in (None, "undetermined")
+    mo = hit[1] or {}
+    # "no echo to track" is not an undecided instrument, it is a measurement of
+    # the sky. It cost the same download and the same correlation that produced
+    # a "stationary", and it is exactly as true five minutes later. Given a
+    # failure's lifetime it starved every reader on a 60s rhythm: london printed
+    # "fetching (retry in ~60s)" on 38 of 39 samples while the answer was
+    # computed and thrown away each cycle. The wording promises that coming back
+    # changes something; at that poll rate it never could. See issue #32.
+    if mo.get("why") == "noecho":
+        return age < _MO_TTL
+    undecided = mo.get("kind") in (None, "undetermined")
     return age < (_MO_FAIL_TTL if undecided else _MO_TTL)
 # _MO_BUDGET is gone with ede4d59. It was 3.0s of join on the request thread
 # that never consulted the deadline, and 1.2 + 3.0 walked through a 3s wall.
