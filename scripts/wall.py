@@ -63,17 +63,37 @@ WX_MARGIN = _f("RUNEMAP_WX_MARGIN", 3.5)
 # Never wait less than this for an unknown sky, whatever the arithmetic says.
 RADAR_WAIT_FLOOR = _f("RUNEMAP_RADAR_WAIT_FLOOR", 1.2)
 
-# How long to wait for a sky we know nothing about. This is the wait the
-# shareholder is paying for with the larger wall, so it gets what is left
-# after the reserve and the weather margin.
+# How long a reader waits for a sky we know nothing about.
+#
+# This is a PRODUCT parameter -- how long a person stares at a blank page --
+# and until 8/7 it was arithmetic on WALL, which is an OPS knob for how long
+# a request may hold a socket. Raising the wall on 8/2 silently moved the
+# reader-facing wait from 1.2s to 6.25s. Nobody decided that; subtraction did.
+#
+# The clamp in radar_wait() is what keeps a wait inside the wall, and it is
+# unchanged. That is the safety. The derivation was never the safety, it was
+# a coupling that let one number move another behind our back.
+#
+# The value below is the one the derivation happened to produce, so this
+# commit changes no behaviour. What it changes is that moving it is now a
+# decision with a number attached. Measured 8/7 over 400 cold requests:
+#
+#   wait   maps delivered   maps within the 3s SLO   p90 of all readers
+#   2.65s       264                  264                   3.00s
+#   6.25s       326                  264                   6.60s
+#
+# The extra 3.6s buys 62 maps, every one of them arriving after the 3s SLO,
+# and costs the 18.5% who get no map at all a 6.25s stall. Whether that is a
+# good trade depends on whether our readers are humans who leave at 3s or
+# agents who do not -- a question about users, which I cannot answer from
+# inside. It is filed rather than decided here.
 #
 # The floor is not decoration. Derived purely as WALL - RESERVE - WX_MARGIN, a
 # wall set back to 3.0 yields -0.75 -> 0.0: radar would stop waiting entirely,
 # which is worse than the 1.2 it replaced. A default that only makes sense at
 # one value of its input is a trap for whoever changes the input next -- and
 # the whole point of this module is that someone will.
-RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT",
-                        max(RADAR_WAIT_FLOOR, WALL - RESERVE - WX_MARGIN))
+RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT", max(RADAR_WAIT_FLOOR, 6.25))
 
 # How long to wait for a sky that just refused us. The failure counter is
 # already in cooldown; waiting the full budget on a peer that said no 30
