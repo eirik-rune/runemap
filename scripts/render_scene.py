@@ -171,6 +171,12 @@ def _motion_compute(key, imgs, lng=None, lat=None):
             import echo_motion as EM
             EM._get = _get          # picks up the cached getter
             mo = EM.echo_motion(frames) or {"kind": None}
+            if mo.get("kind"):
+                # Stamp the basis where it is known. Deriving it later from
+                # the MAP's list kind is how the label ended up saying
+                # "upstream forecast" about a number measured from two
+                # observation frames, minutes after that very bug was fixed.
+                mo["basis"] = "obs"
     except Exception:
         mo = {"kind": None, "why": "error"}
     finally:
@@ -873,15 +879,17 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
             rt["precipitation"]["local"]["intensity"]))
     if kp:
         L.append(kp)
-    # Shadow the module-level basis labels with this sky's kind. A sky on the
-    # observation fallback really did have its motion measured, and saying
-    # "upstream forecast" about it would be the exact drift the comment above
-    # RADAR_LIST_KIND warns against: the label parting company with the data.
-    _MO_OBS = _kind_for(lng, lat) == "images"
+    mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
+    # The basis travels with the datum, it is not re-derived here. Motion is
+    # now computed from the observation list even where the MAP is a forecast
+    # (see _obs_frames), so deriving the label from the map's kind made chiang
+    # mai print "upstream forecast" about a number measured from two observed
+    # frames -- minutes after that very bug was fixed. Same family as the bug
+    # bob reported: a sentence speaking for a source it does not know.
+    _MO_OBS = (mo.get("basis") == "obs") or _kind_for(lng, lat) == "images"
     _MO_BASIS_EN = "1h obs" if _MO_OBS else "upstream forecast"
     _MO_BASIS_ZH = "\u8fd11h\u5b9e\u6d4b" if _MO_OBS else "\u4e0a\u6e38\u9884\u62a5"
     _MO_BASIS_JA = "\u76f4\u8fd11h\u5b9f\u6e2c" if _MO_OBS else "\u4e0a\u6d41\u4e88\u5831"
-    mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
     if mo.get("kind") == "moving":
         mo_sfx = (("  |  echo motion(%s): %s %s ~%.0f km/h" % (_MO_BASIS_EN, mo["arrow"], mo["dir_en"], mo["kmh"]))
                   if lang == "en" else
