@@ -146,7 +146,32 @@ def _motion_compute(key, imgs):
         # for the unlucky sky. finally is the whole fix.
         if mo.get("kind") is None:
             mo = {"kind": "undetermined", "why": mo.get("why") or "corr"}
-        _MO_CACHE[key] = (time.time(), mo)
+        # A failure must not evict an answer that is still allowed to be served.
+        #
+        # Upstream goes unroutable in bursts: on 8/7 the radar CDN rotated the
+        # hostname onto 45.253.17.x at 11:54 and 103.239.45.x at 11:55, and all
+        # eight addresses of each timed out on a bare TCP connect. Without this
+        # branch, one such burst throws away a motion vector computed four
+        # minutes earlier and hands the reader "undetermined" instead --
+        # strictly less than what we already knew, and indistinguishable from a
+        # sky we never managed to read at all.
+        #
+        # The bound does not move: the surviving entry keeps its ORIGINAL
+        # timestamp, so it still expires at _MO_TTL and can never be served any
+        # older than an answer on the happy path. This buys freshness for
+        # nobody -- it only refuses to trade knowledge for ignorance.
+        keep_prev = False
+        if mo.get("kind") == "undetermined":
+            prev = _MO_CACHE.get(key)
+            # _mo_fresh, not a hand-rolled comparison: an answer is servable
+            # exactly when a read site would still serve it, and there must be
+            # one definition of that. tests/test_failure_is_not_a_conclusion
+            # greps for this and is right to.
+            keep_prev = bool(prev
+                             and (prev[1] or {}).get("kind") in ("moving", "stationary")
+                             and _mo_fresh(prev))
+        if not keep_prev:
+            _MO_CACHE[key] = (time.time(), mo)
         _MO_BUSY.discard(key)
 
 _MO_UNDET = {
