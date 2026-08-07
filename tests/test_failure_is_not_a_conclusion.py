@@ -54,7 +54,11 @@ class FailureIsNotAConclusion(unittest.TestCase):
         src = open(os.path.join(os.path.dirname(__file__), "..", "scripts",
                                 "render_scene.py"), encoding="utf-8").read()
         body = src.split("def _mo_fresh(", 1)[1].split("\ndef ", 1)[1]
-        self.assertNotIn("_MO_TTL", body,
+        # Comments are prose, not comparisons. A guard that cannot tell the two
+        # apart pushes the next reader to delete the explanation instead of the
+        # bypass -- and the explanation is the only reason this rule survives.
+        code = "\n".join(l.split("#", 1)[0] for l in body.split("\n"))
+        self.assertNotIn("_MO_TTL", code,
                          "a read site still compares against _MO_TTL instead of _mo_fresh()")
 
 

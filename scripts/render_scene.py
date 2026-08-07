@@ -163,9 +163,13 @@ def _motion_compute(key, imgs):
         keep_prev = False
         if mo.get("kind") == "undetermined":
             prev = _MO_CACHE.get(key)
+            # _mo_fresh, not a hand-rolled comparison: an answer is servable
+            # exactly when a read site would still serve it, and there must be
+            # one definition of that. tests/test_failure_is_not_a_conclusion
+            # greps for this and is right to.
             keep_prev = bool(prev
                              and (prev[1] or {}).get("kind") in ("moving", "stationary")
-                             and time.time() - prev[0] < _MO_TTL)
+                             and _mo_fresh(prev))
         if not keep_prev:
             _MO_CACHE[key] = (time.time(), mo)
         _MO_BUSY.discard(key)
