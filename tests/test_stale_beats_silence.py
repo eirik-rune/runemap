@@ -26,8 +26,18 @@ ANSWER = {"kind": "moving", "arrow": "\u2197", "dir_en": "NE",
 class StaleBeatsSilence(unittest.TestCase):
     def setUp(self):
         self.key = (99.9, 99.9)
+        # Since 8/8 the authority is the shared disk entry, not this dict. Two
+        # workers each had a private expiry: 8788 warmed 06:24:44 fell back to
+        # "fetching" at 06:34:57, 8789 warmed 330s later flipped at 06:40:21 --
+        # predicted before the data. Clearing only memory left the PREVIOUS
+        # RUN's file behind, so this test read a stale undetermined answer as
+        # its own planted one: it was measuring the wrong object, not a bug.
         RS._MO_CACHE.pop(self.key, None)
         RS._MO_BUSY.discard(self.key)
+        try:
+            os.remove(RS._mo_path(self.key))
+        except OSError:
+            pass
 
     tearDown = setUp
 
@@ -37,9 +47,9 @@ class StaleBeatsSilence(unittest.TestCase):
 
     def test_a_live_answer_survives_a_failure(self):
         born = time.time() - 240
-        RS._MO_CACHE[self.key] = (born, dict(ANSWER))
+        RS._mo_put(self.key, dict(ANSWER), ts=born)
         self._compute_failure()
-        ts, mo = RS._MO_CACHE[self.key]
+        ts, mo = RS._mo_get(self.key)
         self.assertEqual(mo.get("kind"), "moving", "the failure erased what we knew")
         self.assertAlmostEqual(ts, born, delta=1.0,
                                msg="the answer was refreshed; staleness must not be laundered")
@@ -47,26 +57,26 @@ class StaleBeatsSilence(unittest.TestCase):
     def test_the_bound_does_not_move(self):
         # an answer already past _MO_TTL must not be resurrected by a failure
         born = time.time() - RS._MO_TTL - 30
-        RS._MO_CACHE[self.key] = (born, dict(ANSWER))
+        RS._mo_put(self.key, dict(ANSWER), ts=born)
         self._compute_failure()
-        ts, mo = RS._MO_CACHE[self.key]
+        ts, mo = RS._mo_get(self.key)
         self.assertEqual(mo.get("kind"), "undetermined")
         self.assertFalse(RS._mo_fresh((ts, mo)) and mo.get("kind") == "moving")
 
     def test_a_failure_still_replaces_a_failure(self):
-        RS._MO_CACHE[self.key] = (time.time() - 5,
-                                  {"kind": "undetermined", "why": "corr"})
+        RS._mo_put(self.key, {"kind": "undetermined", "why": "corr"},
+                   ts=time.time() - 5)
         self._compute_failure()
-        ts, mo = RS._MO_CACHE[self.key]
+        ts, mo = RS._mo_get(self.key)
         self.assertEqual(mo.get("kind"), "undetermined")
         self.assertLess(time.time() - ts, 2.0, "the new failure must own the entry")
 
     def test_an_empty_cache_takes_the_failure(self):
         self._compute_failure()
-        self.assertEqual(RS._MO_CACHE[self.key][1].get("kind"), "undetermined")
+        self.assertEqual(RS._mo_get(self.key)[1].get("kind"), "undetermined")
 
     def test_busy_is_always_cleared(self):
-        RS._MO_CACHE[self.key] = (time.time() - 10, dict(ANSWER))
+        RS._mo_put(self.key, dict(ANSWER), ts=time.time() - 10)
         RS._MO_BUSY.add(self.key)
         self._compute_failure()
         self.assertNotIn(self.key, RS._MO_BUSY,

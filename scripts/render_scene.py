@@ -158,6 +158,55 @@ def _mo_fresh(hit):
 # that could once breach the wall, sitting in the file with no callers, is an
 # invitation for the next reader to wire it back in exactly as it was.
 
+# --- motion answers live on shared disk ------------------------------------
+# Measured 8/8, not assumed: the two workers never computed DIFFERENT vectors.
+# What differed was WHEN each one's answer expired. 8788 was warmed 06:24:44 and
+# fell back to "fetching" at 06:34:57 (613s, i.e. _MO_TTL); 8789 was warmed 330s
+# later and flipped at 06:40:21 -- predicted before the data, to the second.
+# Two 600s windows permanently offset by however far apart the workers were
+# warmed: whichever one is recomputing shows "fetching" while its twin shows a
+# vector, and nginx hands consecutive readers to alternating workers. The two
+# lines differ in length, which is what bob saw as 1910/1967 bytes alternating.
+#
+# One entry on disk = one expiry = the alternation cannot happen. The frame list
+# already lives here (scene_at.R._get = _cached_get), so this adds no dependency
+# and no new failure mode -- only the same directory.
+_MO_DIR = os.path.join(
+    os.environ.get("RUNEMAP_CACHE", os.path.expanduser("~/.cache/runemap")), "motion")
+
+
+def _mo_path(key):
+    return os.path.join(_MO_DIR, "%.1f_%.1f.json" % (key[0], key[1]))
+
+
+def _mo_get(key):
+    """The disk entry is the authority; memory is a same-process shortcut.
+
+    Returns the (ts, mo) tuple shape every read site already expects, or None.
+    A corrupt or half-written file is treated as absent, never as an answer.
+    """
+    try:
+        with open(_mo_path(key), "rb") as f:
+            ts, mo = json.loads(f.read().decode("utf-8"))
+        return (float(ts), mo)
+    except Exception:
+        return _MO_CACHE.get(key)
+
+
+def _mo_put(key, mo, ts=None):
+    """Write through: disk first (atomically), memory as a mirror."""
+    ent = (time.time() if ts is None else float(ts), mo)
+    _MO_CACHE[key] = ent
+    try:
+        os.makedirs(_MO_DIR, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=_MO_DIR, suffix=".part")
+        with os.fdopen(fd, "wb") as f:
+            f.write(json.dumps([ent[0], mo]).encode("utf-8"))
+        os.replace(tmp, _mo_path(key))
+    except Exception as e:
+        sys.stderr.write("MO-DISK-WRITE-FAILED %r\n" % (e,))
+    return ent
+
 _MO_BUSY = set()
 
 def _obs_frames(lng, lat):
@@ -239,7 +288,7 @@ def _motion_compute(key, imgs, lng=None, lat=None):
         # nobody -- it only refuses to trade knowledge for ignorance.
         keep_prev = False
         if mo.get("kind") == "undetermined":
-            prev = _MO_CACHE.get(key)
+            prev = _mo_get(key)
             # _mo_fresh, not a hand-rolled comparison: an answer is servable
             # exactly when a read site would still serve it, and there must be
             # one definition of that. tests/test_failure_is_not_a_conclusion
@@ -248,7 +297,7 @@ def _motion_compute(key, imgs, lng=None, lat=None):
                              and (prev[1] or {}).get("kind") in ("moving", "stationary")
                              and _mo_fresh(prev))
         if not keep_prev:
-            _MO_CACHE[key] = (time.time(), mo)
+            _mo_put(key, mo)
         _MO_BUSY.discard(key)
 
 _MO_UNDET = {
@@ -283,7 +332,7 @@ def _motion_start(imgs, lng, lat):
     """Kick the motion thread as soon as imgs is known (it only needs the frame
     list), so its extra PNG download overlaps ours instead of following it."""
     key = (round(float(lat), 1), round(float(lng), 1))
-    hit = _MO_CACHE.get(key)
+    hit = _mo_get(key)
     if _mo_fresh(hit):
         return (key, None)
     if key not in _MO_BUSY:
@@ -304,7 +353,7 @@ def _motion_join(handle):
     key, t = handle
     if t is not None:
         t.join(_MO_BATCH_BUDGET)
-    hit = _MO_CACHE.get(key)
+    hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
 def _motion_peek(imgs, lng, lat):
@@ -323,7 +372,7 @@ def _motion_peek(imgs, lng, lat):
     reader gave up is nothing.
     """
     key = (round(float(lat), 1), round(float(lng), 1))
-    hit = _MO_CACHE.get(key)
+    hit = _mo_get(key)
     if _mo_fresh(hit):
         return hit[1]
     if key not in _MO_BUSY:
