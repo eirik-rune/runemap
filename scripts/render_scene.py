@@ -384,20 +384,26 @@ def _motion_peek(imgs, lng, lat):
 
 # ---------------------------------------------------------------- radar states
 #
-# Three states, and the whole point is that 2 and 3 are different answers:
+# Two states reach the reader, and a third one used to:
 #   ok       - frames are in hand, map rendered
-#   fetching - not here yet; come back in ~60s. A background thread is on it.
-#   none     - this location has no radar coverage. Coming back will not help.
+#   fetching - we do not have frames for this sky. A background thread is on it.
 #
-# Before this, both of the latter collapsed -- and in the worst direction.
-# radar_art() returned None both when the frame list came back empty (real
-# no-coverage) and when fetching that list raised (a stall). serve.py only set
-# radar_err when radar_art *raised*, so a transient upstream hiccup rendered as
-# "no coverage here": we told the user "never" when the truth was "not yet".
-# Hence the rule below, which is the only load-bearing line in this section:
+# The third state ('none - no radar covers this spot, coming back will not help')
+# was removed, and this comment kept describing it for weeks. Two reasons it is
+# gone, both worth keeping:
 #
-#   state 3 is proven by a successful list fetch that contains no images.
-#   It is NEVER inferred from a failure. Failures are state 2, always.
+#   1. bob 8/3 14:35: "no radar means you did not get the radar. Nobody is going
+#      to believe there is no radar just because you say so." A sentence about
+#      the world can be wrong about the world; a sentence about us cannot.
+#   2. The old code inferred 'none' from a failure -- radar_art() returned None
+#      both for an empty list and for a stall -- so a transient hiccup told the
+#      user "never" when the truth was "not yet".
+#
+# So _from_cache() treats an empty list as unknown, not as proof, and there is
+# no verdict left to promote it to. Measured 8/9: 53.3% of registered urban
+# population (PPS n=45, CI 32.9-60.9) lives under a sky upstream has no frames
+# for -- for them 'fetching' is a wait that never ends. That is issue #24 and
+# the wording is bob's call, not a thing to fix by re-adding state 3 here.
 #
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
