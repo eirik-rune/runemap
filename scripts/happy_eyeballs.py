@@ -60,13 +60,28 @@ _MEM = {}
 _MEM_LOCK = threading.Lock()
 
 
+def _pool(entry):
+    """The failure unit, which is a POP and not a machine.
+
+    Every one of the eight addresses DNS hands out shares a /24, and an outage
+    takes all eight down together at once. So remembering the last two
+    ADDRESSES remembers two machines in the same building: when that building
+    goes dark both memories die with it, the extras add nothing, and nothing
+    raises. What the measurement actually showed is that the PREVIOUS pool --
+    a different /24 -- still draws maps. Bucket by that."""
+    ip = entry[4][0]
+    if entry[0] == socket.AF_INET:
+        return ".".join(ip.split(".")[:3])
+    return ip.rsplit(":", 4)[0] if ":" in ip else ip      # v6: /64-ish
+
+
 def _remember(host, entry):
-    """Record an address that just completed a connect, newest first."""
+    """Keep one representative per pool, newest pools first."""
     if host not in _MEM_HOSTS:
         return
-    sa = entry[4]
+    pool = _pool(entry)
     with _MEM_LOCK:
-        kept = [e for e in _MEM.get(host, []) if e[4] != sa]
+        kept = [e for e in _MEM.get(host, []) if _pool(e) != pool]
         kept.insert(0, entry)
         _MEM[host] = kept[:_MEM_KEEP]
 
@@ -77,8 +92,8 @@ def _extras(host, racers):
         return []
     with _MEM_LOCK:
         mem = list(_MEM.get(host, []))
-    have = set(r[4] for r in racers)
-    return [e for e in mem if e[4] not in have]
+    have = set(_pool(r) for r in racers)
+    return [e for e in mem if _pool(e) not in have]
 
 
 _real = socket.create_connection

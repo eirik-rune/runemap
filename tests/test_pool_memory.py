@@ -102,6 +102,60 @@ class PoolMemory(unittest.TestCase):
         self.assertLessEqual(len(he._MEM.get(HOST, [])), he._MEM_KEEP)
         self.assertEqual(he._MEM[HOST][0][4][0], self.good[0])
 
+    def test_memory_written_by_a_real_winner_can_be_redialed(self):
+        """The round trip: a socket teaches the memory, the memory rebuilds it.
+
+        Every other test hands _remember a hand-built tuple, so none of them
+        proves the entry a REAL winner produces can be turned back into a
+        socket. dial() calls socket.socket(family, type, proto) on it, and on
+        Linux a socket's type can carry flag bits (SOCK_NONBLOCK/SOCK_CLOEXEC);
+        if that ever leaks in, the rebuild raises OSError -- which dial()
+        catches, so the address just loses the race and the whole mechanism
+        goes quiet without a single error line.
+        """
+        self._dns([self.good[0]])
+        s1 = self._dial()                       # real connect writes the memory
+        s1.close()
+        self.assertTrue(he._MEM.get(HOST), "nothing remembered from a real dial")
+        entry = he._MEM[HOST][0]
+
+        self._dns([BLACKHOLE])                  # negative control: the pool died
+        he._MEM[HOST] = []
+        with self.assertRaises(OSError):
+            self._dial()
+
+        he._MEM[HOST] = [entry]                 # only the machine-made entry now
+        s2 = self._dial()
+        self.addCleanup(s2.close)
+        self.assertEqual(s2.getpeername()[0], self.good[0])
+
+    def test_pools_not_machines(self):
+        """Two addresses in one /24 are one failure unit, so they get one slot.
+
+        DNS hands out eight addresses that always share a /24 and they go dark
+        together, so remembering two of them remembers one building twice."""
+        e1 = _entry("198.51.100.1")
+        e2 = _entry("198.51.100.2")             # same /24 as e1
+        e3 = _entry("203.0.113.5")              # a different pool
+        for e in (e1, e2, e3):
+            he._remember(HOST, e)
+        pools = [he._pool(e) for e in he._MEM[HOST]]
+        self.assertEqual(len(set(pools)), len(pools), "two entries from one /24")
+        self.assertIn("203.0.113", pools)
+        self.assertIn("198.51.100", pools)
+        self.assertEqual(he._MEM[HOST][0][4][0], "203.0.113.5")
+
+    def test_the_feature_can_be_switched_off(self):
+        """An empty host list must short-circuit both halves, not just one."""
+        keep = he._MEM_HOSTS
+        try:
+            he._MEM_HOSTS = set()
+            he._remember(HOST, _entry(self.good[0], self.good[1]))
+            self.assertEqual(he._MEM.get(HOST, []), [])
+            self.assertEqual(he._extras(HOST, []), [])
+        finally:
+            he._MEM_HOSTS = keep
+
 
 if __name__ == "__main__":
     unittest.main()
