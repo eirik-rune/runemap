@@ -60,7 +60,7 @@ curl echorune.net/guangzhou)
     curl echorune.net                 # your location, guessed from your IP
     curl echorune.net/bangkok         # by name
     curl echorune.net/bangkok/zh      # language suffix: en (default) | zh
-    curl echorune.net/13.75,100.50    # by coordinate
+    curl echorune.net/100.50,13.75    # by coordinate (lon first)
     curl echorune.net/help            # full door plate
     curl echorune.net/healthz
 
@@ -69,9 +69,15 @@ to be quoted, and that is where agent-generated curl commands die most often.
 A path needs no quotes. The query form keeps working forever, with no redirect
 to it: LLM agents do not follow 301 by default.
 
-Coordinate order is disambiguated by measurement rather than convention: a value
-with abs > 90 cannot be a latitude, so `/116.39,39.93` resolves with certainty.
-Only when both values are <= 90 does the lat,lon convention apply.
+Coordinates are `lon,lat` -- longitude first, the order Caiyun and Dark Sky
+take, and the order this service's own first line has always printed. It used to
+guess instead, swapping when a value exceeded 90; the guess fell silent exactly
+where both numbers are <= 90, which is the Americas and Europe, so `/-74.0,40.7`
+meaning New York answered 200 with a map of the Southern Ocean. A latitude
+outside -90..90 is a 400 now, carrying the convention and a corrected command to
+copy. Nobody can do better than that: someone who really means that stretch of
+ocean types the same bytes, so the place name in the first line is what shows a
+reader where the answer came from.
 
 IP to coordinate is a local lookup (DB-IP City Lite, CC-BY, ~0.5ms), never a
 third-party call; the label then comes from GeoNames in either language, so the
@@ -93,7 +99,7 @@ weather is never cached). Override the path with `RUNEMAP_CACHE`.
 
 ## place names (offline geocoding)
 
-Agents ask "is it raining in Bangkok", not "13.75,100.50". So names work too:
+Agents ask "is it raining in Bangkok", not "100.50,13.75". So names work too:
 
     python3 scripts/build_geo.py          # once: builds ~/geonames/geo.sqlite (~65MB)
     CAIYUN_TOKEN=xxx python3 scripts/serve.py     # binds 127.0.0.1:8788
