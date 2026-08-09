@@ -33,3 +33,25 @@ run1 为什么 FAIL：一条样本里关臂 1.34s 就画出了图——那是**�
 
 代价是旧数据缺 `stable` 字段而被全部排除 ⇒ run1 的 FAIL 只能由这张表作证。
 **归档数据必须自带当时的判词**，否则改一次判据就等于把历史重写成沉默。
+
+
+## 两条静默坑, 事后逐字复核 (8/9 03:34)
+
+配对实验只说明"开了以后读者看得见图", 它不说明**为什么**。两条最可能的静默失败
+在实验里都不会现形, 所以事后从 /opt(真正在跑的那棵树)逐字读了一遍, 不从 ON 8/8 反推。
+
+(a) 记忆的单位是 POP 不是机器。happy_eyeballs.py::_pool 返回
+    ".".join(ip.split(".")[:3]) -- 八个地址同一个 /24, 记住两个地址等于记住同一栋楼里的
+    两台机器, 楼一黑两份记忆一起死。按 /24 分桶, 记住的才是**上一个**池。
+    若这条没实现, ON 8/8 的胜因另有其人, #32 的因果措辞就得降级。它实现了。
+
+(b) 记忆能不能变回一个 socket。tests/test_pool_memory.py::
+    test_memory_written_by_a_real_winner_can_be_redialed 做的是往返:
+    真实 connect 写入记忆 -> 换黑洞 DNS 且清空记忆, **负对照先红**(assertRaises OSError)
+    -> 只放机器产生的那个 entry, 重建成功且 getpeername() 命中好地址。
+    这条重要是因为 Linux 上 socket 的 type 会带 flag 位(SOCK_NONBLOCK/SOCK_CLOEXEC),
+    一旦漏进 entry, socket.socket(family, type, proto) 会抛 OSError -- 而 dial() 捕获它,
+    于是那个地址只是"输掉比赛", 整个机制安静地失效, 一行错误都不会打。
+
+其余测试全部手搓元组喂给 _remember, 所以没有任何一条能证明**真实赢家**产出的 entry
+可以被重建。名字像不等于做了那件事 -- 这两条都是读了正文才算数。
