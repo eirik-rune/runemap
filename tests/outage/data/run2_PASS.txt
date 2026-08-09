@@ -1,0 +1,10 @@
+1786244486 blocked=211.101.197.0/24 after=211.101.197.0/24 stable=yes n=8 coord=98.832,18.907 on=predict,0.55s,g24 off=fetching,6.31s,g0
+1786244513 blocked=211.101.197.0/24 after=211.101.197.0/24 stable=yes n=8 coord=116.500,39.861 on=predict,0.61s,g24 off=fetching,6.29s,g0
+1786244541 blocked=180.163.147.0/24 after=180.163.147.0/24 stable=yes n=8 coord=139.546,35.549 on=obs,1.25s,g24 off=fetching,6.30s,g0
+1786244568 blocked=180.163.147.0/24 after=180.163.147.0/24 stable=yes n=8 coord=139.652,35.624 on=obs,0.54s,g24 off=fetching,6.30s,g0
+1786244595 blocked=180.163.147.0/24 after=124.239.239.0/24 stable=no n=8 coord=139.541,35.712 on=obs,0.97s,g24 off=fetching,6.30s,g0
+1786244623 blocked=124.239.239.0/24 after=124.239.239.0/24 stable=yes n=8 coord=139.758,35.718 on=obs,1.95s,g24 off=fetching,6.30s,g0
+1786244651 blocked=124.239.239.0/24 after=124.239.239.0/24 stable=yes n=8 coord=99.002,18.676 on=predict,0.58s,g24 off=fetching,6.59s,g0
+1786244678 blocked=159.226.227.0/24 after=159.226.227.0/24 stable=yes n=8 coord=121.549,31.371 on=predict,0.62s,g24 off=fetching,6.29s,g0
+1786244704 blocked=159.226.227.0/24 after=159.226.227.0/24 stable=yes n=8 coord=116.469,40.000 on=obs,0.56s,g24 off=fetching,6.30s,g0
+1786244727 blocked=159.226.227.0/24 after=111.132.45.0/24 stable=no n=8 coord=98.857,18.921 on=predict,1.12s,g24 off=predict,1.17s,g24
