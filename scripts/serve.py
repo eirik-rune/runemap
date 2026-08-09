@@ -35,7 +35,7 @@ QUICK START (no arguments; your location is guessed from your IP)
 USAGE
   curl echorune.net/<place>         e.g. echorune.net/bangkok
   curl echorune.net/<place>/zh      language suffix: en (default) or zh
-  curl echorune.net/<lat>,<lon>     e.g. echorune.net/13.75,100.50
+  curl echorune.net/<lon>,<lat>     e.g. echorune.net/100.50,13.75   (longitude first)
   curl echorune.net/help
   curl echorune.net/healthz
   curl echorune.net/status         availability, measured every minute
@@ -135,24 +135,41 @@ def _is_file_probe(spec):
     return False
 
 
-def _as_coords(spec):
-    """'lat,lon' -> (lat, lon), else None.
-
-    Disambiguation is measured, not conventional: a value with abs > 90 cannot be
-    a latitude, so '116.39,39.93' resolves to lon,lat with certainty. Only when
-    both values are <= 90 do we fall back to the lat,lon convention."""
+def _numeric_pair(spec):
+    """Two numbers or None. Separate from _as_coords so the caller can tell
+    'not coordinates at all' apart from 'coordinates I refuse to guess at'."""
     parts = [x.strip() for x in spec.replace("\uff0c", ",").split(",")]
     if len(parts) != 2:
         return None
     try:
-        a, b = float(parts[0]), float(parts[1])
+        return float(parts[0]), float(parts[1])
     except ValueError:
         return None
-    if abs(a) > 90 and abs(b) <= 90:
-        a, b = b, a                      # given lon,lat
-    if not (-90 <= a <= 90 and -180 <= b <= 180):
+
+
+def _as_coords(spec):
+    """'lon,lat' -> (lat, lon), else None.
+
+    lon first, the order Caiyun and Dark Sky take, and the order this service's
+    own first line has always printed: "(lon 100.5, lat 13.75)".
+
+    This used to guess. A value with abs > 90 cannot be a latitude, so
+    '116.39,39.93' was swapped for you -- and the guess fell silent exactly
+    where both numbers are <= 90, which is the Americas and Europe. So
+    '-74.0,40.7' meaning New York resolved to a point in the Southern Ocean and
+    came back 200, with a map, with -56C, and with no complaint at all.
+
+    No rule can fix that, because someone who really means that stretch of ocean
+    types the same bytes. What a rule can do is refuse to invent an answer: an
+    out-of-range latitude is an error now, not a swap, and the place name in the
+    first line shows the reader where the answer actually came from."""
+    pair = _numeric_pair(spec)
+    if pair is None:
         return None
-    return round(a, 4), round(b, 4)
+    lon, lat = pair
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return round(lat, 4), round(lon, 4)
 
 
 class H(BaseHTTPRequestHandler):
@@ -236,6 +253,17 @@ class H(BaseHTTPRequestHandler):
                 ll = _as_coords(spec)
                 if ll:
                     q.setdefault("lat", [str(ll[0])]); q.setdefault("lon", [str(ll[1])])
+                elif _numeric_pair(spec) is not None:
+                    # Two numbers, but not a point on Earth in this order. The
+                    # gazetteer would have said "place not found", which hides
+                    # the actual mistake behind a word about names.
+                    a, b = _numeric_pair(spec)
+                    return self._send(400,
+                        "coordinates are lon,lat -- longitude first, "
+                        "like Caiyun and Dark Sky.\n\n"
+                        "  you sent   lon %s, lat %s   (latitude must be -90..90)\n"
+                        "  did you mean  curl echorune.net/%s,%s\n\n"
+                        % (a, b, b, a) + HOME)
                 elif spec and len(spec) <= 80 and not _is_file_probe(spec):
                     q.setdefault("q", [spec])
                 else:
