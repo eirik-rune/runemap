@@ -206,7 +206,15 @@ class H(BaseHTTPRequestHandler):
         # Three values, because "no grid" and "not even a scene" are different things
         # and one label for two states is how a ruler starts lying (8/2).
         if ctype.startswith("text/plain"):
-            v = ("grid" if b"legend:" in b else
+            # 8/12 18:50: three values were still one too few. In the first window
+            # this header was live, nogrid=22 -- and 3 of them were a scanner
+            # hitting /wp-admin/install.php. A 404 is not "a reader who got no
+            # map", it is not a reader; putting it in the denominator of "did
+            # strangers see rain" makes the product look worse for reasons that
+            # have nothing to do with radar. `code` was in this function all
+            # along, so the information existed and I was dropping it.
+            v = ("error" if code != 200 else
+                 "grid" if b"legend:" in b else
                  "landing" if b.startswith(b"echorune - text radar map") else "nogrid")
             self.send_header("X-Radar-Grid", v)
         self.end_headers()
