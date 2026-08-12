@@ -7,7 +7,9 @@
     1.2s 取帧 + 3.0s 等移动，走穿了当时 3 秒的墙。
 """
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -21,14 +23,25 @@ import render_scene as RS               # noqa: E402
 
 
 class MotionJoinBudgeted(unittest.TestCase):
-    # 每个用例一把自己的钥匙。**移动答案落在共享磁盘上**(_mo_put 写盘)，
-    # 只清内存字典清不掉它——第一版就是这么把一个用例的结果漏给了下一个。
+    # **移动答案的权威在磁盘上**(_mo_get: "The disk entry is the authority")。
+    # 第一版只清内存字典 -> 同一次运行里互相污染；第二版给每格换钥匙 ->
+    # 键是确定性的，**上一次运行留在盘上的条目这一次照样读得到**。
+    # 真隔离只有一种：把 _MO_DIR 指到一个临时目录，并逐格删文件。
     _n = [0]
 
     def setUp(self):
         MotionJoinBudgeted._n[0] += 1
         self.key = (10.0 + MotionJoinBudgeted._n[0], 20.0 + MotionJoinBudgeted._n[0])
+        self._tmp = tempfile.mkdtemp(prefix="mo_test_")
+        self._saved_dir = RS._MO_DIR
+        RS._MO_DIR = self._tmp
         RS._MO_CACHE.pop(self.key, None)
+        self.assertIsNone(RS._mo_get(self.key), "起点必须是空的，否则这格测的是上一格")
+
+    def tearDown(self):
+        RS._MO_DIR = self._saved_dir
+        RS._MO_CACHE.pop(self.key, None)
+        shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _thread_that_answers_after(self, delay):
         def run():
