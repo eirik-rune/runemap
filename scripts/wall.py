@@ -94,6 +94,32 @@ RADAR_WAIT_FLOOR = _f("RUNEMAP_RADAR_WAIT_FLOOR", 1.2)
 # which is worse than the 1.2 it replaced. A default that only makes sense at
 # one value of its input is a trap for whoever changes the input next -- and
 # the whole point of this module is that someone will.
+# SETTLED, measured -- do not re-derive from memory (bob, 2026-08-12):
+#
+#   6.25 = WALL 10 - RESERVE 0.25 - WX_MARGIN 3.5
+#
+# There is no literal 6.25 anywhere in this file; it is a derived quantity, so
+# ask for it (`python3 scripts/wall.py --json`) instead of quoting it. And keep
+# the two quantities apart, because I conflated them once in front of the
+# shareholder and it cost him a round:
+#
+#   * ~6.5s is what the UPSTREAM costs to hand us a frame. A constant of the
+#     world; I cannot turn it. Its real corollary is already on the stone:
+#     the user path should make ZERO upstream requests.
+#   * 6.25s is what I make the READER wait. That one is a knob of mine.
+#
+# 400 cold requests, 2026-08-07 (raw columns, not a fit):
+#
+#   W = 2.65s  ->  264 images delivered, p90 3.00s
+#   W = 6.25s  ->  326 images delivered, p90 6.60s
+#
+# So 3.6 extra seconds buys 62 more images, while the 18.5% who get nothing wait
+# the full 6.25s for it. The 264 is FLAT across the whole interval: it is set by
+# upstream speed, not by this constant.
+#
+# And this wait is not a fetch: radar_resolve opens no socket, it does
+# ev.wait(wait) on a background warm. "Waiting" and "going upstream for you" are
+# two different things -- worst case is you wait, then still get `fetching`.
 RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT", max(RADAR_WAIT_FLOOR, 6.25))
 
 # How long to wait for a sky that just refused us. The failure counter is
