@@ -197,6 +197,18 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "public, max-age=300")
+        # 8/12 17:54: the byte count is a single-sided ruler. Today it left 7 of 105
+        # stranger requests undecidable (682-768B: a fetching state for a city with a
+        # long name weighs as much as nothing at all), so I could not answer "did that
+        # stranger see rain" from the access log. This header states it outright, and
+        # it is derived from the bytes about to leave -- not from what the code thinks
+        # happened upstream -- so it cannot disagree with what the reader received.
+        # Three values, because "no grid" and "not even a scene" are different things
+        # and one label for two states is how a ruler starts lying (8/2).
+        if ctype.startswith("text/plain"):
+            v = ("grid" if b"legend:" in b else
+                 "landing" if b.startswith(b"echorune - text radar map") else "nogrid")
+            self.send_header("X-Radar-Grid", v)
         self.end_headers()
         if not self._head:
             self.wfile.write(b)
