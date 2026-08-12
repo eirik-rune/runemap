@@ -28,3 +28,28 @@ jobs:
         run: cd /tmp && python -c "import runemap, runemap.render; print('import OK', runemap.__file__)"
       - name: README promises hold
         run: python tools/readme_promises.py
+
+  unit-tests:
+    # 2026-08-12: the 100 tests in tests/ had NO scheduler at all -- grep over
+    # ops/ and /etc/cron.d found only an archive .md mentioning them, so they ran
+    # only when I remembered. A guard that fires only when I remember is not a
+    # guard; I have been amnesiac four times this month.
+    #
+    # Pinned to one interpreter on purpose. The clean-install job above tests
+    # 3.8 because pyproject claims it; whether the SUITE passes on 3.8 is
+    # unverified, and a gate that is red for an unverified reason is as useless
+    # as one that can never be red.
+    #
+    # No network needed: verified 2026-08-12 10:52 inside a netns with lo up and
+    # no route out -- OK, Ran 100 tests. (An earlier attempt used http_proxy to
+    # simulate "offline" and broke the tests' own loopback servers instead.)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install with test deps
+        run: pip install .
+      - name: Run the suite
+        run: python -m unittest discover -s tests -v
