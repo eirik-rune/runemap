@@ -536,6 +536,28 @@ def last_reason():
     v = getattr(_REASON, "v", None)
     _REASON.v = None
     return v
+_PEEK = threading.local()
+
+
+def note_peek_miss(word):
+    """Record WHY a cache-only read came back empty, on THIS thread.
+
+    _cached_peek has four ways to return None -- the key was never stored, the
+    file aged past the stale window, it could not be read, or the bytes were
+    judged not a frame -- and until 8/12 19:25 all four arrived at the reason
+    site as one word, list-miss. One label for four states is a ruler with no
+    jurisdiction: the information existed and we were the ones dropping it.
+    """
+    _PEEK.v = word
+    return word
+
+
+def take_peek_miss():
+    """Pop this thread's peek reason. None means the stub _peek is in use."""
+    v = getattr(_PEEK, "v", None)
+    _PEEK.v = None
+    return v
+
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
 _RA_FAIL = {}                     # key -> ts of the last refusal (throttle only)
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
@@ -780,6 +802,7 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     code = _mark(code)
     key = (round(float(lat), 1), round(float(lng), 1))
     note_reason(None)   # a stale reason from an earlier request is a lie
+    take_peek_miss()    # same for the peek sub-reason
     _wait_override = wait
 
     now = time.time()
@@ -803,7 +826,10 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     def _from_cache():
         raw = _peek(_radar_list_url(token, lng, lat))
         if raw is None:
-            _why["v"] = "list-miss"          # unknown: not proof of anything
+            # "nopeek" is the absence of a carrier word, NOT a peek that missed: it means
+            # nothing on this thread called _cached_peek (a different early exit, or the
+            # bare stub). Giving absence its own name is the whole point of splitting.
+            _why["v"] = "list-" + (take_peek_miss() or "nopeek")   # not proof of anything
             return None
         try:
             imgs = (json.loads(raw).get("images") or [])

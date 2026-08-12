@@ -191,16 +191,23 @@ def _cached_peek(url):
     try:
         age = time.time() - os.path.getmtime(key)
     except OSError:
+        R.note_peek_miss("nofile")        # never stored: we have not looked yet
         return None
     if age >= _TTL[kind] * _STALE_MAX:
+        R.note_peek_miss("toostale")      # we looked, long ago, and gave up on it
         return None
     if age >= _TTL[kind]:
         _swr_schedule(url, kind)      # serve it AND ask for a fresh one
     try:
         b = open(key, "rb").read()
     except OSError:
+        R.note_peek_miss("unreadable")    # on disk but the read failed
         return None
-    return b if _usable(kind, b) else None
+    if not _usable(kind, b):
+        R.note_peek_miss("unusable")      # bytes present, judged not a frame
+        return None
+    R.note_peek_miss(None)                # a hit must not leave a stale word behind
+    return b
 
 
 R._get = _cached_get
