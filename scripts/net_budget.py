@@ -110,6 +110,18 @@ class _Deadline:
     def left(self, floor=0.0):
         return max(floor, self.end - time.monotonic())
 
+    def elapsed(self):
+        """Seconds since this request started.
+
+        The information was always here -- budget and end -- but there was no
+        way to ask for it, so a caller that wanted to spend politely could only
+        ask how much room was LEFT. Left is a fact about the socket; spent is a
+        fact about the person waiting. A decorative wait needs the second one:
+        a map that arrived in 0.3s can afford a garnish, a map that took 2.5s
+        cannot (Luoshu, 8/12).
+        """
+        return max(0.0, self.budget - (self.end - time.monotonic()))
+
     def expired(self):
         return time.monotonic() >= self.end
 

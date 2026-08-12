@@ -402,7 +402,14 @@ def _motion_join(handle):
 # the correlation). 2.0 was the first value tried and it missed every time --
 # not by much, which is the worst way to be wrong: it looked like the patch did
 # nothing at all. The number below is the measurement, not a preference.
-_MO_REQ_CAP = 4.0        # ceiling; the deadline is what actually decides
+# The mechanism's own ceiling: how long the computation itself can plausibly
+# need (measured 2.4-4.4s on a cold sky). That answers the PRODUCER's question.
+# It is not, and was never, an answer to the consumer's question -- what a
+# decorative line is worth to someone who is waiting. Until 8/12 this constant
+# was the only ceiling in sight, so it became both (Luoshu found his own number
+# doing a job he had not designed it for). The consumer's answer now comes from
+# wall.decor_budget(), and this stays as what it always was: an upper bound.
+_MO_REQ_CAP = 4.0
 
 
 def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
@@ -424,7 +431,11 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # line assumed a float, raised TypeError, and a bare `except:
             # left = cap` swallowed it: the guard was off and nothing said so.
             # A fallback that cannot tell you it fired is how a guard dies.
-            left = min(cap, dl.left() - _wall.RESERVE)
+            # Ask the reader's budget, not the wall. WALL is an ops knob for how
+            # long a request may hold a socket; READER_SLO is a promise about a
+            # person. Subtracting one from the other is how a decorative wait
+            # came to be governed by a socket timeout.
+            left = _wall.decor_budget(dl.elapsed(), cap=cap, left=dl.left())
         if left > 0:
             _t0 = time.time()
             t.wait(left)
@@ -432,7 +443,11 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # only way to know whether the budget was enough is to poll the
             # public endpoint by hand, which is how the 2.0s cap survived a
             # whole deploy looking like "the patch changed nothing".
-            sys.stderr.write("MOTION-JOIN waited=%.2f budget=%.2f got=%s\n" % (
+            # elapsed is in here because without it "how long did this reader
+            # wait in total" cannot be answered from the log -- it had to be
+            # reverse-engineered from an end-to-end number by hand (Luoshu).
+            sys.stderr.write("MOTION-JOIN elapsed=%.2f waited=%.2f budget=%.2f got=%s\n" % (
+                (dl.elapsed() if dl is not None else -1.0),
                 time.time() - _t0, left,
                 "yes" if _mo_fresh(_mo_get(key)) else "no"))
     hit = _mo_get(key)

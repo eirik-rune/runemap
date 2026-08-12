@@ -37,7 +37,8 @@ import sys
 import time
 
 __all__ = ["WALL", "RESERVE", "WX_MARGIN", "RADAR_WAIT_UNKNOWN",
-           "RADAR_WAIT_COOLDOWN", "radar_wait", "as_dict"]
+           "RADAR_WAIT_COOLDOWN", "READER_SLO", "radar_wait",
+           "decor_budget", "as_dict"]
 
 
 def _f(name, default):
@@ -99,6 +100,46 @@ RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT", max(RADAR_WAIT_FLOOR, 6.25))
 # already in cooldown; waiting the full budget on a peer that said no 30
 # seconds ago spends the reader's time on a coin flip we just lost.
 RADAR_WAIT_COOLDOWN = _f("RUNEMAP_RADAR_WAIT_COOLDOWN", 1.5)
+
+
+# How long a reader is willing to stare at nothing. THIS IS THE PRODUCT
+# PARAMETER, and until today it had no executable existence anywhere on the
+# request path -- the docstring above lists where 3s actually lived: an SLO
+# window, a demo assertion, and four test literals. Not one of them is reachable
+# from serving code. So any wait that wanted to be polite to the reader had
+# nothing to ask, and asked WALL instead, which is an ops knob for how long a
+# request may hold a socket. That is how raising the wall on 8/2 moved the
+# reader-facing radar wait from 1.2s to 6.25s with nobody deciding it, and how
+# the motion join ended up capped by "how long the computation takes" -- the
+# producer's question -- instead of "what is a decorative line worth to someone
+# who is waiting" (Luoshu, 8/12: evidence only answers the question it was
+# designed to answer).
+#
+# The value is unchanged from what the prose always promised. What changes is
+# that moving it is now a decision with a number attached, in one place, that
+# code can read.
+READER_SLO = _f("RUNEMAP_READER_SLO", 3.0)
+
+
+def decor_budget(elapsed, cap=None, left=None):
+    """Seconds a DECORATIVE wait may still spend, given time already spent.
+
+    Derived from what has been consumed, not from a constant: a map that took
+    0.3s can afford a little more, a map that took 2.5s can afford none. A
+    decorative wait is one whose absence costs a line of text, never the map.
+
+    `elapsed` -- seconds since the request started.
+    `cap`     -- the mechanism's own ceiling, if it has one.
+    `left`    -- remaining request deadline; the hard wall still binds, because
+                 READER_SLO is a promise about people and WALL is a promise
+                 about sockets, and violating the second one drops the map.
+    """
+    want = READER_SLO - float(elapsed) - RESERVE
+    if cap is not None:
+        want = min(want, float(cap))
+    if left is not None:
+        want = min(want, float(left) - RESERVE)
+    return max(0.0, want)
 
 
 def radar_wait(cooling=False, left=None):
@@ -197,7 +238,8 @@ PRE_HISTORY_WALL = _f("RUNEMAP_PRE_HISTORY_WALL", 3.0)
 def as_dict():
     return {"wall": WALL, "reserve": RESERVE, "wx_margin": WX_MARGIN,
             "radar_wait_unknown": RADAR_WAIT_UNKNOWN,
-            "radar_wait_cooldown": RADAR_WAIT_COOLDOWN}
+            "radar_wait_cooldown": RADAR_WAIT_COOLDOWN,
+            "reader_slo": READER_SLO}
 
 
 def main(argv):
