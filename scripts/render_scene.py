@@ -208,6 +208,12 @@ def _mo_put(key, mo, ts=None):
     return ent
 
 _MO_BUSY = set()
+# key -> threading.Event，谁都可以等它。
+# 只有 _MO_BUSY 时，"已经有人在算"和"算不出来"对第二个到场的人是同一个答案：
+# 不等。而**先到的那个人往往是后台预热，不是读者**——于是读者永远错过。
+# 雷达那侧的 _RA_INFLIGHT 早就解决过同一个问题，这里照它的形状来。
+_MO_INFLIGHT = {}
+_MO_LOCK = threading.Lock()
 
 def _obs_frames(lng, lat):
     """The frames echo_motion has always asked for, that nobody was passing it.
@@ -299,6 +305,10 @@ def _motion_compute(key, imgs, lng=None, lat=None):
         if not keep_prev:
             _mo_put(key, mo)
         _MO_BUSY.discard(key)
+        with _MO_LOCK:
+            _ev = _MO_INFLIGHT.pop(key, None)
+        if _ev is not None:
+            _ev.set()          # 叫醒所有在等的人，成功失败都叫
 
 _MO_UNDET = {
     # "no echo over the radar" is not "the instrument could not decide": telling a
@@ -335,12 +345,21 @@ def _motion_start(imgs, lng, lat):
     hit = _mo_get(key)
     if _mo_fresh(hit):
         return (key, None)
-    if key not in _MO_BUSY:
+    with _MO_LOCK:
+        ev = _MO_INFLIGHT.get(key)
+        if ev is not None:
+            # Someone is already computing this sky -- usually the background
+            # warm, which arrives before any reader. Hand back ITS event so the
+            # reader can wait on it. Returning None here (what this used to do)
+            # is why the request path never waited: by the time a reader had
+            # frames, the key was already busy and the answer was "don't wait".
+            return (key, ev)
+        ev = threading.Event()
+        _MO_INFLIGHT[key] = ev
         _MO_BUSY.add(key)
-        t = threading.Thread(target=_motion_compute, args=(key, imgs, lng, lat), daemon=True)
-        t.start()
-        return (key, t)
-    return (key, None)
+    t = threading.Thread(target=_motion_compute, args=(key, imgs, lng, lat), daemon=True)
+    t.start()
+    return (key, ev)
 
 # Batch path only (render_scene main() writing live/), never a request. It may
 # block: nobody is waiting on the other end of a socket for it. Named apart
@@ -352,7 +371,7 @@ _MO_BATCH_BUDGET = 3.0
 def _motion_join(handle):
     key, t = handle
     if t is not None:
-        t.join(_MO_BATCH_BUDGET)
+        t.wait(_MO_BATCH_BUDGET)
     hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
@@ -408,7 +427,7 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             left = min(cap, dl.left() - _wall.RESERVE)
         if left > 0:
             _t0 = time.time()
-            t.join(left)
+            t.wait(left)
             # Print what happened, not what was hoped for: without this line the
             # only way to know whether the budget was enough is to poll the
             # public endpoint by hand, which is how the 2.0s cap survived a

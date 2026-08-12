@@ -44,12 +44,15 @@ class MotionJoinBudgeted(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _thread_that_answers_after(self, delay):
+        """句柄里装的是 Event，不是 Thread —— 因为等的人不一定是起的人。"""
+        ev = threading.Event()
+
         def run():
             time.sleep(delay)
             RS._mo_put(self.key, {"kind": "moving", "kmh": 30})
-        t = threading.Thread(target=run, daemon=True)
-        t.start()
-        return (self.key, t)
+            ev.set()
+        threading.Thread(target=run, daemon=True).start()
+        return (self.key, ev)
 
     def test_waits_when_the_budget_allows(self):
         h = self._thread_that_answers_after(0.3)
@@ -78,6 +81,52 @@ class MotionJoinBudgeted(unittest.TestCase):
             RS._motion_join_budgeted(h, cap=0.2)
             waited = time.time() - t0
         self.assertLess(waited, 1.0, "上限没生效，一个慷慨的 deadline 就能吊住请求")
+
+
+class SomeoneElseIsComputing(unittest.TestCase):
+    """后台预热几乎总是先到，读者随后才来。
+
+    旧的 _motion_start 在这种情况下返回 (key, None) —— 「已经有人在算」和
+    「不用等」被压成了同一个答案，于是**读者永远等不到任何东西**，而请求路径
+    加不加 join 都一样。这一格就是那个 bug。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp(prefix="mo_test2_")
+        self._saved = RS._MO_DIR
+        RS._MO_DIR = self._tmp
+        self.key = (33.3, 44.4)
+        RS._MO_CACHE.pop(self.key, None)
+        RS._MO_BUSY.discard(self.key)
+        RS._MO_INFLIGHT.pop(self.key, None)
+
+    def tearDown(self):
+        RS._MO_DIR = self._saved
+        RS._MO_CACHE.pop(self.key, None)
+        RS._MO_BUSY.discard(self.key)
+        RS._MO_INFLIGHT.pop(self.key, None)
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_second_caller_gets_a_waitable_handle(self):
+        ev = threading.Event()
+        RS._MO_INFLIGHT[self.key] = ev          # 假装后台预热正在算
+        RS._MO_BUSY.add(self.key)
+
+        key, handle = RS._motion_start([], 44.4, 33.3)
+        self.assertIs(handle, ev,
+                      "第二个调用者拿不到可等待的句柄 —— 读者又会白等")
+
+        def finish():
+            time.sleep(0.2)
+            RS._mo_put(self.key, {"kind": "moving", "kmh": 42})
+            RS._MO_INFLIGHT.pop(self.key, None)
+            ev.set()
+        threading.Thread(target=finish, daemon=True).start()
+
+        with net_budget.request_budget(5.0):
+            mo = RS._motion_join_budgeted((key, handle))
+        self.assertEqual(mo.get("kind"), "moving",
+                         "等到了却没读到结果")
 
 
 if __name__ == "__main__":
