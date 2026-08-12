@@ -356,6 +356,57 @@ def _motion_join(handle):
     hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
+# 2026-08-12 (bob asked; Luoshu measured). The request thread joined motion for
+# ZERO seconds. That was right under the 3s wall: _motion_now's t.join(3.0) never
+# consulted the deadline, so 1.2s of frames + 3.0s of motion walked through it.
+#
+# The wall moved to 10.0 on 7/31 ("The wall was not costing latency, it was
+# costing content") and this decision was never revisited. A guard outlives the
+# premise it was written for, and its death is silent -- it just starts refusing
+# things it no longer needs to refuse.
+#
+# What it costs to wait, measured rather than assumed:
+#   * motion needs ONE new PNG, not two: its pivot IS the frame the renderer
+#     draws (`pivot = nearest(time.time())`), and it pairs that with +60min.
+#   * echo_motion already fetches concurrently and already adopts the deadline.
+#   * _radar_render does no IO at all -- it renders from bytes already on disk.
+#   * the request thread is meanwhile waiting on weather: wx=2.13s, measured in
+#     production, in a parallel thread.
+# So the join is absorbed by a wait that was happening anyway. A cold sky's
+# first reader used to be the one person guaranteed NOT to see motion: he paid
+# to warm the cache and the next reader within _MO_TTL collected.
+#
+# Bounded by the request's own deadline, never by a constant of its own -- the
+# original bug was a join that did not ask, not the waiting itself.
+_MO_REQ_CAP = 2.0        # ceiling; the deadline is what actually decides
+
+
+def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
+    """Join the motion thread for what the request can still afford.
+
+    Returns {"kind": None} when it does not arrive in time -- the same shape
+    the caller already handles, so a slow sky degrades to today's behaviour
+    instead of a new one.
+    """
+    key, t = handle
+    if t is not None:
+        dl = net_budget.current_deadline()
+        if dl is None:
+            # No request budget in scope (batch/CLI). The cap is the ceiling
+            # then, and that is a different situation, not a failure.
+            left = cap
+        else:
+            # dl.left() -- NOT `dl - time.time()`. The first version of this
+            # line assumed a float, raised TypeError, and a bare `except:
+            # left = cap` swallowed it: the guard was off and nothing said so.
+            # A fallback that cannot tell you it fired is how a guard dies.
+            left = min(cap, dl.left() - _wall.RESERVE)
+        if left > 0:
+            t.join(left)
+    hit = _mo_get(key)
+    return (hit[1] if hit else {"kind": None})
+
+
 def _motion_peek(imgs, lng, lat):
     """Motion if it is already in hand; otherwise start it and answer without it.
 
@@ -616,6 +667,7 @@ def _radar_render(code, lng, lat, imgs, small):
     Art depends on the marker and the size, which vary per request, so what is
     shared between requests is the fetched PNG, not the rendered map."""
     cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
+    _mh = _motion_start(imgs, lng, lat)   # in flight while we render
     for cand in cands[:2]:
         png = _peek(cand[0])
         if png is None:
@@ -629,7 +681,9 @@ def _radar_render(code, lng, lat, imgs, small):
                                      rows=(12 if small else 24), marker=code)
         finally:
             os.unlink(p)
-        return art, kmcol, ts, _motion_peek(imgs, lng, lat), base_ts
+        # Start it before the render, so its PNG flies while we draw, then
+        # collect it with whatever the deadline still allows.
+        return art, kmcol, ts, _motion_join_budgeted(_mh), base_ts
     return None
 
 
