@@ -33,15 +33,25 @@ always "fetching". The wall was not costing latency, it was costing content.
 
 The 6.25s that keeps getting rediscovered
 -----------------------------------------
-6.25 = WALL 10.0 - RESERVE 0.25 - WX_MARGIN 3.5. It appears as no literal
-anywhere, which is why I have reported it to the shareholder twice as if it
-were a new finding. It is not a cost and not a measurement: it is the reader's
-waiting budget, the time radar_resolve is allowed to spend on ev.wait() before
-it must answer with whatever is in hand.
+6.25 is a LITERAL, typed into RADAR_WAIT_UNKNOWN below. I have now written the
+opposite claim into this very file twice: that it is derived as WALL - RESERVE -
+WX_MARGIN. Those happen to be equal at today's wall, which is why the story
+survived -- but move the wall and the number does not follow. Measured
+2026-08-12 12:26 on main, four walls, one interpreter each:
 
-What it is not: radar_resolve opens no socket. It waits on the background warm
-worker. So "the reader waits 6.25s" never means "we spend 6.25s fetching for
-this reader" -- nobody is fetching on their behalf.
+    WALL=2 -> 6.25    WALL=5  -> 6.25
+    WALL=10 -> 6.25   WALL=30 -> 6.25
+
+At WALL=2 a reader is told to wait 6.25s inside a 2s request budget, so the
+equality is not just a coincidence, it is a coincidence hiding a bug. Two
+constants being equal is never a mechanism; check it by moving one of them.
+(I retracted this same claim once already, in 09128e7 at 11:48, and then
+reasserted it at 12:15 from memory. The measurement is above so the next reader
+does not have to trust either version of me.)
+
+What it IS: a budget for the READER, not a cost of the upstream. radar_resolve
+opens no socket -- it waits on the background warm worker. So "the reader waits
+6.25s" never means "we are fetching for them".
 
 Measured 2026-08-07, 400 cold requests per arm:
     W = 2.65  ->  264 images, p90 3.00s
