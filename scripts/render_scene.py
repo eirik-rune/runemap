@@ -435,7 +435,14 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # long a request may hold a socket; READER_SLO is a promise about a
             # person. Subtracting one from the other is how a decorative wait
             # came to be governed by a socket timeout.
-            left = _wall.decor_budget(dl.elapsed(), cap=cap, left=dl.left())
+            # 8/12 09:43: the log below used to re-read dl.elapsed() AFTER the
+            # wait and print it under the same name as the decision input, so
+            # `elapsed=1.03 budget=2.07` never satisfied the budget formula and
+            # a reader checking the arithmetic would conclude the patch was
+            # broken. Two moments, one label, is the ambiguity; give each its
+            # own name. Bind the decision input once, here.
+            _el = dl.elapsed()
+            left = _wall.decor_budget(_el, cap=cap, left=dl.left())
         if left > 0:
             _t0 = time.time()
             t.wait(left)
@@ -446,10 +453,12 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # elapsed is in here because without it "how long did this reader
             # wait in total" cannot be answered from the log -- it had to be
             # reverse-engineered from an end-to-end number by hand (Luoshu).
-            sys.stderr.write("MOTION-JOIN elapsed=%.2f waited=%.2f budget=%.2f got=%s\n" % (
-                (dl.elapsed() if dl is not None else -1.0),
-                time.time() - _t0, left,
-                "yes" if _mo_fresh(_mo_get(key)) else "no"))
+            sys.stderr.write(
+                "MOTION-JOIN at_join=%.2f waited=%.2f budget=%.2f total=%.2f got=%s\n" % (
+                    (_el if dl is not None else -1.0),
+                    time.time() - _t0, left,
+                    (dl.elapsed() if dl is not None else -1.0),
+                    "yes" if _mo_fresh(_mo_get(key)) else "no"))
     hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
