@@ -30,6 +30,49 @@ complaint was "I often see no radar at all", and a cold sky needs one list
 fetch (~1s) plus one frame (1-3s) before there is anything to draw. Under a 3s
 wall that work could not finish inside a request, so the honest answer was
 always "fetching". The wall was not costing latency, it was costing content.
+
+Settled numbers, and what settled them
+--------------------------------------
+These are here because on 2026-08-12 10:52 the shareholder said I had been
+"reconfirming 6.5s dozens of times". He was right, and the reason is that the
+number lived only in my prose: every time it came back I re-derived it and
+reported it as if it were new. A constant that has been decided belongs next to
+the code that reads it, so the answer to "where does 6.25 come from" is a file
+lookup rather than a memory. Nothing below is a fresh claim; each line names the
+measurement that closed it.
+
+  6.25s = WALL 10 - RESERVE 0.25 - WX_MARGIN 3.5
+      There is no 6.25 literal anywhere: it is what radar_wait() returns when
+      nothing else binds, i.e. how long a reader may be asked to wait for a
+      background warm. It is a BUDGET FOR THE READER, not a cost of the upstream
+      -- the resolve path opens no socket, it does ev.wait(). "Waiting" here
+      never means "I am fetching for you".
+
+  The wall's price, measured 2026-08-07 over 400 cold requests:
+      W=2.65 -> 264 maps delivered, 264 of them inside 3s, p90 3.00s
+      W=6.25 -> 326 maps delivered, still 264 inside 3s, p90 6.60s
+      So a bigger wall buys 62 more maps and costs every 3s-bounded reader
+      nothing -- but the readers who end up in the extra 3.6s wait mostly get
+      nothing at all for it. 264 is FLAT across the whole range: it is set by
+      upstream speed, which I cannot turn. Whether to cut back to 2.65 is a
+      question about which readers we are serving, not a tuning exercise.
+      (Cold-path measurement 2026-08-12: of 2737 clean cold samples, 475 came
+      back "fetching" with p50 6.85s and 0.0% of them carrying a map. That group
+      is the entire gap between 71.44% and the ~85% the wall was bought for --
+      they paid the full budget and got the empty answer.)
+
+  READER_SLO = 3.0
+      The product promise, and the only number here a reader can feel. It was
+      added 2026-08-12 because until then the promise had no executable form:
+      the code could only ask the operations knob (WALL), so decorative work
+      kept spending a budget sized for content. decor_budget(elapsed) exists to
+      refuse that spend, not to make anything faster.
+
+  A derivation is not a guard.
+      The clamp min(want, left - RESERVE) is the safety device; the arithmetic
+      above is only bookkeeping. Do not add a rule of the form "these two
+      constants happen to be equal" -- 2026-08-06 the inequality that actually
+      bound was held by a third constant nobody had listed.
 """
 import json
 import os
