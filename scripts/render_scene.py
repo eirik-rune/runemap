@@ -827,13 +827,15 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         wait = _wait_override           # but the deadline clamp below does not
         if _dl is not None:             # get to be optional for them either
             wait = max(0.0, min(wait, _dl.left() - _wall.RESERVE))
+    _t0 = time.time()
     if wait > 0:
         ev.wait(wait)
     hit = _from_cache()
     if hit is not None:
         return hit
-    sys.stderr.write("FETCHING-REASON reason=%s key=%.1f,%.1f waited=%.2f\n"
-                     % (_why["v"] or "unknown", key[0], key[1], wait))
+    sys.stderr.write("FETCHING-REASON reason=%s key=%.1f,%.1f waited=%.2f budget=%.2f\n"
+                     % (_why["v"] or "unknown", key[0], key[1],
+                        time.time() - _t0, wait))
     return STATE_FETCHING, None
 
 
