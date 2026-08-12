@@ -435,7 +435,14 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # long a request may hold a socket; READER_SLO is a promise about a
             # person. Subtracting one from the other is how a decorative wait
             # came to be governed by a socket timeout.
-            left = _wall.decor_budget(dl.elapsed(), cap=cap, left=dl.left())
+            # 8/12 09:43: the log below used to re-read dl.elapsed() AFTER the
+            # wait and print it under the same name as the decision input, so
+            # `elapsed=1.03 budget=2.07` never satisfied the budget formula and
+            # a reader checking the arithmetic would conclude the patch was
+            # broken. Two moments, one label, is the ambiguity; give each its
+            # own name. Bind the decision input once, here.
+            _el = dl.elapsed()
+            left = _wall.decor_budget(_el, cap=cap, left=dl.left())
         if left > 0:
             _t0 = time.time()
             t.wait(left)
@@ -446,10 +453,12 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # elapsed is in here because without it "how long did this reader
             # wait in total" cannot be answered from the log -- it had to be
             # reverse-engineered from an end-to-end number by hand (Luoshu).
-            sys.stderr.write("MOTION-JOIN elapsed=%.2f waited=%.2f budget=%.2f got=%s\n" % (
-                (dl.elapsed() if dl is not None else -1.0),
-                time.time() - _t0, left,
-                "yes" if _mo_fresh(_mo_get(key)) else "no"))
+            sys.stderr.write(
+                "MOTION-JOIN at_join=%.2f waited=%.2f budget=%.2f total=%.2f got=%s\n" % (
+                    (_el if dl is not None else -1.0),
+                    time.time() - _t0, left,
+                    (dl.elapsed() if dl is not None else -1.0),
+                    "yes" if _mo_fresh(_mo_get(key)) else "no"))
     hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
@@ -760,25 +769,38 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     with _RA_LOCK:
         fail = _RA_FAIL.get(key)
     if fail is not None and now - fail < _RA_FAIL_COOLDOWN:
+        sys.stderr.write("FETCHING-REASON reason=cooldown key=%.1f,%.1f waited=0.00\n"
+                         % (key[0], key[1]))
         # A sky that just refused us: still state 2 (we are not sure it is
         # "never"), but do not hammer the upstream once per request while we
         # make up our mind.
         return STATE_FETCHING, None
 
+    # Each way out of _from_cache is a DIFFERENT fact about this sky, and they
+    # used to meet at one return where the difference was dropped. A dict, not
+    # a nonlocal, because this has to keep working on the 3.8 that pyproject
+    # still claims and I have not verified the suite on.
+    _why = {"v": None}
+
     def _from_cache():
         raw = _peek(_radar_list_url(token, lng, lat))
         if raw is None:
-            return None                      # unknown: not proof of anything
+            _why["v"] = "list-miss"          # unknown: not proof of anything
+            return None
         try:
             imgs = (json.loads(raw).get("images") or [])
         except Exception:
+            _why["v"] = "list-unparseable"
             return None
         if not imgs:
             # Unknown, not proven: an empty list out of a cached body says
             # nothing about the sky, and there is no verdict left to promote
             # it to. Ask again.
+            _why["v"] = "sky-empty"
             return None
         got = _radar_render(code, lng, lat, imgs, small)
+        if not got:
+            _why["v"] = "render-failed"
         return (STATE_OK, got) if got else None
 
     hit = _from_cache()
@@ -808,7 +830,11 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     if wait > 0:
         ev.wait(wait)
     hit = _from_cache()
-    return hit if hit is not None else (STATE_FETCHING, None)
+    if hit is not None:
+        return hit
+    sys.stderr.write("FETCHING-REASON reason=%s key=%.1f,%.1f waited=%.2f\n"
+                     % (_why["v"] or "unknown", key[0], key[1], wait))
+    return STATE_FETCHING, None
 
 
 _WX_LOCK = threading.Lock()

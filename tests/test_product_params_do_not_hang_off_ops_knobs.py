@@ -51,24 +51,76 @@ def _wall_at(budget):
         importlib.reload(wall)
 
 
+# A wall is ROOMY when it can hold the whole default wait; then the default is
+# not allowed to move at all. It is TIGHT when it cannot; then the default is
+# required to move, downwards, to stay inside the request. 6.5 = 6.25 + 0.25.
+ROOMY_WALLS = [10.0, 30.0, 100.0]
+TIGHT_WALLS = [2.0, 3.0]
+
+
+def _walls_measured(roomy, tight):
+    a, b = {}, {}
+    for dst, budgets in ((a, roomy), (b, tight)):
+        for w in budgets:
+            vals, wall_val = _wall_at(w)
+            assert wall_val == w, "the knob itself must move, or this measures nothing"
+            for k, v in vals.items():
+                dst.setdefault(k, []).append((w, v))
+    return a, b
+
+
+def _violation(measured):
+    """Pure. Returns a message naming the offender, or None."""
+    roomy, tight = measured
+    import wall as _w
+    reserve = _w.RESERVE
+    floor = _w.RADAR_WAIT_FLOOR
+    for k, pairs in sorted(roomy.items()):
+        seen = set(v for _, v in pairs)
+        if len(seen) != 1:
+            return ("%s moved while the wall was roomy: %s -- a reader-facing "
+                    "wait was derived from an ops knob, which is how 1.2s "
+                    "silently became 6.25s" % (k, pairs))
+    for k, pairs in sorted(tight.items()):
+        for w, v in pairs:
+            ceiling = max(floor, w - reserve)
+            if v > ceiling + 1e-9:
+                return ("%s is %.2f at wall %.1f, i.e. longer than the whole "
+                        "request budget (%.2f) -- a reader would be asked to "
+                        "wait past the deadline" % (k, v, w, ceiling))
+    return None
+
+
 class ProductParamsAreIndependentOfTheWall(unittest.TestCase):
 
     def test_reader_waits_do_not_move_when_the_wall_moves(self):
-        budgets = [3.0, 10.0, 30.0]
-        seen = {}
-        for b in budgets:
-            vals, wall_val = _wall_at(b)
-            self.assertEqual(wall_val, b, "the knob itself must move, or this "
-                                          "test is measuring nothing")
-            for k, v in vals.items():
-                seen.setdefault(k, []).append((b, v))
-        for k, pairs in sorted(seen.items()):
-            vals = set(v for _, v in pairs)
-            self.assertEqual(
-                len(vals), 1,
-                "%s moved when %s moved: %s -- a reader-facing wait was derived "
-                "from an ops knob, which is how 1.2s silently became 6.25s"
-                % (k, OPS_KNOB, pairs))
+        """Constant where the wall is roomy; clamped where it is not.
+
+        The first version of this asserted one value across all walls, which
+        made it reject the fix for its own bug: at WALL=2 a reader was told to
+        wait 6.25s inside a 2s request budget, and clamping the default to
+        WALL - RESERVE necessarily makes the value move with the wall. A guard
+        that cannot tell "proportional to the knob" from "bounded by the
+        request" encodes the wrong requirement, so both halves are asserted
+        separately below.
+        """
+        v = _violation(_walls_measured(ROOMY_WALLS, TIGHT_WALLS))
+        self.assertIsNone(v, v)
+
+    def test_the_guard_rejects_a_genuinely_proportional_wait(self):
+        """Negative control: without this, the split above could pass anything."""
+        proportional = {"RADAR_WAIT_UNKNOWN": [(10.0, 6.25), (30.0, 18.75),
+                                               (100.0, 62.5)]}
+        v = _violation((proportional, {}))
+        self.assertIsNotNone(v, "a wait scaling with the knob must be rejected")
+        self.assertIn("RADAR_WAIT_UNKNOWN", v)
+
+    def test_the_guard_rejects_a_wait_longer_than_the_request(self):
+        """Negative control for the other half: unclamped at a tiny wall."""
+        unclamped = {"RADAR_WAIT_UNKNOWN": [(2.0, 6.25)]}
+        v = _violation(({}, unclamped))
+        self.assertIsNotNone(v, "a wait exceeding the whole budget must be rejected")
+        self.assertIn("2.0", v)
 
     def test_the_deadline_clamp_is_still_in_force(self):
         """The ban above must not be read as 'waits ignore the deadline'."""

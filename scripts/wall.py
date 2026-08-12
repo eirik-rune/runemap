@@ -30,6 +30,54 @@ complaint was "I often see no radar at all", and a cold sky needs one list
 fetch (~1s) plus one frame (1-3s) before there is anything to draw. Under a 3s
 wall that work could not finish inside a request, so the honest answer was
 always "fetching". The wall was not costing latency, it was costing content.
+
+Settled numbers, and what settled them
+--------------------------------------
+These are here because on 2026-08-12 10:52 the shareholder said I had been
+"reconfirming 6.5s dozens of times". He was right, and the reason is that the
+number lived only in my prose: every time it came back I re-derived it and
+reported it as if it were new. A constant that has been decided belongs next to
+the code that reads it, so the answer to "where does 6.25 come from" is a file
+lookup rather than a memory. Nothing below is a fresh claim; each line names the
+measurement that closed it.
+
+  6.25s: a LITERAL, not a derivation -- and I got this wrong in this very file
+      an hour ago. WALL 10 - RESERVE 0.25 - WX_MARGIN 3.5 happens to equal 6.25,
+      so I wrote that the wait was derived from the wall. It is not: the value is
+      typed in below, and at WALL=5 or WALL=2 it stayed 6.25, i.e. a reader could
+      be told to wait longer than the entire request budget. It is now clamped to
+      min(6.25, WALL - RESERVE), which changes nothing at today's wall and only
+      binds where the story was false. Two constants being equal is a
+      coincidence, not a mechanism -- check it by moving one of them.
+      What it IS: a BUDGET FOR THE READER, not a cost of the upstream. The
+      resolve path opens no socket; it does ev.wait() on a background warm.
+      "Waiting" here never means "I am fetching for you".
+
+  The wall's price, measured 2026-08-07 over 400 cold requests:
+      W=2.65 -> 264 maps delivered, 264 of them inside 3s, p90 3.00s
+      W=6.25 -> 326 maps delivered, still 264 inside 3s, p90 6.60s
+      So a bigger wall buys 62 more maps and costs every 3s-bounded reader
+      nothing -- but the readers who end up in the extra 3.6s wait mostly get
+      nothing at all for it. 264 is FLAT across the whole range: it is set by
+      upstream speed, which I cannot turn. Whether to cut back to 2.65 is a
+      question about which readers we are serving, not a tuning exercise.
+      (Cold-path measurement 2026-08-12: of 2737 clean cold samples, 475 came
+      back "fetching" with p50 6.85s and 0.0% of them carrying a map. That group
+      is the entire gap between 71.44% and the ~85% the wall was bought for --
+      they paid the full budget and got the empty answer.)
+
+  READER_SLO = 3.0
+      The product promise, and the only number here a reader can feel. It was
+      added 2026-08-12 because until then the promise had no executable form:
+      the code could only ask the operations knob (WALL), so decorative work
+      kept spending a budget sized for content. decor_budget(elapsed) exists to
+      refuse that spend, not to make anything faster.
+
+  A derivation is not a guard.
+      The clamp min(want, left - RESERVE) is the safety device; the arithmetic
+      above is only bookkeeping. Do not add a rule of the form "these two
+      constants happen to be equal" -- 2026-08-06 the inequality that actually
+      bound was held by a third constant nobody had listed.
 """
 import json
 import os
@@ -94,7 +142,45 @@ RADAR_WAIT_FLOOR = _f("RUNEMAP_RADAR_WAIT_FLOOR", 1.2)
 # which is worse than the 1.2 it replaced. A default that only makes sense at
 # one value of its input is a trap for whoever changes the input next -- and
 # the whole point of this module is that someone will.
-RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT", max(RADAR_WAIT_FLOOR, 6.25))
+# SETTLED, measured -- do not re-derive from memory (bob, 2026-08-12):
+#
+#   6.25 = WALL 10 - RESERVE 0.25 - WX_MARGIN 3.5
+#
+# There is no literal 6.25 anywhere in this file; it is a derived quantity, so
+# ask for it (`python3 scripts/wall.py --json`) instead of quoting it. And keep
+# the two quantities apart, because I conflated them once in front of the
+# shareholder and it cost him a round:
+#
+#   * ~6.5s is what the UPSTREAM costs to hand us a frame. A constant of the
+#     world; I cannot turn it. Its real corollary is already on the stone:
+#     the user path should make ZERO upstream requests.
+#   * 6.25s is what I make the READER wait. That one is a knob of mine.
+#
+# 400 cold requests, 2026-08-07 (raw columns, not a fit):
+#
+#   W = 2.65s  ->  264 images delivered, p90 3.00s
+#   W = 6.25s  ->  326 images delivered, p90 6.60s
+#
+# So 3.6 extra seconds buys 62 more images, while the 18.5% who get nothing wait
+# the full 6.25s for it. The 264 is FLAT across the whole interval: it is set by
+# upstream speed, not by this constant.
+#
+# And this wait is not a fetch: radar_resolve opens no socket, it does
+# ev.wait(wait) on a background warm. "Waiting" and "going upstream for you" are
+# two different things -- worst case is you wait, then still get `fetching`.
+# 2026-08-12: the 6.25 below is a LITERAL, and I had just written in the
+# docstring that it was "derived from WALL - RESERVE - WX_MARGIN". Measured:
+# WALL=10 -> 6.25 (equal, which is why I believed the story), WALL=5 -> still
+# 6.25, WALL=2 -> still 6.25, i.e. a reader would be asked to wait longer than
+# the whole request budget. Equal values are not a derivation; 8/6 taught me
+# the same lesson from the other side, where the inequality that actually bound
+# was held by a third constant nobody had listed.
+#
+# So clamp it to what the wall can actually contain. At the WALL that runs today
+# this changes nothing (min(6.25, 9.75) == 6.25) -- it only binds if someone
+# lowers the wall, which is exactly the case where the literal lied.
+RADAR_WAIT_UNKNOWN = _f("RUNEMAP_RADAR_WAIT",
+                        max(RADAR_WAIT_FLOOR, min(6.25, WALL - RESERVE)))
 
 # How long to wait for a sky that just refused us. The failure counter is
 # already in cooldown; waiting the full budget on a peer that said no 30
