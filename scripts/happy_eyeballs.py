@@ -20,7 +20,7 @@ untouched -- this bounds connecting, nothing else.
 
 Patching socket.create_connection covers HTTPConnection and HTTPSConnection alike,
 since both reach the network through it."""
-import os, socket, threading, queue, time
+import os, socket, sys, threading, queue, time
 
 PER_ADDRESS = 6.0     # every address is dialed at once, so this no longer multiplies
 TOTAL = 6.0           # whole-race budget: worst case 6s instead of the measured 160s
@@ -147,7 +147,14 @@ def _bounded(address, timeout=_GDT, source_address=None, **kw):
                 pass
             q.put((False, e, sa))
 
-    racers = infos[:MAX_PARALLEL] + _extras(host, infos[:MAX_PARALLEL])
+    today = infos[:MAX_PARALLEL]
+    extra = _extras(host, today)
+    racers = today + extra
+    if extra:
+        # Only interesting when it happens: today's DNS did not offer these.
+        sys.stderr.write("POOL-EXTRA-DIAL host=%s today=%d extra=%s\n"
+                         % (host, len(today), ",".join(_pool(e) for e in extra)))
+    _today_pools = set(_pool(e) for e in today)
     for fam, typ, proto, _canon, sa in racers:
         threading.Thread(target=dial, args=(fam, typ, proto, sa), daemon=True).start()
 
@@ -165,6 +172,11 @@ def _bounded(address, timeout=_GDT, source_address=None, **kw):
             done.set()
             val.settimeout(t)
             _remember(host, (val.family, val.type, val.proto, "", sa))
+            if _pool((val.family, val.type, val.proto, "", sa)) not in _today_pools:
+                # A reader was served by a pool DNS had stopped handing out.
+                # This is the only evidence the memory is load-bearing.
+                sys.stderr.write("POOL-EXTRA-WIN host=%s pool=%s\n"
+                                 % (host, _pool((val.family, val.type, val.proto, "", sa))))
             return val
         last_err = val
 
