@@ -520,6 +520,22 @@ STATE_OK, STATE_FETCHING = "ok", "fetching"
 RADAR_STALE_MIN = 20
 
 _RA_LOCK = threading.Lock()
+
+
+_REASON = threading.local()
+
+
+def note_reason(word):
+    """Record, on THIS thread, why we are about to answer `fetching`."""
+    _REASON.v = word
+    return word
+
+
+def last_reason():
+    """Pop this thread's reason. None means nothing claimed a reason."""
+    v = getattr(_REASON, "v", None)
+    _REASON.v = None
+    return v
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
 _RA_FAIL = {}                     # key -> ts of the last refusal (throttle only)
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
@@ -763,12 +779,14 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     because the next reader (me) quotes it instead of measuring."""
     code = _mark(code)
     key = (round(float(lat), 1), round(float(lng), 1))
+    note_reason(None)   # a stale reason from an earlier request is a lie
     _wait_override = wait
 
     now = time.time()
     with _RA_LOCK:
         fail = _RA_FAIL.get(key)
     if fail is not None and now - fail < _RA_FAIL_COOLDOWN:
+        note_reason("cooldown")
         sys.stderr.write("FETCHING-REASON reason=cooldown key=%.1f,%.1f waited=0.00\n"
                          % (key[0], key[1]))
         # A sky that just refused us: still state 2 (we are not sure it is
@@ -833,6 +851,7 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     hit = _from_cache()
     if hit is not None:
         return hit
+    note_reason(_why["v"] or "unknown")
     sys.stderr.write("FETCHING-REASON reason=%s key=%.1f,%.1f waited=%.2f budget=%.2f\n"
                      % (_why["v"] or "unknown", key[0], key[1],
                         time.time() - _t0, wait))

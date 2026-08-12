@@ -217,6 +217,13 @@ class H(BaseHTTPRequestHandler):
                  "grid" if b"legend:" in b else
                  "landing" if b.startswith(b"echorune - text radar map") else "nogrid")
             self.send_header("X-Radar-Grid", v)
+            # 8/12 19:02: "no map" and "why" used to live in two different files
+            # (this header vs FETCHING-REASON on stderr) with no key to join them,
+            # so I could never ask "did that stranger get nothing because the sky
+            # had no frames, or because we never looked?". Same response, same row.
+            why = R.last_reason()
+            if why:
+                self.send_header("X-Radar-Why", why)
         self.end_headers()
         if not self._head:
             self.wfile.write(b)
