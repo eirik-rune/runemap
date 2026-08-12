@@ -977,19 +977,22 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     stamp = time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + tzh * 3600))
     L = []
     if lang == "en":
-        L.append("# %s weather scene  updated %s %s  (lon %s, lat %s)" % (name, stamp, _tz_label(tzh), lng, lat))
+        L.append("# %s weather scene" % name)
+        L.append("# updated %s %s  (lon %s, lat %s)" % (stamp, _tz_label(tzh), lng, lat))
         L.append("now: %s  %.0fC  humidity %.0f%%  wind %.0fkm/h  precip %.2fmm/h" % (
             rt["skycon"], rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
     elif lang == "ja":
         sky = SKY_JA.get(rt["skycon"], rt["skycon"])
-        L.append("# %s 天気一覧  更新 %s %s  (経度 %s, 緯度 %s)" % (name, stamp, _tz_label(tzh), lng, lat))
+        L.append("# %s 天気一覧" % name)
+        L.append("# 更新 %s %s  (経度 %s, 緯度 %s)" % (stamp, _tz_label(tzh), lng, lat))
         L.append("現在: %s  %.0fC  湿度 %.0f%%  風速 %.0fkm/h  降水 %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
     else:
         sky = SKY_ZH.get(rt["skycon"], rt["skycon"])
-        L.append("# %s \u5929\u6c14\u4e00\u5c4f  \u66f4\u65b0\u4e8e %s %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (zh, stamp, _tz_label(tzh), lng, lat))
+        L.append("# %s \u5929\u6c14\u4e00\u5c4f" % zh)
+        L.append("# \u66f4\u65b0\u4e8e %s %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (stamp, _tz_label(tzh), lng, lat))
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
