@@ -680,11 +680,18 @@ def _radar_render(code, lng, lat, imgs, small):
     Art depends on the marker and the size, which vary per request, so what is
     shared between requests is the fetched PNG, not the rendered map."""
     cands, base_ts = _pick_frames(imgs, _kind_for(lng, lat))
-    _mh = _motion_start(imgs, lng, lat)   # in flight while we render
     for cand in cands[:2]:
         png = _peek(cand[0])
         if png is None:
             continue
+        # Start motion only once a frame is known to be LOCAL. The first version
+        # of this patch started it above the loop, so every cold sky -- the ones
+        # that answer "fetching" and render nothing -- also kicked a motion
+        # thread that went to the CDN. On dev that starved the radar warm:
+        # RADAR-WARM-FRAME BudgetExceeded ... after 0 bytes, on a CDN that
+        # answered a hand-issued curl in 0.2s. Production, unpatched, had zero.
+        # Extra load on exactly the requests that had nothing to show for it.
+        _mh = _motion_start(imgs, lng, lat)
         url, ts, bbox = cand[0], float(cand[1]), cand[2]
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(png); p = f.name
