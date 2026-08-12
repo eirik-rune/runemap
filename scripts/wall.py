@@ -30,6 +30,26 @@ complaint was "I often see no radar at all", and a cold sky needs one list
 fetch (~1s) plus one frame (1-3s) before there is anything to draw. Under a 3s
 wall that work could not finish inside a request, so the honest answer was
 always "fetching". The wall was not costing latency, it was costing content.
+
+The 6.25s that keeps getting rediscovered
+-----------------------------------------
+6.25 = WALL 10.0 - RESERVE 0.25 - WX_MARGIN 3.5. It appears as no literal
+anywhere, which is why I have reported it to the shareholder twice as if it
+were a new finding. It is not a cost and not a measurement: it is the reader's
+waiting budget, the time radar_resolve is allowed to spend on ev.wait() before
+it must answer with whatever is in hand.
+
+What it is not: radar_resolve opens no socket. It waits on the background warm
+worker. So "the reader waits 6.25s" never means "we spend 6.25s fetching for
+this reader" -- nobody is fetching on their behalf.
+
+Measured 2026-08-07, 400 cold requests per arm:
+    W = 2.65  ->  264 images, p90 3.00s
+    W = 6.25  ->  326 images, of which 264 inside the 3s promise, p90 6.60s
+264 is flat across the whole interval. That number is set by upstream speed,
+not by this constant -- widening W buys later images, not more images inside
+the promise. Which is why READER_SLO below exists as its own number.
+
 """
 import json
 import os
