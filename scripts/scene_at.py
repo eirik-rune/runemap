@@ -168,10 +168,19 @@ def _cached_get(url, timeout=15):
 def _cached_peek(url):
     """Cache-only read: bytes if the disk pool can answer, else None.
 
-    Never touches the network. This is what lets the user path be structurally
-    incapable of waiting on an upstream -- not "we set a short timeout", but
-    "there is no socket on this code path at all". A miss is not an error, it
-    is state 2 (fetching), and a background thread turns it into a hit.
+    Never BLOCKS on the network -- which is not the same as never touching it,
+    and the older wording here said the stronger, false thing: "there is no
+    socket on this code path at all". A call graph computed 2026-08-12 11:30
+    finds one, four hops out:
+        _cached_peek -> _swr_schedule -> _swr_refresh -> _cached_get -> _orig_get
+    i.e. a past-TTL entry is served immediately AND a refresh is spawned. That
+    is the design, but any caller who needs provable silence (an offline audit
+    over many coordinates, say) must stub _swr_schedule and verify it by
+    blocking socket.socket -- reading this docstring is not verification.
+
+    What IS structural: the reader never waits on that refresh. A miss is not
+    an error, it is state 2 (fetching), and a background thread turns it into
+    a hit.
 
     Staleness: accepted up to _STALE_MAX x TTL, the same window _cached_get
     already serves from when upstream is sick. Slightly old rain beats no rain,
