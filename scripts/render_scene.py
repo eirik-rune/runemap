@@ -378,7 +378,12 @@ def _motion_join(handle):
 #
 # Bounded by the request's own deadline, never by a constant of its own -- the
 # original bug was a join that did not ask, not the waiting itself.
-_MO_REQ_CAP = 2.0        # ceiling; the deadline is what actually decides
+# Measured on cold skies through the public endpoint, 2026-08-12: motion became
+# available 2.4-4.4s after the frames were in hand (one PNG at 1.25-1.53s plus
+# the correlation). 2.0 was the first value tried and it missed every time --
+# not by much, which is the worst way to be wrong: it looked like the patch did
+# nothing at all. The number below is the measurement, not a preference.
+_MO_REQ_CAP = 4.0        # ceiling; the deadline is what actually decides
 
 
 def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
@@ -402,7 +407,15 @@ def _motion_join_budgeted(handle, cap=_MO_REQ_CAP):
             # A fallback that cannot tell you it fired is how a guard dies.
             left = min(cap, dl.left() - _wall.RESERVE)
         if left > 0:
+            _t0 = time.time()
             t.join(left)
+            # Print what happened, not what was hoped for: without this line the
+            # only way to know whether the budget was enough is to poll the
+            # public endpoint by hand, which is how the 2.0s cap survived a
+            # whole deploy looking like "the patch changed nothing".
+            sys.stderr.write("MOTION-JOIN waited=%.2f budget=%.2f got=%s\n" % (
+                time.time() - _t0, left,
+                "yes" if _mo_fresh(_mo_get(key)) else "no"))
     hit = _mo_get(key)
     return (hit[1] if hit else {"kind": None})
 
