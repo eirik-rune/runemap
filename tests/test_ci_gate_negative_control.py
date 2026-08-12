@@ -21,3 +21,12 @@ import unittest
 class CIGateNegativeControl(unittest.TestCase):
     def test_this_must_turn_the_gate_red(self):
         self.assertEqual("KUMLGRAV-1103", "gate must be able to say no")
+
+
+# 11:08, take 3. Retargeting the PR to main returned http=200 and the base did
+# change, yet check-runs stayed at total=0. Reason: `pull_request` fires on
+# opened/synchronize/reopened by default -- a base change is the `edited`
+# activity, which nobody subscribed to. So take 1 had the base but not the
+# guard, take 2 had the guard but not the base, and take 3 had both but no
+# dispatch. Three attempts, three different unmet preconditions, each of which
+# looked like "the gate is fine" from the outside.
