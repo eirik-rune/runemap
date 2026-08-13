@@ -40,6 +40,12 @@ Coverage is a declared rectangle per service, not something we probe. A service
 outside its own country returns an empty image, and an empty image is also what
 a dry sky looks like: we would not be able to tell "not covered" from "not
 raining", so we do not ask.
+
+Where a service paints its no-data, though, that distinction becomes visible,
+and then we do have to look: DWD's German composite fades out past the border
+rather than stopping, so a window can be two thirds their own no-data grey and
+still render as a clear sky. `max_nodata_share` declines those, and the reader
+gets the sentence they would otherwise be lied to instead of.
 """
 import hashlib
 import io
@@ -52,27 +58,17 @@ import urllib.request
 
 TIMEOUT = float(os.environ.get("RUNEMAP_WMS_TIMEOUT", "6"))
 
-# Kept, unused, deliberately: the machinery is right and the service is not
-# ready. Over Hamburg, 43% of the visible pixels after stripping their grey are
-# a magenta (251,0,255) that appears in neither the server's own
-# style document (GetStyles: 17 ColorMapEntry rows, grey through blue) nor its
-# own legend image (GetLegendGraphic: the same 16 swatches). Asking with an
-# explicit &time= for the latest 5-minute step returns the same colours, so it
-# is not a forecast frame either
-# -- so we do not know what it means, and a colour we cannot name must not be
-# drawn for a reader as rain. When that is explained, this table and the row
-# below it are what turns DWD on.
-#
-# _DWD_SERVICE = '    {\n        "key": "de-dwd",\n        "name": "DWD",\n      '... (see git history for the full row)
-#
-# DWD's own SLD, fetched with ops/wms_palette.py: colour -> our 0-5 level, by
-# the rain rate their legend attaches to each colour. Their scale ENDS in blue
-# (>=150 mm/h), so a ramp that assumes blue means drizzle gets the wettest
-# pixels on the map exactly backwards.
-_DWD_PALETTE = [("#33ffff", 1), ("#1acc9a", 1), ("#019934", 2), ("#4db31b", 2),
-                ("#99cc01", 3), ("#cce601", 3), ("#ffff01", 3), ("#ffc401", 4),
-                ("#ff8901", 4), ("#ff4501", 4), ("#fe0000", 5), ("#e5004c", 5),
-                ("#cc0098", 5), ("#6600cb", 5), ("#0000fe", 5)]
+# The palette of DWD's OTHER radar layer (Niederschlagsradar / the RV product,
+# analysis AND forecast in one image). Kept unused and named, because it is the
+# table a reader of this file will otherwise rebuild: it is a rain-rate scale,
+# it ENDS IN BLUE at >=150 mm/h, and a ramp assuming blue means drizzle gets
+# its wettest pixels exactly backwards. The layer we actually ship is the WN
+# analysis, whose scale is dBZ -- a different quantity with a different table.
+_RV_PALETTE = [("#33ffff", 1), ("#1acc9a", 1), ("#019934", 2), ("#4db31b", 2),
+               ("#99cc01", 3), ("#cce601", 3), ("#ffff01", 3), ("#ffc401", 4),
+               ("#ff8901", 4), ("#ff4501", 4), ("#fe0000", 5), ("#e5004c", 5),
+               ("#cc0098", 5), ("#6600cb", 5), ("#0000fe", 5)]
+_DWD_PALETTE = _RV_PALETTE      # the name the DWD tests were written against
 
 
 def _rgb(h):
@@ -163,6 +159,48 @@ SERVICES = [
                     ("#e85616", 4), ("#ce0202", 4), ("#830a46", 5),
                     ("#fa51a5", 5)],
     },
+    {
+        "key": "de-dwd-wn",
+        "name": "DWD",
+        "attrib": "Deutscher Wetterdienst dwd.de",
+        "url": "https://maps.dwd.de/geoserver/dwd/wms",
+        # The WN composite is analysis only. The RV layer next to it carries
+        # analysis AND forecast in one product, which is a different promise
+        # than "what the radar sees now".
+        "layers": "dwd:Radar_wn-analysis_1x1km_ger",
+        "version": "1.3.0",
+        "crs_param": "crs",
+        "axis": "yx",
+        "coverage": (47.0, 5.8, 55.1, 15.1),
+        # Germany was blocked for a day by a magenta (251,0,255) that appears
+        # in neither their style document nor their legend. Settled by asking
+        # whether it MOVES: two frames 105 minutes apart are pixel-identical in
+        # every magenta pixel, at four cities, while the echo around them
+        # changed. Rain moves; furniture does not. Over Munich 7071 of 7071
+        # visible pixels were static (grey plus this magenta) -- an empty sky
+        # painted full -- and over Hamburg the only pixels that moved were the
+        # light-rain cyan. It sits 51 counts of green away from their declared
+        # 75-85 dBZ pink, which is exactly the near-miss that makes this family
+        # dangerous: two almost-equal colours meaning opposite things.
+        "nodata_rgb": [(126, 126, 126), (125, 125, 125),
+                       (250, 0, 255), (251, 0, 255), (252, 0, 255)],
+        # Levels from the dBZ band each colour carries in their SLD, not from
+        # the colour itself: <19 dBZ is 1, then 19-28, 28-37, 37-46, and >=46
+        # is the top class. Their scale ends in blue-violet-black at the
+        # extreme, so reading it by warmth would put a hail core at level 0.
+        "palette": [("#99ffff", 1), ("#33ffff", 1), ("#00caca", 1),
+                    ("#009934", 1), ("#4dbf1a", 2), ("#99cc00", 2),
+                    ("#cce600", 3), ("#ffff00", 3), ("#ffc400", 4),
+                    ("#ff8900", 4), ("#ff0000", 5), ("#b40000", 5),
+                    ("#4848ff", 5), ("#0000ca", 5), ("#990099", 5),
+                    ("#ff33ff", 5), ("#000000", 5)],
+        # Their composite fades out past the border rather than stopping, so a
+        # window can be mostly their own no-data and still look like a clear
+        # sky. Measured: Berlin 0.3%, Strasbourg 4.2%, Zurich 22%, Prague 33%,
+        # Copenhagen 37%, Vienna 67%. The line is drawn where a map still has
+        # most of its window behind a radar.
+        "max_nodata_share": 0.25,
+    },
 ]
 
 
@@ -214,6 +252,29 @@ def _join(base, q):
     the first time it was asked anything.
     """
     return base + ("&" if "?" in base else "?") + urllib.parse.urlencode(q)
+
+
+def nodata_share(raw, svc):
+    """How much of this window the service itself says it cannot see.
+
+    Only meaningful for a service that PAINTS its no-data, which is why it is
+    computed from the same declared list. Measured on DWD, whose German
+    composite reaches past the border and fades out: Berlin 0.3%, Strasbourg
+    4.2%, Zurich 22%, Prague 33%, Copenhagen 37%, Vienna 67%. A Viennese
+    reader would get a map that is two thirds blind and looks exactly like a
+    clear sky -- "not covered" and "not raining" arriving as the same picture,
+    which is the failure this whole file keeps circling.
+    """
+    colours = svc.get("nodata_rgb") or []
+    if not colours:
+        return 0.0
+    import numpy as np
+    from PIL import Image
+    a = np.array(Image.open(io.BytesIO(raw)).convert("RGBA"))
+    hit = np.zeros(a.shape[:2], dtype=bool)
+    for r, g, b in colours:
+        hit |= (a[..., 0] == r) & (a[..., 1] == g) & (a[..., 2] == b)
+    return float(hit.sum()) / float(a.shape[0] * a.shape[1])
 
 
 def _strip_nodata(raw, svc):
@@ -301,6 +362,16 @@ def draw(code, lng, lat, small=False, get=None):
                              % (svc["key"], len(raw or b""), (raw or b"")[:80]))
             return None
         import tempfile
+        cap = svc.get("max_nodata_share")
+        if cap is not None:
+            share = nodata_share(raw, svc)
+            if share > cap:
+                # Declining is the honest answer: the chain moves on, and the
+                # reader gets the sentence rather than a map that is mostly
+                # blind and reads as clear sky.
+                sys.stderr.write("WMS-MOSTLY-BLIND %s %.0f%% > %.0f%%\n"
+                                 % (svc["key"], share * 100, cap * 100))
+                return None
         raw = _strip_nodata(raw, svc)
         try:
             os.makedirs(CACHE, exist_ok=True)
