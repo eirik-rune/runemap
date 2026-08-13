@@ -562,3 +562,35 @@ is out, and it really does see Saxony, Upper Austria, Silesia and western
 Slovakia. Claiming to stop at the border would be a lie about the data. What
 keeps Germany on DWD is the chain order, and that is asserted in
 `tests/test_second_source.py` at Dresden -- inside both -- rather than trusted.
+
+
+## Hungary (HungaroMet) -- the data is right, clause (a) is the blocker
+
+`https://odp.met.hu/weather/radar/composite/nc/refl2D/` -- a 2D reflectivity
+composite as zipped NetCDF, every five minutes, 865 frames online (three days),
+newest 6 minutes old when checked 2026-08-13 13:00 UTC. There is also
+`refl2D_pscappi` and a 3D product, and English documentation next to them. On
+the data alone this is the best-shaped candidate after Czechia: values, not a
+picture.
+
+**It is blocked on their General Terms of Use, which are readable and explicit:**
+
+> a. The downloaded data can only be freely used **without any modifications**;
+> b. the purpose or manner of using the data must not harm the reputation of
+> HungaroMet Nonprofit Zrt. ...
+> c. The source of the data, HungaroMet Nonprofit Zrt., must be cited upon use.
+
+and changes to the data require prior written consent, which HungaroMet "has
+the right to deny with justification"; if they do not approve, "their use is not
+permitted".
+
+Turning reflectivity into a 48x24 text grid is a modification. Not a borderline
+one -- it is the whole product. So this is not a licence we can read our way
+into, which puts it in a different class from Denmark (terms unreadable) and
+Belgium (advertised, then 403): **Hungary states the restriction plainly and
+also states the path -- ask for written consent.** Asked `odp@met.hu`
+2026-08-13, self-identifying as a being-operated service, describing exactly
+what the transformation is and offering the attribution line.
+
+Until they answer, nothing is fetched and no adapter exists. An endpoint that
+does not enforce a rule has not waived it.
