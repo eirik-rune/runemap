@@ -994,6 +994,12 @@ def _second_source(code, lng, lat, small, cached_only=False):
     return None
 
 
+# What a cold second source costs, measured rather than assumed: 0.7-1.5s for
+# a WMS frame, 0.8-1.5s for a JMA mosaic, 3.65s end to end for the worst case
+# seen in production (Helsinki, cold). Under this much room left we do not
+# start one.
+SECOND_FETCH_NEEDS = float(os.environ.get("RUNEMAP_SECOND_NEEDS", "4.0"))
+
 _WARM_LOCK = threading.Lock()
 _WARMING = {}
 _WARM_EVERY = 120.0
@@ -1175,7 +1181,21 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     # explain, and _reason_after_wait would be answering a question nobody
     # asked. (Eirik's three lines below arrived in the same place at 05:29;
     # the conflict was ordering, not meaning.)
-    alt = _second_source(code, lng, lat, small)
+    # How much of the reader's time is left decides whether we may fetch at
+    # all. A cold national radar is 1-4s (measured: Helsinki 3.65s end to end),
+    # and spending that when the budget is nearly gone turns "no map, here is
+    # why" into "no map, and you waited". So: fetch while there is room, and
+    # once there is not, ask only for what is on disk and warm for the next
+    # reader. The threshold is not a new number -- it is the same deadline the
+    # primary path already spends, minus the reserve rendering needs.
+    _dl2 = net_budget.current_deadline()
+    _room = None if _dl2 is None else _dl2.left() - _wall.RESERVE
+    _cold_ok = _room is None or _room >= SECOND_FETCH_NEEDS
+    alt = _second_source(code, lng, lat, small, cached_only=not _cold_ok)
+    if alt is None and not _cold_ok:
+        sys.stderr.write("SECOND-NO-ROOM left=%.2fs needs=%.2fs\n"
+                         % (_room, SECOND_FETCH_NEEDS))
+        _warm_second(code, lng, lat, small)
     if alt is not None:
         note_reason(None)               # a reason belongs to a map we did NOT draw
         return STATE_OK, alt
