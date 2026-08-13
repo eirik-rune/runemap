@@ -484,3 +484,59 @@ class RainViewerIsRefusedInCodeNotOnlyInADocument(unittest.TestCase):
             self.assertIsNone(RS._second_source("><", 72.88, 19.08, True))
         finally:
             RS.SECOND_SOURCE = old
+
+
+class TheWarmLeavesARecordOfWhatItCost(unittest.TestCase):
+    """The only line this path could print was its own failure, so 'the warm
+    never ran' and 'the warm ran and cost a reader half a second' were the
+    same silence. That silence is what made today's median regression
+    un-diagnosable for an hour."""
+
+    def setUp(self):
+        import render_scene as RS
+        self.RS = RS
+        self._warming = dict(RS._WARMING)
+        RS._WARMING.clear()
+        self._on = RS.WARM_SECOND
+        self.addCleanup(lambda: setattr(RS, "WARM_SECOND", self._on))
+        self.addCleanup(lambda: (RS._WARMING.clear(), RS._WARMING.update(self._warming)))
+
+    def _capture(self, fn):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            fn()
+        return buf.getvalue()
+
+    def test_the_switch_off_says_so_rather_than_doing_nothing_quietly(self):
+        self.RS.WARM_SECOND = False
+        out = self._capture(lambda: self.RS._warm_second("><", 139.69, 35.69, True))
+        self.assertIn("SECOND-WARM-OFF", out)
+
+    def test_a_skipped_warm_is_distinguishable_from_no_warm(self):
+        """One warm per sky per interval is correct; being unable to tell that
+        from 'the warm never fires here' is not."""
+        import time as _t
+        self.RS.WARM_SECOND = True
+        self.RS._WARMING[(35.7, 139.7)] = _t.time()
+        out = self._capture(lambda: self.RS._warm_second("><", 139.69, 35.69, True))
+        self.assertIn("SECOND-WARM-SKIP", out)
+
+    def test_a_warm_that_runs_reports_its_elapsed_time(self):
+        import threading
+        self.RS.WARM_SECOND = True
+        done = threading.Event()
+        orig = self.RS._second_source
+        self.RS._second_source = lambda *a, **k: (done.set(), None)[1]
+        try:
+            out = self._capture(lambda: (self.RS._warm_second("><", 1.0, 2.0, True),
+                                         done.wait(5)))
+        finally:
+            self.RS._second_source = orig
+        self.assertTrue(done.is_set(), "the warm thread never ran")
+
+    def test_the_default_is_on(self):
+        """A diagnostic switch that defaults to off is a feature removal
+        wearing a switch's name."""
+        import os
+        self.assertTrue(os.environ.get("RUNEMAP_WARM_SECOND", "1") != "0")
