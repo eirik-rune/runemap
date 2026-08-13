@@ -516,7 +516,9 @@ STATE_OK, STATE_FETCHING = "ok", "fetching"
 
 # Credit as each source asks to be credited, keyed by the name it reports.
 _SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com",
-                  "REDEMET/DECEA": "REDEMET/DECEA redemet.decea.mil.br"}
+                  "REDEMET/DECEA": "REDEMET/DECEA redemet.decea.mil.br",
+                  "NWS NEXRAD": "NWS NEXRAD via mesonet.agron.iastate.edu",
+                  "Environment Canada": "Environment and Climate Change Canada geo.weather.gc.ca"}
 
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
@@ -941,6 +943,8 @@ def _second_source(code, lng, lat, small):
                 import radar_second as _m
             elif which == "redemet":
                 import radar_redemet as _m
+            elif which == "wms":
+                import radar_wms as _m
             else:
                 sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
                 continue
