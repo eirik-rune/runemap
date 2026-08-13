@@ -162,18 +162,28 @@ class TheCooldownPathAsksToo(unittest.TestCase):
     production: two probes a second apart, one drew and one did not."""
 
     def test_every_no_map_return_consults_the_second_source(self):
+        # Structural, not a byte distance. The first version looked 700
+        # characters back for the call, and four lines of budget comment above
+        # one return broke it while the code was still correct. A ruler whose
+        # unit is "how much prose fits between two statements" measures the
+        # prose. So: cut the function at its returns and require the fallback
+        # to be consulted somewhere in the stretch leading to each no-map one.
         import re
         src = open(os.path.join(os.path.dirname(__file__), "..", "scripts",
                                 "render_scene.py"), encoding="utf-8").read()
         body = src[src.index("def radar_resolve("):src.index("_WX_LOCK = threading.Lock()")]
+        cuts = [m.start() for m in re.finditer(r"\n    return ", body)]
         returns = [m.start() for m in re.finditer(r"return STATE_FETCHING, None", body)]
         self.assertTrue(returns, "no such return: this guard has lost its subject")
         for at in returns:
-            window = body[max(0, at - 700):at]
-            self.assertIn("_second_source(", window,
-                          "a 'no map' return with no fallback above it: the "
-                          "reader on this path gets a sentence while another "
-                          "path gets rain")
+            # `\n    return ` matches this very return too (five characters
+            # earlier), so its own cut has to be excluded or the segment is
+            # empty and the guard fails on itself.
+            prev = max([c for c in cuts if at - c > 6] or [0])
+            self.assertIn("_second_source(", body[prev:at],
+                          "a 'no map' return with no fallback consulted on the "
+                          "way to it: the reader on this path gets a sentence "
+                          "while another path gets rain")
 
 
 class TheCreditIsDerivedNotRestated(unittest.TestCase):
@@ -409,3 +419,33 @@ class AdaptersHonourTheNoNetworkFlag(unittest.TestCase):
         finally:
             radar_wms.CACHE = was
             shutil.rmtree(d, ignore_errors=True)
+
+
+class AColdFetchNeedsRoomInTheReadersBudget(unittest.TestCase):
+    """Helsinki cold measured 3.65s end to end -- over the 3s product line --
+    because the primary had nothing and the fallback fetched on the reader's
+    thread. Spending that when the budget is nearly gone turns "no map, here is
+    why" into "no map, and you waited"."""
+
+    def test_the_threshold_is_the_measured_cost_not_a_round_number(self):
+        self.assertGreaterEqual(RS.SECOND_FETCH_NEEDS, 3.0)
+
+    def test_with_no_deadline_at_all_we_still_fetch(self):
+        """A caller outside a request budget (a test, a warm, an ops script)
+        must not be silently downgraded to cache-only."""
+        import net_budget
+        self.assertIsNone(net_budget.current_deadline())
+        seen = {}
+
+        def spy(c, x, y, s, cached_only=False):
+            seen["flag"] = cached_only
+            return None
+        was = RS._second_source
+        RS._second_source = spy
+        try:
+            RS.radar_resolve("><", 0.0, 0.0, "tok", wait=0)
+        except Exception:
+            pass
+        finally:
+            RS._second_source = was
+        self.assertIs(seen.get("flag"), False)
