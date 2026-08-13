@@ -21,6 +21,10 @@ import sys
 import time
 
 NAME = "REDEMET/DECEA"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of Brazil holds neighbours too.
+SERVES = ("BR",)
 ATTRIB = "REDEMET/DECEA redemet.decea.mil.br"
 # Derived from THIS source's cycle, not copied from the global composite's.
 # Measured 8/13 across all 18 mirrored radars in one pull: at the moment we

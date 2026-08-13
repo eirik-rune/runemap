@@ -47,6 +47,10 @@ import urllib.request
 import radar_rainviewer as RV
 
 NAME = "JMA"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of Japan holds neighbours too.
+SERVES = ("JP",)
 ATTRIB = "Japan Meteorological Agency jma.go.jp"
 HOST = "https://www.jma.go.jp"
 TIMES_URL = HOST + "/bosai/jmatile/data/nowc/targetTimes_N1.json"

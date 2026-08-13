@@ -51,6 +51,10 @@ for _p in (_ROOT, os.path.join(_ROOT, "ops")):
         sys.path.insert(0, _p)
 
 NAME = "KNMI"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of the Netherlands holds neighbours too.
+SERVES = ("NL",)
 ATTRIB = "KNMI dataplatform.knmi.nl, CC BY 4.0"
 DATASET = "radar_reflectivity_composites"
 VERSION = "2.0"

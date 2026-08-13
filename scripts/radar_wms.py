@@ -107,6 +107,7 @@ def classify_palette(arr, palette, max_dist=40):
 SERVICES = [
     {
         "key": "us-nexrad",
+        "serves": "US",
         "name": "NWS NEXRAD",
         "attrib": "NWS NEXRAD via mesonet.agron.iastate.edu",
         "url": "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi",
@@ -123,6 +124,7 @@ SERVICES = [
     },
     {
         "key": "ca-geomet",
+        "serves": "CA",
         "name": "Environment Canada",
         "attrib": "Environment and Climate Change Canada geo.weather.gc.ca",
         "url": "https://geo.weather.gc.ca/geomet",
@@ -135,6 +137,7 @@ SERVICES = [
     },
     {
         "key": "fi-fmi",
+        "serves": "FI",
         "name": "FMI",
         "attrib": "Finnish Meteorological Institute en.ilmatieteenlaitos.fi",
         "url": "https://openwms.fmi.fi/geoserver/Radar/wms",
@@ -161,6 +164,7 @@ SERVICES = [
     },
     {
         "key": "de-dwd-wn",
+        "serves": "DE",
         "name": "DWD",
         # Their form, not ours. DWD's own template page (vorlagen_
         # quellenangabe.html, under section 7 of the DWD-Gesetz) is explicit
@@ -210,6 +214,11 @@ SERVICES = [
         "max_nodata_share": 0.25,
     },
 ]
+
+# Four countries live in this one module because they all speak WMS. Counting
+# radar_*.py files therefore undercounts the fleet by three -- which is
+# exactly the mistake this line exists to make impossible to repeat.
+SERVES = tuple(sorted(x["serves"] for x in SERVICES))
 
 
 # The Netherlands is measured and NOT shipped, for a different reason than
