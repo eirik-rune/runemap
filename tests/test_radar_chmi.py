@@ -251,5 +251,53 @@ class TheTermsCheckTreatsSilenceAsFailure(unittest.TestCase):
                       T.EXPECT["databáze-chráněná-zvláštními-právy"])
 
 
+class AStaleCachedFrameMustNotPinTheSource(unittest.TestCase):
+    """The fourth adapter with this shape, and the one that proves the point
+    about scanning a family by shape rather than by symptom.
+
+    MeteoSwiss declined the country outright and was loud about it. Here the
+    lookback window (25 min) sits under the staleness limit (30 min), so the
+    same bug just quietly served an older frame than necessary and refreshed
+    only once the stale entry aged out. Nothing logged, no probe went red.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.old_cache = C.CACHE
+        C.CACHE = tempfile.mkdtemp()
+        # draw() returns before the cache logic when h5py is absent, so pin the
+        # reader: which slot is consulted has nothing to do with HDF5, and
+        # skipping would hide it on the machine that runs this on every push.
+        self.old_have = C.have_h5py
+        C.have_h5py = lambda: True
+
+    def tearDown(self):
+        C.CACHE = self.old_cache
+        C.have_h5py = self.old_have
+
+    def calls_for(self, slots_back, cached_only=False):
+        cand = C.stamps()
+        with open(C._cache_path(cand[slots_back]), "wb") as fh:
+            fh.write(b"\x89HDF\r\n\x1a\n" + b"0" * 64)
+        asked = []
+
+        def get(u):
+            asked.append(u)
+            return b""
+        C.draw("><", 14.42, 50.09, get=get, cached_only=cached_only)
+        return asked
+
+    def test_a_fresh_cached_frame_is_served_without_asking_upstream(self):
+        self.assertEqual(self.calls_for(0), [])
+
+    def test_a_stale_cached_frame_does_not_prevent_asking_for_a_newer_one(self):
+        self.assertTrue(self.calls_for(5),
+                        "a 25-minute-old cached frame won outright and "
+                        "upstream was never asked -- the silent symptom")
+
+    def test_cached_only_opens_no_socket_even_when_the_cache_is_stale(self):
+        self.assertEqual(self.calls_for(5, cached_only=True), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
