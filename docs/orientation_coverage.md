@@ -90,7 +90,15 @@ re-deriving this.** The Netherlands was dry too tonight (24-25 C, humidity
 | | radar archive | gauges |
 |---|---|---|
 | SE | `opendata-download-radar.smhi.se`, area `sweden`, product `comp` — **years 2008 → 2026**, newest file `radar_2608132230` | metobs parameter 7; `latest-hour` works keyless, history under `latest-months` / `corrected-archive` |
-| NL | KNMI dataplatform, same dataset `radar_knmi` already reads — oldest file kept is `RAD_NL25_PCP_NA_201910281110.h5`, i.e. **back to 2019** | KNMI station observations (dataset to be identified) |
+| NL | KNMI dataplatform, same dataset `radar_knmi` already reads — oldest file kept is `RAD_NL25_PCP_NA_201910281110.h5`, i.e. **back to 2019** | KNMI station observations (dataset name still unidentified — see note) |
+
+**Finding the KNMI station dataset needs their catalogue, not their API.**
+`/open-data/v1/datasets` answers 404. That is not "forbidden" and not "absent":
+a positive control in the same breath — the file listing for the dataset
+`radar_knmi` already reads — returned 200 with the same key and base URL, so the
+key works and the path is simply wrong. The open-data API serves files for a
+dataset you can already name; it does not appear to enumerate datasets. The name
+has to come from KNMI's published catalogue.
 
 One caution carried forward for the KNMI side: that API key is **shared by every
 unregistered user**, and walking timestamps with it earned a 429 earlier tonight.
