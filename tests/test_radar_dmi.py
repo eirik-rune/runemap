@@ -188,5 +188,66 @@ class TheListingIsAskedOnceAndCanBeEmpty(unittest.TestCase):
         self.assertIsNone(D.newest_frame(lambda u: b"<html>503</html>"))
 
 
+class AStaleCachedFrameMustNotPinTheSource(unittest.TestCase):
+    """Found by fixing the same bug in MeteoSwiss and then scanning the family.
+
+    draw() used to answer from ANY cached slot in its whole window before
+    asking upstream what was newest, so one old entry served readers a frame up
+    to 25 minutes old with a fresh one available, and the cache only refreshed
+    once that entry aged out. Reproduced deliberately before the fix: seeding
+    only an old slot made draw() return with zero network calls.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.old_cache = D.CACHE
+        D.CACHE = tempfile.mkdtemp()
+        # draw() returns before the cache logic when h5py is absent, so without
+        # this the test passes here and fails on CI, which does not install the
+        # optional extra. Pinned rather than skipped: which slot is consulted
+        # has nothing to do with HDF5, and skipping would hide it on the one
+        # machine that runs this suite on every push. Third time tonight -- the
+        # difference is that this one was caught before pushing.
+        self.old_have = D.have_h5py
+        D.have_h5py = lambda: True
+
+    def tearDown(self):
+        D.CACHE = self.old_cache
+        D.have_h5py = self.old_have
+
+    def seed(self, slots_back):
+        import math
+        import time
+        now = time.time()
+        old = math.floor((now - slots_back * D.STEP) / D.STEP) * D.STEP
+        name = "dk.com.%s.500_max.h5" % time.strftime("%Y%m%d%H%M",
+                                                      time.gmtime(old))
+        with open(D._cache_path(name), "wb") as fh:
+            fh.write(b"\x89HDF\r\n\x1a\n" + b"0" * 64)
+
+    def calls_for(self, slots_back, cached_only=False):
+        self.seed(slots_back)
+        asked = []
+
+        def get(u):
+            asked.append(u)
+            return b'{"features":[]}'
+        D.draw("><", 12.57, 55.68, get=get, cached_only=cached_only)
+        return asked
+
+    def test_a_fresh_cached_frame_is_served_without_asking_upstream(self):
+        """The cache must still do its job -- otherwise this 'fix' is just a
+        way to make every reader pay for a round trip."""
+        self.assertEqual(self.calls_for(1), [])
+
+    def test_a_stale_cached_frame_does_not_prevent_asking_what_is_newest(self):
+        self.assertEqual(len(self.calls_for(5)), 1)
+
+    def test_cached_only_opens_no_socket_even_when_the_cache_is_stale(self):
+        """The other half of the contract: a reader already holding a map does
+        not pay for a round trip, however old our cache is."""
+        self.assertEqual(self.calls_for(5, cached_only=True), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
