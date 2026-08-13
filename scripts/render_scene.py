@@ -515,7 +515,8 @@ def _motion_peek(imgs, lng, lat):
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
 # Credit as each source asks to be credited, keyed by the name it reports.
-_SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com"}
+_SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com",
+                  "REDEMET/DECEA": "REDEMET/DECEA redemet.decea.mil.br"}
 
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
@@ -930,13 +931,25 @@ def _second_source(code, lng, lat, small):
     the sentence we already have, not to a 500."""
     if not SECOND_SOURCE:
         return None
-    try:
-        if SECOND_SOURCE == "rainviewer":
-            import radar_second
-            return radar_second.draw(code, lng, lat, small)
-        sys.stderr.write("SECOND-UNKNOWN %r\n" % (SECOND_SOURCE,))
-    except Exception as e:
-        sys.stderr.write("SECOND-FAILED %r\n" % (e,))
+    # A comma-separated chain, tried in order. Order is a judgement about data,
+    # not about code: a national radar beats a global composite over the country
+    # that owns it, so redemet goes before rainviewer for a Brazilian sky and
+    # simply declines everywhere else.
+    for which in [w.strip() for w in SECOND_SOURCE.split(",") if w.strip()]:
+        try:
+            if which == "rainviewer":
+                import radar_second as _m
+            elif which == "redemet":
+                import radar_redemet as _m
+            else:
+                sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
+                continue
+            got = _m.draw(code, lng, lat, small)
+            if got is not None:
+                return got
+        except Exception as e:
+            # One broken adapter must not take the rest of the chain with it.
+            sys.stderr.write("SECOND-FAILED %s %r\n" % (which, e))
     return None
 
 

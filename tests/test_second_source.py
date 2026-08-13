@@ -105,5 +105,52 @@ class TheSourceRefusesToLieAboutFreshness(unittest.TestCase):
             S._INDEX.update(was)
 
 
+
+class TheChainTriesInOrderAndFallsThrough(unittest.TestCase):
+    """Order encodes a judgement about data: a national radar beats a global
+    composite over the country that owns it, and declines everywhere else."""
+
+    def setUp(self):
+        self._was = RS.SECOND_SOURCE
+        import radar_redemet, radar_second
+        self._r, self._s = radar_redemet.draw, radar_second.draw
+
+    def tearDown(self):
+        RS.SECOND_SOURCE = self._was
+        import radar_redemet, radar_second
+        radar_redemet.draw, radar_second.draw = self._r, self._s
+
+    def _stub(self, first, second):
+        import radar_redemet, radar_second
+        radar_redemet.draw = lambda *a, **k: first
+        radar_second.draw = lambda *a, **k: second
+
+    def test_the_first_that_answers_wins(self):
+        RS.SECOND_SOURCE = "redemet,rainviewer"
+        a = (ART, 12.0, 1.0, None, 1.0, "REDEMET/DECEA")
+        b = (ART, 12.0, 2.0, None, 2.0, "RainViewer")
+        self._stub(a, b)
+        self.assertEqual(RS._second_source("><", -46.63, -23.55, False)[5],
+                         "REDEMET/DECEA")
+
+    def test_a_decline_falls_through_to_the_next(self):
+        RS.SECOND_SOURCE = "redemet,rainviewer"
+        b = (ART, 12.0, 2.0, None, 2.0, "RainViewer")
+        self._stub(None, b)
+        self.assertEqual(RS._second_source("><", 72.88, 19.08, False)[5], "RainViewer")
+
+    def test_one_adapter_exploding_does_not_take_the_chain_with_it(self):
+        RS.SECOND_SOURCE = "redemet,rainviewer"
+        b = (ART, 12.0, 2.0, None, 2.0, "RainViewer")
+        import radar_redemet, radar_second
+        radar_redemet.draw = lambda *a, **k: (_ for _ in ()).throw(IOError("boom"))
+        radar_second.draw = lambda *a, **k: b
+        self.assertEqual(RS._second_source("><", 72.88, 19.08, False)[5], "RainViewer")
+
+    def test_all_declining_is_none_not_an_empty_map(self):
+        RS.SECOND_SOURCE = "redemet,rainviewer"
+        self._stub(None, None)
+        self.assertIsNone(RS._second_source("><", 0.0, 0.0, False))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
