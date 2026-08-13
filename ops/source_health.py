@@ -14,6 +14,8 @@ So the check is per source and it has to be able to fail:
   STALE        a map came back but the observation is older than the source's
                own cycle allows
   NO-MAP       the adapter declined where it says it has coverage
+  WRONG-SOURCE another service answered, so the one this probe names is not
+               being exercised at all
   ERROR        it raised
 
 Exit code is 0 only if every source is OK. That matters more than the text: a
@@ -34,20 +36,29 @@ import traceback
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "scripts"))
 
-# (label, module, import path, sky, max age in seconds)
+# (label, module import path, sky, max age in seconds, expected source name)
 #
 # The age limit is the source's own cycle plus room for one missed beat -- not
 # a number picked so the check passes. Where the adapter already declares one,
 # it is read from the adapter rather than restated here, because a restated
 # constant drifts and the drift is silent.
+#
+# The fourth field is the source this probe is FOR. Without it the label was
+# the only thing saying which service was being exercised, and a label is not a
+# judgement: "wms-toronto" was answered by NWS NEXRAD, because the NEXRAD
+# rectangle reaches past the border and it is first in the table. So Environment
+# Canada had no probe at all -- it could have died and this file would still
+# have printed "7 of 7 healthy", which is the exact decoration this file was
+# written against. Calgary is far enough north that ECCC is the service that
+# answers, and the assertion below makes drift a failure rather than a rename.
 PROBES = [
-    ("jma-tokyo", "radar_jma", (139.69, 35.69), None),
-    ("jma-naha", "radar_jma", (127.68, 26.21), None),
-    ("wms-chicago", "radar_wms", (-87.62, 41.88), 900),
-    ("wms-toronto", "radar_wms", (-79.38, 43.65), 900),
-    ("wms-helsinki", "radar_wms", (24.94, 60.17), 900),
-    ("wms-berlin", "radar_wms", (13.40, 52.52), 900),
-    ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None),
+    ("jma-tokyo", "radar_jma", (139.69, 35.69), None, "JMA"),
+    ("jma-naha", "radar_jma", (127.68, 26.21), None, "JMA"),
+    ("wms-chicago", "radar_wms", (-87.62, 41.88), 900, "NWS NEXRAD"),
+    ("wms-calgary", "radar_wms", (-114.07, 51.05), 900, "Environment Canada"),
+    ("wms-helsinki", "radar_wms", (24.94, 60.17), 900, "FMI"),
+    ("wms-berlin", "radar_wms", (13.40, 52.52), 900, "DWD"),
+    ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 
 
@@ -59,7 +70,7 @@ def _max_age(mod, fallback):
     return float(fallback if fallback is not None else 1800)
 
 
-def check(label, modname, sky, fallback):
+def check(label, modname, sky, fallback, want_source=None):
     try:
         mod = __import__(modname)
     except Exception as e:
@@ -85,6 +96,16 @@ def check(label, modname, sky, fallback):
     kmcol = float(got[1])
     if not (1.0 <= kmcol <= 60.0):
         return "ERROR", "%s: %.1f km/col is not a plausible scale" % (label, kmcol)
+    src = got[5] if len(got) > 5 else None
+    if want_source is not None and src != want_source:
+        # The probe is still green about SOMETHING -- that is the danger. A
+        # sky can move from one service to another (a coverage rectangle that
+        # reaches past a border, a reordered table) and the service this probe
+        # exists for stops being exercised, silently, while the line still
+        # reads OK.
+        return "WRONG-SOURCE", ("%s: answered by %r, but this probe exists to"
+                                " exercise %r -- %s now has no probe"
+                                % (label, src, want_source, want_source))
     return "OK", ("%s: %s, %.0f min old, %.1f km/col, %.2fs"
                   % (label, got[5] if len(got) > 5 else "?", age / 60.0, kmcol, took))
 
@@ -98,8 +119,8 @@ def main():
         sys.exit("no probe matches %r; have: %s"
                  % (wanted, ", ".join(p[0] for p in PROBES)))
     bad = 0
-    for label, modname, sky, fallback in rows:
-        state, msg = check(label, modname, sky, fallback)
+    for label, modname, sky, fallback, want in rows:
+        state, msg = check(label, modname, sky, fallback, want)
         print("%-6s %s" % (state, msg))
         if state != "OK":
             bad += 1

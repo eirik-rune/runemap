@@ -206,6 +206,22 @@ class BothWindowsMustAcceptTheCallersScale(unittest.TestCase):
     and every Finnish reader could: SECOND-FAILED wms TypeError, and the
     sentence instead of rain."""
 
+    def setUp(self):
+        """Its own cache directory, because these two read the shared one and
+        that made them lie in both directions.
+
+        They pass `get=` and assert the injected colour comes back -- but
+        `draw` prefers a cached frame and never calls `get` at all, so with a
+        real Helsinki frame on disk the assertion was about today's Finnish
+        weather. It went red the moment ops/source_health.py warmed that cache
+        from my own shell: the check I wrote to prove a source is alive wrote
+        into the thing another check was measuring."""
+        import shutil, tempfile
+        self.dir = tempfile.mkdtemp(prefix="wms-window-")
+        self._was, W.CACHE = W.CACHE, self.dir
+        self.addCleanup(lambda: setattr(W, "CACHE", self._was))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
     def _png(self, rgb):
         import io
         from PIL import Image
