@@ -107,13 +107,41 @@ def stitched(lng, lat, ts, path, span_km=280.0):
     return p, bbox, got, want
 
 
-def draw(code, lng, lat, small=False, cached_only=False):
-    """-> (art, km_per_col, ts, motion, base_ts, source) or None.
+# Their answer, 2026-08-13, to a licence enquiry sent from this address:
+# "RainViewer no longer offers paid API plans or commercial licenses. That
+# ended with the 2025 API transition... The free API is still around, but it's
+# limited to personal and educational use only - not company or commercial
+# projects, even at low volume with attribution."
+#
+# echorune is a company and runemap is its service, so there is no reading of
+# that under which we may use it. The refusal was already written in
+# docs/second_radar_source.md, and a refusal that lives only in a document is
+# the same shape as a check that only prints: anyone setting
+# RUNEMAP_SECOND_SOURCE=rainviewer would have shipped it, and nothing would
+# have said a word. No env override, because an override with a polite name is
+# just the loophole wearing one.
+#
+# The rest of the file stays: the tile-seam geometry and the per-frame cache
+# are ours and are used by JMA, and deleting the adapter would delete the
+# record of why it is not here.
+LICENCE_REFUSED = ("RainViewer's free API is personal and educational use"
+                   " only; we are a company (their support, 2026-08-13)")
 
-    None means "we have nothing either", and the caller then says so in the
-    words it already has. It never means "no radar exists here": this function
-    cannot see that and must not imply it.
+
+def draw(code, lng, lat, small=False, cached_only=False):
+    """-> None, always. See LICENCE_REFUSED above.
+
+    Returning None is what every other adapter returns when it has nothing to
+    offer, so the chain moves on and the reader gets whatever the next source
+    can draw. It never means "no radar exists here".
     """
+    sys.stderr.write("SECOND-REFUSED rainviewer: %s\n" % (LICENCE_REFUSED,))
+    return None
+
+
+def _draw_unlicensed(code, lng, lat, small=False, cached_only=False):
+    """Kept only so the geometry above has a reader and stays honest. Not
+    reachable from the chain -- see draw()."""
     ts, path = newest_frame()
     if ts is None:
         return None

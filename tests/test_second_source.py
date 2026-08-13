@@ -449,3 +449,38 @@ class AColdFetchNeedsRoomInTheReadersBudget(unittest.TestCase):
         finally:
             RS._second_source = was
         self.assertIs(seen.get("flag"), False)
+
+
+class RainViewerIsRefusedInCodeNotOnlyInADocument(unittest.TestCase):
+    """Their support, 2026-08-13, in reply to an enquiry from this address: no
+    paid plans or commercial licences exist any more, and the free API is
+    "personal and educational use only - not company or commercial projects,
+    even at low volume with attribution". echorune is a company.
+
+    docs/second_radar_source.md already said we would not use it. A refusal
+    that lives only in a document is the same shape as a check that only
+    prints: RUNEMAP_SECOND_SOURCE=rainviewer would have shipped it and nothing
+    would have said a word."""
+
+    def test_draw_returns_nothing_whatever_it_is_asked(self):
+        import radar_second
+        for sky in [(72.88, 19.08), (-46.63, -23.55), (0.0, 51.5)]:
+            self.assertIsNone(radar_second.draw("><", sky[0], sky[1]))
+            self.assertIsNone(radar_second.draw("><", sky[0], sky[1],
+                                                cached_only=True))
+
+    def test_the_reason_is_carried_in_the_module_not_in_my_memory(self):
+        import radar_second
+        r = radar_second.LICENCE_REFUSED.lower()
+        self.assertIn("personal and educational", r)
+        self.assertIn("company", r)
+        self.assertIn("2026-08-13", r)
+
+    def test_the_chain_still_moves_on_rather_than_erroring(self):
+        import render_scene as RS
+        old = RS.SECOND_SOURCE
+        RS.SECOND_SOURCE = "rainviewer"
+        try:
+            self.assertIsNone(RS._second_source("><", 72.88, 19.08, True))
+        finally:
+            RS.SECOND_SOURCE = old

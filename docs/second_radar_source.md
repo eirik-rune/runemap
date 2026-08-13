@@ -28,7 +28,7 @@ cities that flicker.
 
 | source | covers | licence | egress from prod | product test |
 |---|---|---|---|---|
-| RainViewer tiles | both | free tier is "personal or educational use only"; we are a company. Commercial pricing is not published. Asked `support@rainviewer.com` 06:31 UTC (mail log `250 ... status=sent`) | fine | draws; palette maps across all five intensity levels |
+| RainViewer tiles | both | **closed, permanently.** Their support answered 2026-08-13: "RainViewer no longer offers paid API plans or commercial licenses. That ended with the 2025 API transition... the free API... is limited to personal and educational use only - not company or commercial projects, even at low volume with attribution." There is no price to pay, so this is not "until we pay" -- it is a no. Enforced in `scripts/radar_second.py`: `draw()` returns None and says why | fine | draws, but may not be shipped |
 | REDEMET (Brazilian air force) | saopaulo | Terms of Use: content is copyright (Berne), framing REDEMET images in other sites is **not** authorised, links only to the main page. A derived 48x24 text grid is not named either way. Asked `redemet@decea.gov.br` 06:46 UTC (`250 ... Queued mail for delivery`) | **blocked** -- `api-redemet` and `estatico-redemet` both time out from prod, 200 from Tokyo | draws; the API hands us `lat_min/lat_max/lon_min/lon_max` per radar, so no polar calibration is needed |
 | IMD (India) | mumbai (Veravali radar, 73 km from the city) | **nothing forbids it**: the disclaimer carries only `(c) Ministry of Earth Sciences`; `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are 404. Silence is not a prohibition either -- see the note below | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
 | NOAA GOES-19 `ABI-L2-RRQPEF` | saopaulo (Americas only) | **US Government work, public domain. No gatekeeper at all** | fine, straight from prod | **fails, see below** |
@@ -89,8 +89,9 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
      lighter than one person with a browser -- no)
   2. do we pass their work off as ours? (we attribute, with a link -- no)
   3. did they **state** a restriction? RainViewer states one ("personal or
-     educational use only") and we are a company, so that one binds until we
-     pay. REDEMET states a narrow one (do not display REDEMET images framed in
+     educational use only") and we are a company. I wrote "until we pay" here,
+     and their answer removed that escape: there is no commercial tier to buy
+     any more, so it is simply a no. REDEMET states a narrow one (do not display REDEMET images framed in
      another site) and a derived character grid is not that image. IMD states
      nothing, so nothing blocks it.
 - Buying an egress before a licence is settled buys a machine that waits: the
@@ -121,7 +122,7 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 | Finland | FMI | `Finnish Meteorological Institute en.ilmatieteenlaitos.fi` | 6 km/char; 1.8s cold, 0.20-0.35s cached |
 | Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
 | Germany | DWD WN analysis | `Datenbasis: Deutscher Wetterdienst, Raster veraendert` | dBZ palette from their SLD; declines a window >25% no-data |
-| Mumbai | **nothing** | -- | RainViewer states non-commercial; we are a company |
+| Mumbai | **nothing** | -- | RainViewer is non-commercial and has no paid tier to buy (their support, 2026-08-13); IMD's images have no published geographic extent |
 
 Every one of these is a fallback: the primary upstream wins whenever it has
 frames, and the absence of a `radar-data:` line is how a reader can tell which
