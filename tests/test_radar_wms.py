@@ -295,3 +295,92 @@ class AQueryInTheBaseUrlIsNotOverwritten(unittest.TestCase):
     def test_every_shipped_service_builds_one_question_mark(self):
         for s in W.SERVICES:
             self.assertEqual(W.url_for(s, (1.0, 2.0, 3.0, 4.0)).count("?"), 1, s["key"])
+
+
+class GermanyShipsBecauseTheMagentaWasMeasuredNotGuessed(unittest.TestCase):
+    """The colour that blocked Germany for a day was settled by asking whether
+    it MOVES: two frames 105 minutes apart are pixel-identical in every magenta
+    pixel, at four cities, while the echo around them changed. Rain moves;
+    furniture does not. Over Munich 7071 of 7071 visible pixels were static."""
+
+    def _svc(self):
+        return next(s for s in W.SERVICES if s["key"] == "de-dwd-wn")
+
+    def test_the_static_magenta_is_declared_as_nodata(self):
+        for c in [(251, 0, 255), (252, 0, 255), (250, 0, 255), (126, 126, 126)]:
+            self.assertIn(c, self._svc()["nodata_rgb"], c)
+
+    def test_the_magenta_never_becomes_rain(self):
+        import numpy as np
+        a = np.zeros((4, 4, 4), dtype=np.uint8)
+        a[..., 0], a[..., 1], a[..., 2], a[..., 3] = 251, 0, 255, 255
+        self.assertEqual(int(W.classify_palette(a, self._svc()["palette"]).max()), 0)
+
+    def test_the_declared_top_class_still_is_rain(self):
+        """Negative control for the line above: their real 75-85 dBZ pink sits
+        51 counts of green from the furniture, and must not be stripped with
+        it."""
+        import numpy as np
+        a = np.zeros((4, 4, 4), dtype=np.uint8)
+        a[..., 0], a[..., 1], a[..., 2], a[..., 3] = 0xFF, 0x33, 0xFF, 255
+        self.assertEqual(int(W.classify_palette(a, self._svc()["palette"]).max()), 5)
+
+    def test_the_levels_follow_the_dbz_bands_not_the_warmth(self):
+        """Their scale runs to blue, violet and black at the extreme; read by
+        warmth, a hail core would be level 0."""
+        pal = dict(self._svc()["palette"])
+        self.assertEqual(pal["#0000ca"], 5)
+        self.assertEqual(pal["#000000"], 5)
+        self.assertEqual(pal["#99ffff"], 1)
+
+
+class AMostlyBlindWindowIsDeclinedNotDrawn(unittest.TestCase):
+    """Measured: Berlin 0.3% no-data, Strasbourg 4.2%, Zurich 22%, Prague 33%,
+    Copenhagen 37%, Vienna 67%. Two thirds blind renders as a clear sky.
+
+    Each case gets its own cache directory. Without that, the first case files
+    a frame under (service, sky, cycle) and the second never fetches at all --
+    the test would then be reporting on the cache, not on the guard. (Harmless
+    in production, where only a frame that passed the guard is ever written.)
+    """
+
+    def setUp(self):
+        import shutil, tempfile
+        self.dir = tempfile.mkdtemp(prefix="wms-blind-")
+        self._was, W.CACHE = W.CACHE, self.dir
+        self._rm = shutil.rmtree
+
+    def tearDown(self):
+        W.CACHE = self._was
+        self._rm(self.dir, ignore_errors=True)
+
+    def _png(self, rgb, share):
+        import io
+        import numpy as np
+        from PIL import Image
+        a = np.zeros((120, 240, 4), dtype=np.uint8)
+        a[..., 3] = 255
+        a[..., 0], a[..., 1], a[..., 2] = 0x99, 0xFF, 0xFF        # light echo
+        n = int(round(120 * 240 * share))
+        flat = a.reshape(-1, 4)
+        flat[:n, 0], flat[:n, 1], flat[:n, 2] = rgb
+        b = io.BytesIO()
+        Image.fromarray(a).save(b, "PNG")
+        return b.getvalue()
+
+    def test_a_window_over_the_cap_declines(self):
+        raw = self._png((126, 126, 126), 0.60)
+        self.assertIsNone(W.draw("><", 13.40, 52.52, get=lambda u: raw))
+
+    def test_a_window_under_the_cap_draws(self):
+        raw = self._png((126, 126, 126), 0.05)
+        got = W.draw("><", 13.40, 52.52, get=lambda u: raw)
+        self.assertIsNotNone(got, "a mostly-visible German window must draw")
+        self.assertEqual(got[5], "DWD")
+
+    def test_a_service_without_a_cap_is_unaffected(self):
+        """Only a service that paints its zeros can be measured this way, so
+        the field is optional and its absence must not mean 'decline'."""
+        for s in W.SERVICES:
+            if s.get("max_nodata_share") is None:
+                self.assertEqual(W.nodata_share(b"", s), 0.0, s["key"])
