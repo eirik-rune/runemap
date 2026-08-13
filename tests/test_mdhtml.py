@@ -501,5 +501,84 @@ class UnknownSkyIsNotDrawnAsWeather(unittest.TestCase):
         self.assertNotIn(MD.CLASS["?"], [MD.CLASS[c] for c in MD.RAMP])
 
 
+class TheWindowKeepsItsWidthWhenTheEastIsDry(unittest.TestCase):
+    """The marker is not a decoration whose position can drift.
+
+    The window is centred on the reader by construction, so the marker sits at
+    column cols/2 and every echo is read as a bearing and a distance FROM it.
+    Drop the empty cells on the right and the grid narrows: the marker is no
+    longer in the middle, and each echo silently moves. bob, on Chiang Mai:
+    "不下雨的内容你也得保留，不然紫色块儿就不在中心了".
+
+    This is the third instance of the same family in one day -- a clear map row
+    is 48 spaces and was rstripped away (London rendered 26x12), a dry curve
+    bucket is a space and was dropped (20 buckets rendered as 6). Trailing
+    spaces are values here, not padding.
+    """
+
+    def doc(self, rows):
+        return "# x\n\n" + "\n".join(rows) + "\nlegend: \u00b7 light  \u2588 heavy\n"
+
+    def grid(self, page):
+        return re.findall(r'<div class="row">(.*?)</div>', page)
+
+    def widths(self, page):
+        return [sum(int(n) for n in re.findall(r"flex:(\d+)", r))
+                for r in self.grid(page)]
+
+    def rows_all_dry_in_the_east(self):
+        """A 48-wide window with weather only in the west -- Chiang Mai's case.
+        Nothing at all touches the last 20 columns."""
+        rows = [" " * 48 for _ in range(24)]
+        rows[12] = " " * 24 + "><" + " " * 22
+        # Mixed ramp on purpose: a row of nothing but \u2588 and spaces is a
+        # legal RAIN CURVE (\u2588 is the tallest eighth-block), so an
+        # all-\u2588 fixture would have been parsed as a chart and this test
+        # would have measured the wrong block.
+        rows[6] = " " * 4 + "\u00b7\u2591\u2593\u2588\u2592" + " " * 39
+        return ["[><]=Chiang Mai, TH"] + rows
+
+    def test_the_grid_stays_as_wide_as_the_document_drew_it(self):
+        w = self.widths(MD.render(self.doc(self.rows_all_dry_in_the_east())))
+        self.assertTrue(w and all(x == 48 for x in w), w)
+
+    def test_the_marker_stays_in_the_centre(self):
+        page = MD.render(self.doc(self.rows_all_dry_in_the_east()))
+        row = [r for r in self.grid(page) if 'class="me"' in r]
+        self.assertEqual(len(row), 1)
+        left = sum(int(n) for n in
+                   re.findall(r"flex:(\d+)", row[0].split('class="me"')[0]))
+        # Measured against the grid's OWN width, not as an absolute column.
+        # Asserting "left == 24" passes even on the truncating renderer: it
+        # trims to the RIGHT of the marker, so the count before it never moves
+        # and only the half after it disappears. Centred is a statement about
+        # both halves.
+        total = sum(int(n) for n in re.findall(r"flex:(\d+)", row[0]))
+        self.assertEqual((left, total - left - 1), (24, 23))
+
+    def test_it_fires_on_a_stripped_grid(self):
+        """The positive control: if the renderer went back to trimming, these
+        two assertions must go red rather than quietly agree with each other."""
+        rows = [r.rstrip() for r in self.rows_all_dry_in_the_east()]
+        rows = [r for r in rows if r]
+        w = self.widths(MD.render(self.doc(rows)))
+        self.assertNotEqual(w, [48] * 24)
+
+    def test_a_row_with_no_weather_is_still_a_row(self):
+        """Vertically too: "纵向的格没数据，你也不能删了". An empty row is
+        clear sky, and clear sky is an answer -- deleting it shrinks the sky."""
+        rows = self.rows_all_dry_in_the_east()
+        page = MD.render(self.doc(rows))
+        self.assertEqual(len(self.grid(page)), 24)
+
+    def test_the_boxs_height_matches_the_rows_it_drew(self):
+        """The map's height comes from the row count and its width from the
+        column count; if either is measured off the surviving content rather
+        than the document, the sky is drawn at the wrong shape."""
+        page = MD.render(self.doc(self.rows_all_dry_in_the_east()))
+        pad = float(re.search(r"padding-bottom:([\d.]+)%", page).group(1))
+        self.assertAlmostEqual(100.0 * 24 * MD._CELL_TALL / 48.0, pad, places=0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
