@@ -22,6 +22,39 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import geo
 
 
+def _fixture():
+    """A db derived from the real schema (sqlite_master of geo.sqlite, 8/13), not
+    from the environment: the 05:15 version of this file asked for
+    /home/ubuntu/geonames/geo.sqlite, which exists on the production box and in no
+    repo, so CI could only ever go red. Four cities are enough -- what is under
+    test is the connection, not the gazetteer."""
+    import sqlite3
+    import tempfile
+    d = tempfile.mkdtemp(prefix="geofix-")
+    path = os.path.join(d, "geo.sqlite")
+    c = sqlite3.connect(path)
+    c.execute("CREATE TABLE place(id INTEGER PRIMARY KEY, name TEXT, lat REAL, "
+              "lon REAL, cc TEXT, a1 TEXT, a2 TEXT, pop INTEGER, tz TEXT)")
+    c.execute("CREATE TABLE alias(key TEXT, pid INTEGER, pop INTEGER)")
+    c.execute("CREATE TABLE admin(code TEXT PRIMARY KEY, name TEXT)")
+    rows = ((1, "London", 51.51, -0.13, "GB", "ENG", None, 8961989, "Europe/London"),
+            (2, "Paris", 48.85, 2.35, "FR", "11", "75", 2138551, "Europe/Paris"),
+            (3, "Tokyo", 35.69, 139.69, "JP", "40", None, 8336599, "Asia/Tokyo"),
+            (4, "Berlin", 52.52, 13.41, "DE", "16", None, 3426354, "Europe/Berlin"))
+    c.executemany("INSERT INTO place VALUES(?,?,?,?,?,?,?,?,?)", rows)
+    c.executemany("INSERT INTO alias VALUES(?,?,?)",
+                  [(geo.norm(r[1]), r[0], r[7]) for r in rows])
+    c.execute("CREATE INDEX ix_alias ON alias(key, pop DESC)")
+    c.execute("CREATE INDEX ix_alias_sq ON alias(replace(key,' ',''), pop DESC)")
+    c.commit()
+    c.close()
+    return path
+
+
+def setUpModule():
+    geo.DB = _fixture()
+
+
 class ConnectionIsPerThread(unittest.TestCase):
     def _ids(self, n):
         got = {}
