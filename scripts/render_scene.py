@@ -1003,6 +1003,12 @@ SECOND_FETCH_NEEDS = float(os.environ.get("RUNEMAP_SECOND_NEEDS", "4.0"))
 _WARM_LOCK = threading.Lock()
 _WARMING = {}
 _WARM_EVERY = 120.0
+# A diagnostic switch, not a feature. This box is one core: a warm thread doing
+# numpy classification is not free while a reader is being served, and the only
+# way to test whether that is where today's median went is to run the fleet with
+# it off on one instance and on on the other. Default is on, and the day this is
+# not being used for an experiment it should go.
+WARM_SECOND = os.environ.get("RUNEMAP_WARM_SECOND", "1") != "0"
 
 
 def _warm_second(code, lng, lat, small):
@@ -1012,18 +1018,34 @@ def _warm_second(code, lng, lat, small):
     stale sky starts their own fetch and we would have replaced one slow
     request with a stampede.
     """
+    if not WARM_SECOND:
+        sys.stderr.write("SECOND-WARM-OFF %.1f,%.1f\n" % (lat, lng))
+        return
     key = (round(float(lat), 1), round(float(lng), 1))
     now = time.time()
     with _WARM_LOCK:
         if now - _WARMING.get(key, 0.0) < _WARM_EVERY:
+            sys.stderr.write("SECOND-WARM-SKIP %.1f,%.1f age=%.0fs\n"
+                             % (lat, lng, now - _WARMING.get(key, 0.0)))
             return
         _WARMING[key] = now
 
     def run():
+        # An action with no record. Until now the only line this path could
+        # ever print was its own failure, so "the warm never ran" and "the warm
+        # ran and cost a reader half a second" were the same silence -- and I
+        # spent an hour guessing at exactly that. Both ends are written, with
+        # the elapsed time, because the question is not whether it happened but
+        # what it cost while it did.
+        t0 = time.time()
         try:
-            _second_source(code, lng, lat, small)
+            got = _second_source(code, lng, lat, small)
+            sys.stderr.write("SECOND-WARM %.1f,%.1f %.2fs %s\n"
+                             % (lat, lng, time.time() - t0,
+                                "drew" if got is not None else "nothing"))
         except Exception as e:
-            sys.stderr.write("SECOND-WARM-FAILED %r\n" % (e,))
+            sys.stderr.write("SECOND-WARM-FAILED %.1f,%.1f %.2fs %r\n"
+                             % (lat, lng, time.time() - t0, e))
     t = threading.Thread(target=run, name="second-warm", daemon=True)
     t.start()
 
