@@ -30,9 +30,11 @@ see -- and everything they cannot -- with grey (126,126,126); over Paris that is
 100% of the image. Our classifier reads any visible pixel as at least drizzle,
 so adopting such a layer unchecked would draw a screen full of rain that is not
 there, and it would look completely normal. Hence `nodata_rgb` per service, a
-required field with no default, and hence DWD is NOT in the table yet: its
-echoes are magenta, which our ramp reads as a storm, so it needs a palette of
-its own before it can be trusted with a reader.
+required field with no default, and hence a service may carry a `palette`: an exact
+colour -> intensity table taken from the server's OWN style document
+(`ops/wms_palette.py` reads it via GetStyles), not from looking at a picture and
+guessing. DWD needs one because its scale runs cyan-green-yellow-red-magenta-
+blue, and our default ramp reads its magenta as a storm and its blue as nothing.
 
 Coverage is a declared rectangle per service, not something we probe. A service
 outside its own country returns an empty image, and an empty image is also what
@@ -48,6 +50,58 @@ import urllib.parse
 import urllib.request
 
 TIMEOUT = float(os.environ.get("RUNEMAP_WMS_TIMEOUT", "6"))
+
+# Kept, unused, deliberately: the machinery is right and the service is not
+# ready. Over Hamburg, 43% of the visible pixels after stripping their grey are
+# a magenta (251,0,255) that appears NOWHERE in the server's own style document
+# -- so we do not know what it means, and a colour we cannot name must not be
+# drawn for a reader as rain. When that is explained, this table and the row
+# below it are what turns DWD on.
+#
+# _DWD_SERVICE = '    {\n        "key": "de-dwd",\n        "name": "DWD",\n      '... (see git history for the full row)
+#
+# DWD's own SLD, fetched with ops/wms_palette.py: colour -> our 0-5 level, by
+# the rain rate their legend attaches to each colour. Their scale ENDS in blue
+# (>=150 mm/h), so a ramp that assumes blue means drizzle gets the wettest
+# pixels on the map exactly backwards.
+_DWD_PALETTE = [("#33ffff", 1), ("#1acc9a", 1), ("#019934", 2), ("#4db31b", 2),
+                ("#99cc01", 3), ("#cce601", 3), ("#ffff01", 3), ("#ffc401", 4),
+                ("#ff8901", 4), ("#ff4501", 4), ("#fe0000", 5), ("#e5004c", 5),
+                ("#cc0098", 5), ("#6600cb", 5), ("#0000fe", 5)]
+
+
+def _rgb(h):
+    h = h.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def classify_palette(arr, palette, max_dist=40):
+    """RGBA array -> 0-5 levels by nearest declared colour.
+
+    Nearest rather than exact because PNG quantisation moves a colour by a
+    point or two (measured: DWD magenta arrived as both 252,0,255 and
+    251,0,255). Anything further than max_dist from every declared colour is
+    left at 0: an unrecognised colour is furniture we were not told about, and
+    guessing it is how a legend gets read backwards.
+    """
+    import numpy as np
+    # int32, not int16: a squared channel difference reaches 65025 and int16
+    # wraps negative, which turns "furthest colour" into "nearest" silently.
+    # Measured: DWD magenta, 113 away from the closest declared colour, came
+    # back as level 1 for 166 pixels before this cast.
+    a = arr[..., :3].astype(np.int32)
+    out = np.zeros(a.shape[:2], dtype=np.uint8)
+    best = np.full(a.shape[:2], 1e9, dtype=np.float32)
+    for h, lvl in palette:
+        r, g, b = _rgb(h)
+        d = ((a[..., 0] - r) ** 2 + (a[..., 1] - g) ** 2 + (a[..., 2] - b) ** 2)
+        take = d < best
+        best = np.where(take, d, best)
+        out = np.where(take, lvl, out)
+    out[best > max_dist ** 2] = 0
+    out[arr[..., 3] <= 50] = 0
+    return out
+
 
 SERVICES = [
     {
@@ -163,9 +217,11 @@ def draw(code, lng, lat, small=False, get=None):
         p = fh.name
     try:
         from render_scene import ascii_radar
-        art, kmcol = ascii_radar(p, bbox, lng, lat,
-                                 cols=(24 if small else 48),
-                                 rows=(12 if small else 24), marker=code)
+        pal = svc.get("palette")
+        art, kmcol = ascii_radar(
+            p, bbox, lng, lat, cols=(24 if small else 48),
+            rows=(12 if small else 24), marker=code,
+            classifier=((lambda a: classify_palette(a, pal)) if pal else None))
     finally:
         os.unlink(p)
     now = time.time()

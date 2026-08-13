@@ -110,3 +110,35 @@ class PaintedZerosMustNotReadAsRain(unittest.TestCase):
     def test_every_shipped_service_has_declared(self):
         for s in W.SERVICES:
             self.assertIsNotNone(s.get("nodata_rgb"), s["key"])
+
+
+class ANearestColourTableMustNotWrapAround(unittest.TestCase):
+    """The squared distance between two channels reaches 65025. In int16 that
+    wraps negative and the furthest colour silently becomes the nearest --
+    measured on DWD magenta, 113 away from anything declared, which came back
+    as level 1 for 166 pixels."""
+
+    def _arr(self, rgb):
+        import numpy as np
+        a = np.zeros((4, 4, 4), dtype=np.uint8)
+        a[..., 0], a[..., 1], a[..., 2], a[..., 3] = rgb[0], rgb[1], rgb[2], 255
+        return a
+
+    def test_a_far_colour_is_left_unclaimed(self):
+        pal = [("#33ffff", 1), ("#019934", 2)]
+        lv = W.classify_palette(self._arr((251, 0, 255)), pal)
+        self.assertEqual(int(lv.max()), 0, "a colour nobody declared became rain")
+
+    def test_a_declared_colour_lands_on_its_level(self):
+        pal = [("#33ffff", 1), ("#019934", 2), ("#fe0000", 5)]
+        self.assertEqual(int(W.classify_palette(self._arr((254, 0, 0)), pal).max()), 5)
+
+    def test_quantisation_within_the_cap_still_matches(self):
+        pal = [("#cc0098", 5)]
+        near = W.classify_palette(self._arr((203, 2, 150)), pal)
+        self.assertEqual(int(near.max()), 5)
+
+    def test_transparent_pixels_are_never_rain(self):
+        import numpy as np
+        a = self._arr((254, 0, 0)); a[..., 3] = 0
+        self.assertEqual(int(W.classify_palette(a, [("#fe0000", 5)]).max()), 0)
