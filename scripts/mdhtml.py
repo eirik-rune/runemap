@@ -67,6 +67,15 @@ _NO_COVER = "no radar here"
 # (which is box-drawing characters, the same risk again) into plain labels.
 BARS = {chr(0x2580 + n): n for n in range(1, 9)}
 _GRID_CHARS = set(RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")
+
+# bob: "界面有点儿扁". It is not taste, it is geometry, and the renderer says so
+# itself: "km_per_row is twice that on purpose: a terminal cell is about twice
+# as tall as it is wide, so a geographically 1:2 cell renders square". The
+# window on the ground is a square. Drawing the cells square instead stretched
+# the whole map 2:1 east-west -- so every echo was drawn twice as far from the
+# reader as it is. A picture that is pretty and wrong about where the rain is
+# would be worse than the text it replaced.
+_CELL_TALL = 2
 _DROP = re.compile(r"^(legend|\u56fe\u4f8b|\u51e1\u4f8b)\s*:")
 
 PAGE = """<!doctype html>
@@ -155,6 +164,14 @@ def paint(lines, marker="><"):
     return "".join(out)
 
 
+def _is_axis(w):
+    """"0   30   60   90 120min" is the axis, not a sentence about the rain.
+    It was being printed twice: once as prose above the bars and once as the
+    axis below them."""
+    toks = w.split()
+    return len(toks) >= 3 and sum(1 for t in toks if t[0].isdigit()) >= 3
+
+
 def _curve_html(lines):
     """The 2h rain curve as bars, for the same reason the map is boxes."""
     bars, labels, words = [], [], []
@@ -167,6 +184,7 @@ def _curve_html(lines):
             continue                      # the tick line: characters again
         if ln.strip():
             words.append(ln.strip())
+    words = [w for w in words if not _is_axis(w)]
     for w in words:
         # "0   30   60   90 120min" -> the labels, kept in the document's own
         # words (that trailing "min" is the unit, and it is not mine to invent)
@@ -313,7 +331,7 @@ def render(text, marker="><"):
     blocks = {
         "map": ('<div class="map"><div class="grid" style="aspect-ratio:%d/%d">'
                 '%s</div></div>\n<p class="legend">%s</p>\n'
-                % (_w, len(grid),
+                % (_w, len(grid) * _CELL_TALL,
                    paint(grid, marker), legend)) if grid else "",
         "curve": _curve_html(curve) if curve else "",
     }

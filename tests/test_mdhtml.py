@@ -166,18 +166,21 @@ class TheGridIsBoxesNotText(unittest.TestCase):
         scene = ("# X weather scene\n~6km/char, [><]=X\n"
                  + "\n".join(rows) + "\n= echo motion: n/a\n")
         h = MD.render(scene)
-        self.assertIn("aspect-ratio:8/5", h)
+        self.assertIn("aspect-ratio:8/10", h)     # 5 rows, each cell 1:2
         self.assertEqual(h.count('class="row"'), 5)
 
     def test_the_grid_states_its_aspect_ratio(self):
         """Without it the boxes have no height and the map is invisible -- and
         with the wrong one the map is stretched, which is a lie about where the
-        rain is."""
+        rain is. The ratio is not cols:rows: the renderer makes km_per_row
+        twice km_per_col so that a 1:2 cell renders square in a terminal, so
+        the window on the ground is a SQUARE and the page must draw it as one.
+        bob saw this as "界面有点儿扁"."""
         h = MD.render(SCENE)
         rows = [l for l in SCENE.split("\n")
                 if l and set(l) <= set(MD.RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")]
         cols = max(len(r) for r in rows)
-        self.assertIn("aspect-ratio:%d/%d" % (cols, len(rows)), h)
+        self.assertIn("aspect-ratio:%d/%d" % (cols, len(rows) * 2), h)
 
 
 class TheLegendSpeaksTheDocumentsLanguage(unittest.TestCase):
