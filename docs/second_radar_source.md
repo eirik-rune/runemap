@@ -208,7 +208,7 @@ than assuming a standard range. That is real work, but it has a check that can
 fail -- the coastline either lines up everywhere or it does not -- which is the
 only kind worth starting. It is not started.
 
-## Japan, 8/13: everything except the one thing that would let it ship
+## Japan, 8/13: shipped, on an order derived rather than typed
 
 Established, all by measurement:
 
@@ -231,18 +231,42 @@ Established, all by measurement:
   image that was identical for every coordinate. Any adapter must assert the
   zoom it asked for, not merely that bytes came back.
 
-What is missing is the same thing that stopped the Netherlands: **a published
-colour -> intensity mapping**. The tiles use exactly 8 discrete colours
-(242,242,255 · 160,210,255 · 33,140,255 · 0,65,255 · 250,245,0 · 255,153,0 ·
-255,40,0 · 180,0,104), which is a much better starting point than a ramp, but
-the mm/h thresholds are not in their capabilities, their tile bundle, or
-`contents.json`, and I would be typing them from memory. That is the guess this
-whole file exists to refuse -- and refusing it here while refusing it for KNMI
-is the point: the rule has to cost something occasionally or it is decoration.
+They publish no colour -> intensity mapping I could find (not in the tile
+bundle, not in `contents.json`), which is exactly what keeps KNMI out. The way
+past it was to notice that **our grid needs an ORDER, not millimetres**, and an
+order is derivable from the pictures (`ops/colour_order.py`):
 
-**The way to settle it without their legend**, for whoever picks this up: our
-scale only needs an ORDER, not rain rates, and order is derivable from the data
-itself. Heavier cores are spatially nested inside lighter ones, so for each
-pair of colours you can measure which encloses which across many tiles and many
-frames. That is a derivation with a check that can fail -- if the nesting is
-inconsistent, the assumption was wrong and you stop.
+- **depth** -- heavier cores sit further inside the precipitation region. Over
+  192 tiles: 1.89 / 4.03 / 5.52 / 5.53 / 5.73 / 6.34 / 7.18 / 9.90 mean erosion
+  depth, in scale order.
+- **adjacency** -- a scale is a gradient, so each class borders its scale
+  neighbours more than anything distant. All eight do.
+
+Depth alone did not earn the middle: two gaps are **0.014 and 0.203**, which is
+not a separation. Adjacency settles those, and it is a real check rather than a
+decorative one -- swapping either fragile pair makes it REFUSE (measured, both
+swaps, 2 of 8 classes each). The two blues share a level in the shipped
+palette anyway, so nothing a reader sees rests on the distinction the
+derivation was least sure about.
+
+Three things in that hour cost real time and none of them failed loudly:
+
+- **z7 is empty.** JMA serves data at z6 and z8; at z7 every tile over Tokyo is
+  the 334-byte fully transparent PNG. RainViewer's default zoom is 7 -- taking
+  the default would have shipped a Japan whose sky is permanently clear.
+- **Their tiles are 256px, the shared mosaic assumed 512.** The result was a
+  regular blank band beside every tile, which renders as bands of "no rain" and
+  looks like weather.
+- **The cache key did not name the zoom.** After moving z6 -> z8 the adapter
+  kept returning the z6 mosaic, identical art and identical km/col, so the
+  change looked like it had done nothing. A key missing a parameter does not
+  fail; it answers an older question confidently.
+
+All three are the same shape as the REDEMET freshness ceiling this morning: a
+constant that belonged to a different producer. `plan()` and `fetch()` now take
+the ceiling and the tile size per service.
+
+Coverage is three rectangles, not one: latitude and longitude have to constrain
+each other or the box that reaches Yonaguni (122.9E) also holds Seoul, and the
+two-box version reached far enough north-west to hold Vladivostok. The test
+caught that, not my reading of it.

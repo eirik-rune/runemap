@@ -58,15 +58,22 @@ def _to_lat(y, n):
     return math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n))))
 
 
-def plan(lat, lon, span_km, zoom=DEFAULT_ZOOM):
+def plan(lat, lon, span_km, zoom=DEFAULT_ZOOM, max_zoom=None):
     """-> (xs, ys, n): the smallest tile rectangle covering +-span_km/2.
 
     Derived from the span the renderer will draw, not from a tile count. The
     difference is invisible in the output, which is exactly why it is a rule.
     """
-    if zoom > MAX_ZOOM:
-        raise ValueError("zoom %d serves one identical tile for every "
-                         "coordinate; see module docstring" % zoom)
+    # The ceiling belongs to the SERVICE, not to this function. MAX_ZOOM is
+    # RainViewer's, measured on RainViewer; JMA publishes usable tiles at 8 and
+    # nothing but empty ones at 7, so importing this number into that adapter
+    # would have drawn a permanently clear Japan. Same shape as copying
+    # RainViewer's freshness ceiling onto REDEMET this morning.
+    cap = MAX_ZOOM if max_zoom is None else max_zoom
+    if zoom > cap:
+        raise ValueError("zoom %d is above this service's ceiling %d; for "
+                         "RainViewer that level serves one identical tile for "
+                         "every coordinate (see module docstring)" % (zoom, cap))
     half_lat = span_km / 2.0 / 111.0
     # cos(lat) shrinks a degree of longitude; clamp so a polar sky cannot ask
     # for the whole globe.
@@ -96,16 +103,25 @@ def _http_get(url, timeout=10):
 
 
 def fetch(host, path, lat, lon, span_km=280.0, zoom=DEFAULT_ZOOM,
-          get=_http_get, workers=8):
+          get=_http_get, workers=8, url_for=None, max_zoom=None, tile_px=None):
     """-> (PIL.Image RGBA, bbox, got, wanted). Missing tiles stay transparent.
+
+    url_for lets another XYZ service reuse this mosaic instead of copying it:
+    the seam handling, the thread pool and the bbox arithmetic have one owner,
+    and only the URL shape differs. (JMA is the second caller.)
 
     got < wanted is reported, not raised: a partial mosaic still draws, and the
     caller is the one who knows whether a hole matters. Serial fetching of a
     3x3 measured 7.4-8.1s against a 3s reader budget; this is why the pool.
     """
     from PIL import Image
-    xs, ys, n = plan(lat, lon, span_km, zoom)
-    img = Image.new("RGBA", (TILE_PX * len(xs), TILE_PX * len(ys)))
+    xs, ys, n = plan(lat, lon, span_km, zoom, max_zoom=max_zoom)
+    # Tile SIZE is per service too, and getting it wrong does not fail: pasting
+    # JMA's 256px tiles into RainViewer's 512px cells produced a mosaic with a
+    # blank stripe beside every tile, which renders as regular bands of "no
+    # rain" and looks like weather.
+    px = TILE_PX if tile_px is None else tile_px
+    img = Image.new("RGBA", (px * len(xs), px * len(ys)))
     jobs = [(i, j, x, y) for i, x in enumerate(xs) for j, y in enumerate(ys)]
 
     def one(job):
@@ -113,7 +129,8 @@ def fetch(host, path, lat, lon, span_km=280.0, zoom=DEFAULT_ZOOM,
         if not (0 <= y < n):        # off the top/bottom of the world
             return i, j, None
         try:
-            return i, j, get(tile_url(host, path, x, y, zoom, n))
+            build = url_for or (lambda X, Y, Z, N: tile_url(host, path, X, Y, Z, N))
+            return i, j, get(build(x, y, zoom, n))
         except Exception:
             return i, j, None
 
@@ -122,7 +139,7 @@ def fetch(host, path, lat, lon, span_km=280.0, zoom=DEFAULT_ZOOM,
         for i, j, raw in ex.map(one, jobs):
             if raw:
                 img.paste(Image.open(io.BytesIO(raw)).convert("RGBA"),
-                          (i * TILE_PX, j * TILE_PX))
+                          (i * px, j * px))
                 got += 1
     return img, bbox_of(xs, ys, n), got, len(jobs)
 
