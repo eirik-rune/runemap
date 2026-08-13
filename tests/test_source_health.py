@@ -1,0 +1,84 @@
+"""The fleet check, tested by making it fail on purpose.
+
+Every failure this fleet has had arrives at the reader as an empty grid, which
+is what a clear sky looks like. So the only thing that makes this file worth
+anything is that each verdict has been fired at least once.
+"""
+import os
+import sys
+import time
+import types
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ops"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+
+import source_health as H      # noqa: E402
+
+
+def fake(draw, max_age=1800.0):
+    m = types.ModuleType("fake_source")
+    m.draw = draw
+    m.FRAME_MAX_AGE = max_age
+    sys.modules["fake_source"] = m
+    return m
+
+
+class EveryVerdictHasBeenFired(unittest.TestCase):
+
+    def _check(self, draw, max_age=1800.0):
+        fake(draw, max_age)
+        return H.check("probe", "fake_source", (139.69, 35.69), None)[0]
+
+    def test_a_working_source_is_ok(self):
+        self.assertEqual(self._check(
+            lambda *a, **k: ("art", 12.0, 1.0, None, time.time(), "X")), "OK")
+
+    def test_declining_inside_its_own_coverage_is_no_map(self):
+        """The interesting one: from the reader's side this is identical to a
+        quiet sky, and only a probe aimed where the source claims coverage can
+        tell them apart."""
+        self.assertEqual(self._check(lambda *a, **k: None), "NO-MAP")
+
+    def test_an_old_frame_is_stale_not_ok(self):
+        self.assertEqual(self._check(
+            lambda *a, **k: ("art", 12.0, 1.0, None, time.time() - 9999, "X")),
+            "STALE")
+
+    def test_a_raise_is_error_not_a_crash_of_the_run(self):
+        def boom(*a, **k):
+            raise IOError("upstream gone")
+        self.assertEqual(self._check(boom), "ERROR")
+
+    def test_an_impossible_scale_is_error(self):
+        """A map can come back fresh and still be wrong: 900 km per column
+        means the geometry, not the weather, broke."""
+        self.assertEqual(self._check(
+            lambda *a, **k: ("art", 900.0, 1.0, None, time.time(), "X")), "ERROR")
+
+    def test_a_missing_module_is_error_not_an_exception(self):
+        self.assertEqual(H.check("p", "no_such_module", (0.0, 0.0), None)[0],
+                         "ERROR")
+
+
+class TheLimitComesFromTheSourceNotFromHere(unittest.TestCase):
+    """A restated constant drifts, and the drift is silent -- this morning's
+    REDEMET ceiling was exactly that."""
+
+    def test_the_adapters_own_limit_wins_over_the_fallback(self):
+        m = fake(lambda *a, **k: None, max_age=60.0)
+        self.assertEqual(H._max_age(m, 99999), 60.0)
+
+    def test_the_fallback_is_used_only_when_it_declares_none(self):
+        m = types.ModuleType("bare")
+        self.assertEqual(H._max_age(m, 900), 900.0)
+
+
+class ItShipsProbesForEveryShippedSource(unittest.TestCase):
+
+    def test_no_source_in_the_chain_is_unwatched(self):
+        """A source added without a probe here is a source whose death is
+        invisible, which is how all of today's failures behaved."""
+        watched = {p[1] for p in H.PROBES}
+        for mod in ("radar_jma", "radar_wms", "radar_redemet"):
+            self.assertIn(mod, watched, mod)
