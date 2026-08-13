@@ -71,6 +71,33 @@ def legend(svc):
     return out
 
 
+def on_ramp(c, stops, max_dist=24):
+    """Is this colour a point ON the declared scale, rather than one of its ends?
+
+    Added 8/13 after this tool told me Finland was 78% undeclared and therefore
+    unshippable. It was not: FMI's SLD interpolates, so between "no echo" and
+    the first rain class the server emits a continuous fade -- measured over
+    Helsinki, alpha 38/77/128/166/204/255 with the colour sliding cyan-ward in
+    step. Every one of those pixels is fully explained by two adjacent rows of
+    their own colour map, and the old check called them all unknown.
+
+    A verdict machine that can only say DO-NOT-SHIP has the same defect as one
+    that can only say SAFE: it is not judging, it is refusing. So the question
+    became the right one -- does the colour lie near the SEGMENT between two
+    declared stops -- rather than near a stop itself.
+    """
+    import numpy as np
+    p = np.array(c, dtype=float)
+    for i in range(len(stops) - 1):
+        a, b = np.array(stops[i], dtype=float), np.array(stops[i + 1], dtype=float)
+        ab = b - a
+        n = float(ab.dot(ab))
+        t = 0.0 if n == 0 else max(0.0, min(1.0, float((p - a).dot(ab)) / n))
+        if float(np.linalg.norm(p - (a + t * ab))) <= max_dist:
+            return True
+    return False
+
+
 def unexplained(svc, lat, lng, declared):
     """-> (visible, [(colour, count)]) for colours in a real map that nobody
     declared. Runs after the service's own nodata colours are stripped, so what
@@ -88,9 +115,10 @@ def unexplained(svc, lat, lng, declared):
         # tell", never an empty list of problems -- an empty list reads as a
         # clean bill of health, which is the one answer this must never invent.
         return int(vis.sum()), None
+    stops = [tuple(W._rgb(h)) for h in declared]      # in the order they declared
     far = [(c, n) for c, n in counts.items()
            if min((abs(c[0] - k[0]) + abs(c[1] - k[1]) + abs(c[2] - k[2]))
-                  for k in known) > 24]
+                  for k in known) > 24 and not on_ramp(c, stops)]
     return int(vis.sum()), sorted(far, key=lambda x: -x[1])
 
 

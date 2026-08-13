@@ -136,6 +136,32 @@ SERVICES = [
         "coverage": (41.0, -141.0, 70.0, -52.0),
         "nodata_rgb": [],
     },
+    {
+        "key": "fi-fmi",
+        "name": "FMI",
+        "attrib": "Finnish Meteorological Institute en.ilmatieteenlaitos.fi",
+        "url": "https://openwms.fmi.fi/geoserver/Radar/wms",
+        "layers": "suomi_dbz_eureffin",
+        "version": "1.3.0",
+        "crs_param": "crs",
+        "axis": "yx",
+        # Their own capabilities document says Fees NONE, AccessConstraints
+        # NONE. The declared latitude band is 56.75-71.27; the longitude band
+        # reads -180..180, which is a projection artefact rather than a claim,
+        # so the rectangle here is the one their radars actually stand in.
+        "coverage": (59.0, 19.0, 70.5, 32.0),
+        "nodata_rgb": [],
+        # Their scale ends in pink (#fa51a5), so the default cool-to-warm
+        # heuristic would read Finland's heaviest echo as almost nothing --
+        # the same trap DWD sets, and the reason a palette is not optional
+        # here. Levels come from the quantities and labels in their own SLD
+        # (kohtalainen = moderate, sakea = dense, hyvin sakea = very dense),
+        # read by ops/wms_palette.py, not from looking at the picture.
+        "palette": [("#6cebf3", 1), ("#58c797", 1), ("#409857", 2),
+                    ("#f1f35a", 2), ("#dfc40a", 3), ("#eb951a", 3),
+                    ("#e85616", 4), ("#ce0202", 4), ("#830a46", 5),
+                    ("#fa51a5", 5)],
+    },
 ]
 
 

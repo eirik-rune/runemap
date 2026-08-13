@@ -142,3 +142,58 @@ class ANearestColourTableMustNotWrapAround(unittest.TestCase):
         import numpy as np
         a = self._arr((254, 0, 0)); a[..., 3] = 0
         self.assertEqual(int(W.classify_palette(a, [("#fe0000", 5)]).max()), 0)
+
+
+class FinlandNeedsItsOwnScaleOrItIsOverstated(unittest.TestCase):
+    """FMI's colour map ends in pink (#fa51a5 at the top), so the default
+    cool-to-warm heuristic reads its scale wrongly in both directions.
+    Measured over Oulu on one real frame: default = {2:1182, 3:97, 4:28, 5:27},
+    their own scale = {1:576, 2:217, 3:69, 4:24} -- a level too wet everywhere
+    and a top class that does not exist. The palette is load-bearing."""
+
+    def _svc(self):
+        return next(s for s in W.SERVICES if s["key"] == "fi-fmi")
+
+    def test_finland_is_covered_and_the_neighbours_are_not(self):
+        self.assertEqual(W.service_for(24.94, 60.17)["key"], "fi-fmi")   # helsinki
+        self.assertEqual(W.service_for(25.47, 65.01)["key"], "fi-fmi")   # oulu
+        self.assertIsNone(W.service_for(18.07, 59.33))                   # stockholm
+        self.assertIsNone(W.service_for(37.62, 55.75))                   # moscow
+
+    def test_it_ships_a_palette_rather_than_trusting_the_heuristic(self):
+        self.assertTrue(self._svc().get("palette"), "no palette: Finland's "
+                        "heaviest echo would be drawn as almost nothing")
+
+    def test_its_top_class_is_the_pink_not_the_red(self):
+        """The specific inversion this palette exists to prevent."""
+        import numpy as np
+        pal = self._svc()["palette"]
+        a = np.zeros((2, 2, 4), dtype=np.uint8)
+        a[..., 0], a[..., 1], a[..., 2], a[..., 3] = 0xFA, 0x51, 0xA5, 255
+        self.assertEqual(int(W.classify_palette(a, pal).max()), 5)
+
+    def test_the_declared_levels_only_climb(self):
+        levels = [lv for _c, lv in self._svc()["palette"]]
+        self.assertEqual(levels, sorted(levels), "a scale that goes back down "
+                         "is a transcription error, not a scale")
+
+
+class TheRampCheckMustBeAbleToSayBothWords(unittest.TestCase):
+    """A verdict machine that can only refuse is not judging. This one told me
+    Finland was 78% undeclared, when every one of those colours was a point on
+    an interpolated ramp between two of their own stops."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ops"))
+        import wms_palette
+        self.P = wms_palette
+
+    def test_a_colour_between_two_stops_is_on_the_ramp(self):
+        stops = [W._rgb(h) for h, _ in W._DWD_PALETTE]
+        self.assertTrue(self.P.on_ramp((200, 0, 150), stops))
+
+    def test_the_colour_that_stopped_germany_is_still_refused(self):
+        stops = [W._rgb(h) for h, _ in W._DWD_PALETTE]
+        self.assertFalse(self.P.on_ramp((251, 0, 255), stops),
+                         "the ramp check must not become a way to explain "
+                         "away a colour nobody declared")
