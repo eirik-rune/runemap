@@ -91,7 +91,14 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
             # the substitution is deliberate and stated, so the needle is
             # translated the same way rather than the map being exempted.
             frag = html.escape(" ".join(words[:3]))
-            frag = "".join(MD.CELL_GLYPH.get(c, c) for c in frag)
+            # Only GRID rows are redrawn cell-by-cell. Translating every needle
+            # was wrong the moment the space became a cell glyph too: it turned
+            # "CLEAR_DAY 35C" into a needle with blocks in it and the test
+            # failed on a line the page renders perfectly.
+            if set(s) <= set(MD.RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "):
+                # the "you are here" marker is drawn as cells too
+                frag = frag.replace("&gt;&lt;", "\u2588\u2588")
+                frag = "".join(MD.CELL_GLYPH.get(c, c) for c in frag)
             self.assertIn(frag, hay, ln)
 
     def test_the_sources_own_legend_line_is_replaced_not_duplicated(self):
@@ -107,6 +114,22 @@ class ItDrawsTheGridWithOneGlyph(unittest.TestCase):
     pulled from a different fallback at that font's advance width and the grid
     goes ragged -- bob saw it before I did. One glyph cannot disagree with
     itself about width; the level is carried by colour instead."""
+
+    def test_empty_cells_are_the_same_glyph_too(self):
+        """bob, from his phone: "主要是那个空格没对齐". Replacing only the rain
+        glyphs was half a fix -- empty cells were still ordinary spaces from
+        the primary face while the blocks came from a fallback, and two fonts
+        do not agree on width."""
+        painted = MD.paint(["  ··  "])
+        import re
+        text = "".join(re.findall(r">([^<]*)<", painted))
+        self.assertNotIn(" ", text, painted)
+        self.assertIn('class="r0"', painted)
+
+    def test_the_marker_is_not_two_characters_from_a_third_font(self):
+        painted = MD.paint(["··><··"])
+        me = painted.split('class="me">')[1].split("<")[0]
+        self.assertEqual(me, "\u2588\u2588")
 
     def test_every_rain_cell_uses_the_same_character(self):
         h = MD.render(SCENE)
@@ -127,6 +150,46 @@ class ItDrawsTheGridWithOneGlyph(unittest.TestCase):
         legend = h.split('class="legend"')[1].split("</p>")[0]
         for ch in "·░▒▓":
             self.assertNotIn(ch, legend, ch)
+
+
+class TheLegendSpeaksTheDocumentsLanguage(unittest.TestCase):
+    """A generated English legend would have captioned /tokyo/zh -- whose own
+    legend line reads 图例: · 毛毛雨 ... -- in a language nobody asked for."""
+
+    def test_the_labels_come_from_the_document(self):
+        zh = SCENE.replace(
+            "legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm",
+            "图例: · 毛毛雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 暴雨")
+        h = MD.render(zh)
+        self.assertIn("毛毛雨", h)
+        self.assertNotIn("drizzle", h)
+
+    def test_a_scene_without_one_still_gets_a_legend(self):
+        h = MD.render("\n".join(l for l in SCENE.split("\n")
+                                if not l.startswith("legend:")))
+        self.assertIn("drizzle", h)
+
+
+class ASceneWithNothingInItSaysWhy(unittest.TestCase):
+    """A page that is still fetching has no conditions line, no sentence, no
+    curve and no grid. Rendered as empty paragraphs plus a grey footnote it
+    reads as a broken site rather than as "we are looking" -- which is what bob
+    saw."""
+
+    FETCH = ("# Chiang Mai, TH weather scene\n"
+             "# updated 2026-08-13 16:20 UTC+7\n"
+             "radar: fetching -- first look at this sky; try again in ~30s\n"
+             "data: Caiyun Weather caiyunapp.com | runemap\n")
+
+    def test_the_reason_is_where_the_reader_is_looking(self):
+        h = MD.render(self.FETCH)
+        top = h.split("<main>")[1].split('class="meta"')[0]
+        self.assertIn("fetching", top)
+
+    def test_no_empty_paragraphs(self):
+        h = MD.render(self.FETCH)
+        self.assertNotIn('class="now"></p>', h)
+        self.assertNotIn('class="say"></p>', h)
 
 
 class ItKeepsTheDocumentsOrder(unittest.TestCase):

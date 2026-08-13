@@ -39,7 +39,16 @@ CLASS = {"·": "r1", "░": "r2", "▒": "r3",
 # place ("把那个雷达图用block搞一下"). One glyph cannot disagree with itself
 # about width.
 CELL_GLYPH = {"·": "\u2588", "░": "\u2588", "▒": "\u2588",
-              "▓": "\u2588", "█": "\u2588", "?": "\u2588"}
+              "▓": "\u2588", "█": "\u2588", "?": "\u2588",
+              # bob again, from his phone: "主要是那个空格没对齐". Replacing only
+              # the rain glyphs was half a fix -- the空 cells were still ordinary
+              # spaces from the primary monospace face, while U+2588 came from
+              # whatever fallback had it, and two fonts do not agree on width.
+              # So EVERY cell is the same glyph and an empty one is simply
+              # invisible. A grid where one cell in six is a different font is
+              # not a grid.
+              " ": "\u2588"}
+CLASS[" "] = "r0"
 
 # Bytes of HTML per byte of text. 25 KB for 1.8 KB was 14x.
 MAX_RATIO = 6.0
@@ -84,6 +93,7 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .curve h2{font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 .3rem}
 .curve{margin:0 0 1.1rem}
 .me{color:#111;background:#ffd54a;border-radius:2px;font-weight:700}
+.r0{color:transparent}
 .r1{color:#4aa3df;opacity:.45}.r2{color:#3fb56b}.r3{color:#e0c341}.r4{color:#e08b3f}.r5{color:#d64545}
 .rq{color:var(--line);opacity:.5}
 .legend{display:flex;gap:.7rem;flex-wrap:wrap;color:var(--dim);font-size:.75rem;margin:0 0 1rem}
@@ -94,8 +104,7 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 <main>
 <h1>%(place)s</h1>
 <p class="sub">%(when)s</p>
-<p class="now">%(now)s</p>
-<p class="say">%(say)s</p>
+%(head)s
 %(body)s<div class="meta">%(meta)s</div>
 </main>
 """
@@ -108,7 +117,8 @@ def paint(lines, marker="><"):
         buf, i = [], 0
         while i < len(ln):
             if ln[i:i + len(marker)] == marker:
-                buf.append('<span class="me">%s</span>' % html.escape(marker))
+                buf.append('<span class="me">%s</span>'
+                           % ("\u2588" * len(marker)))
                 i += len(marker)
                 continue
             ch = ln[i]
@@ -125,7 +135,7 @@ def paint(lines, marker="><"):
 
 def render(text, marker="><"):
     place = when = now = say = ""
-    meta, grid, curve = [], [], []
+    meta, grid, curve, pairs = [], [], [], []
     # 8/13, bob: the text puts the rain curve ABOVE the map and my first page
     # put it below, because the template hard-coded the order. That is the page
     # editing the document, which is the one thing it must not do. Which block
@@ -162,6 +172,15 @@ def render(text, marker="><"):
             in_curve = False
             continue
         if _DROP.match(s):
+            # Not thrown away: the labels ARE the legend, in the language the
+            # document is written in. My first page generated English ones, so
+            # /tokyo/zh -- whose own legend line reads 图例: · 毛毛雨 ... -- would
+            # have been captioned in a language the reader did not ask for.
+            body = s.split(":", 1)[1] if ":" in s else ""
+            toks = body.split()
+            pairs.extend((toks[i], toks[i + 1])
+                         for i in range(0, len(toks) - 1, 2)
+                         if toks[i] in CLASS)
             continue
         if _META.match(s):
             meta.append(s.strip())
@@ -176,9 +195,27 @@ def render(text, marker="><"):
             # the next" lost it the moment the wording became "After one hour",
             # and that sentence is the most useful line on the page.
             say = s.strip()
+    if not pairs:
+        pairs = list(zip(RAMP, ("drizzle", "light", "moderate",
+                                "heavy", "storm")))
     legend = " ".join(
-        '<span><i class="%s">%s</i> %s</span>' % (CLASS[c], CELL_GLYPH[c], n)
-        for c, n in zip(RAMP, ("drizzle", "light", "moderate", "heavy", "storm")))
+        '<span><i class="%s">%s</i> %s</span>'
+        % (CLASS[c], CELL_GLYPH.get(c, c), html.escape(n)) for c, n in pairs)
+    # A scene that is still fetching has no conditions line, no forecast
+    # sentence, no curve and no grid -- and my first page rendered that as two
+    # empty paragraphs and a footnote in grey, which reads as "the site is
+    # broken" rather than "we are looking". bob hit exactly this. Empty blocks
+    # are not emitted, and when there is nothing at all, the reason moves up to
+    # where the reader is looking.
+    head = ""
+    if now:
+        head += '<p class="now">%s</p>\n' % html.escape(now)
+    if say:
+        head += '<p class="say">%s</p>\n' % html.escape(say)
+    if not (now or say or grid or curve):
+        why = next((m for m in meta if m.startswith("radar")), "")
+        head += ('<p class="say">%s</p>\n'
+                 % html.escape(why or "no reading yet"))
     blocks = {
         "map": ('<div class="map" style="--cols:%d"><pre>%s</pre></div>\n'
                 '<p class="legend">%s</p>\n'
@@ -191,8 +228,7 @@ def render(text, marker="><"):
         "title": html.escape(place.split(",")[0] or "runemap"),
         "place": html.escape(place or "runemap"),
         "when": html.escape(when),
-        "now": html.escape(now),
-        "say": html.escape(say),
+        "head": head,
         "body": "".join(blocks[k] for k in order),
         "meta": "".join("<div>%s</div>" % html.escape(m) for m in meta),
     }
