@@ -167,3 +167,59 @@ class WhyLineFitsEightyColumns(unittest.TestCase):
     def test_the_guard_can_go_red(self):
         # a clause that WOULD overflow must be rejected by the same predicate
         self.assertGreater(self.cells("radar-why: " + "x" * 80), self.LIMIT)
+
+
+class EveryProducibleWordIsDecided(unittest.TestCase):
+    """Every word the code can emit must be either explained or explicitly silent.
+
+    Issue #41: the first version of _FETCH_CLAUSE covered 3 of the 10 words the
+    writer can produce, and the 7 it missed were the cold-stranger path -- the
+    reader this feature exists for. A hand-written list of words would have gone
+    stale the same way, so the vocabulary here is DERIVED FROM SOURCE: the peek
+    outcomes from scene_at.py, the assembled words from render_scene.py. Add an
+    eleventh word tomorrow and this test demands a decision about it.
+
+    "Decided" means one of two things, and they must not look alike:
+      - a clause in _FETCH_CLAUSE, or
+      - membership in _FETCH_SILENT with the reason written next to it.
+
+    NO-INSTRUMENT floor: if the derivation finds fewer than five words, the
+    regex has stopped matching the code and the test fails as broken rather
+    than passing vacuously. A ruler that silently matches nothing reports
+    perfect health.
+    """
+    def producible(self):
+        import re
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sa = open(os.path.join(root, "scripts", "scene_at.py"), encoding="utf-8").read()
+        rs = open(os.path.join(root, "scripts", "render_scene.py"), encoding="utf-8").read()
+        peek = set(re.findall(r'note_peek_miss\("([a-z-]+)"\)', sa))
+        words = {"list-" + p for p in peek}
+        # a trailing hyphen means we matched the PREFIX of an assembled word
+        # ("list-" + take_peek_miss()), not a word. My first version of this
+        # regex reported `list-` as producible -- the same shape as Eirik's
+        # first width ruler, which counted the comparison constants "en"/"ja"
+        # as message bodies. A fragment has no jurisdiction over the whole.
+        words |= {w for w in re.findall(r'_why\["v"\] = "([a-z-]+)"', rs)
+                  if not w.endswith("-")}
+        # the two fallbacks are written as `or "word"`, not as assignments
+        words |= {"list-" + m for m in re.findall(r'take_peek_miss\(\) or "([a-z-]+)"', rs)}
+        words |= set(re.findall(r'note_reason\(_why\["v"\] or "([a-z-]+)"\)', rs))
+        return words
+
+    def test_derivation_is_not_vacuous(self):
+        self.assertGreaterEqual(len(self.producible()), 5,
+                                "NO-INSTRUMENT: the regexes stopped matching the source")
+
+    def test_every_word_is_explained_or_deliberately_silent(self):
+        decided = set(RS._FETCH_CLAUSE) | set(RS._FETCH_SILENT)
+        undecided = sorted(self.producible() - decided)
+        self.assertEqual(undecided, [],
+                         "these words can reach a reader with nothing to say: %s" % undecided)
+
+    def test_silence_is_not_a_dumping_ground(self):
+        # a word may be silent only if it is named in _FETCH_SILENT, never by
+        # simply being absent from both -- that is the state this test forbids
+        self.assertTrue(set(RS._FETCH_SILENT))
+        self.assertFalse(set(RS._FETCH_SILENT) & set(RS._FETCH_CLAUSE),
+                         "a word cannot be both explained and silent")

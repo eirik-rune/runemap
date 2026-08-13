@@ -567,6 +567,31 @@ def peek_reason():
 #     a proposal. The plumbing is the point: until now the reason existed and
 #     only an operator could see it.
 _FETCH_CLAUSE = {
+    "list-nofile": {
+        "en": "we have not looked at this sky yet; a fetch has just started",
+        "zh": "\u8fd9\u7247\u5929\u6211\u4eec\u8fd8\u6ca1\u770b\u8fc7, \u521a\u5f00\u59cb\u53d6",
+        "ja": "\u3053\u306e\u7a7a\u306f\u672a\u53d6\u5f97\u3067\u3059\u3002\u4eca\u53d6\u5f97\u3092\u958b\u59cb\u3057\u307e\u3057\u305f",
+    },
+    "list-toostale": {
+        "en": "our copy of this sky was too old to draw; fetching a new one",
+        "zh": "\u624b\u4e0a\u8fd9\u4efd\u592a\u65e7\u4e86, \u6b63\u5728\u91cd\u65b0\u53d6",
+        "ja": "\u624b\u5143\u306e\u30c7\u30fc\u30bf\u304c\u53e4\u3059\u304e\u307e\u3059\u3002\u518d\u53d6\u5f97\u4e2d",
+    },
+    "list-unreadable": {
+        "en": "we had a copy of this sky but could not read it",
+        "zh": "\u6211\u4eec\u5b58\u8fc7\u8fd9\u7247\u5929, \u4f46\u8bfb\u4e0d\u51fa\u6765",
+        "ja": "\u4fdd\u5b58\u6e08\u307f\u3067\u3059\u304c\u8aad\u307f\u53d6\u308c\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
+    "list-unusable": {
+        "en": "what we had stored for this sky was not a usable frame",
+        "zh": "\u5b58\u7740\u7684\u4e1c\u897f\u4e0d\u662f\u4e00\u5e27\u53ef\u7528\u7684\u56fe",
+        "ja": "\u4fdd\u5b58\u3055\u308c\u3066\u3044\u305f\u306e\u306f\u4f7f\u3048\u308b\u30d5\u30ec\u30fc\u30e0\u3067\u306f\u3042\u308a\u307e\u305b\u3093",
+    },
+    "list-unparseable": {
+        "en": "upstream answered, but we could not parse its frame list",
+        "zh": "\u4e0a\u6e38\u56de\u4e86\u8bdd, \u4f46\u5e27\u5217\u8868\u6211\u4eec\u89e3\u4e0d\u5f00",
+        "ja": "\u4e0a\u6d41\u306e\u5fdc\u7b54\u306e\u30d5\u30ec\u30fc\u30e0\u4e00\u89a7\u3092\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
     "sky-empty": {
         "en": "upstream listed no frames for this sky when we asked",
         "zh": "\u6211\u4eec\u95ee\u4e86\u4e0a\u6e38, \u5b83\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
@@ -583,6 +608,15 @@ _FETCH_CLAUSE = {
         "ja": "\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u3057\u305f\u304c\u63cf\u753b\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
     },
 }
+
+
+# Deliberately silent, so that "not covered yet" and "we decided to say nothing"
+# stop looking alike (issue #41):
+#   list-nopeek -- only reachable when the bare _peek stub is installed, i.e. in
+#                  tests. A sentence for it could never be read by a person.
+#   unknown     -- nobody claimed a reason. Inventing prose for a word that means
+#                  "we do not know why" is exactly the failure this file fixes.
+_FETCH_SILENT = ("list-nopeek", "unknown")
 
 
 def fetching_clause(why, lang):
