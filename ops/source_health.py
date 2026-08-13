@@ -14,6 +14,10 @@ So the check is per source and it has to be able to fail:
   STALE        a map came back but the observation is older than the source's
                own cycle allows
   NO-MAP       the adapter declined where it says it has coverage
+  NO-READER    the adapter cannot read this format here (an optional
+               dependency is absent). The upstream is not implicated, and
+               folding this into NO-MAP would aim the next hour of debugging
+               at a network that is fine.
   WRONG-SOURCE another service answered, so the one this probe names is not
                being exercised at all
   ERROR        it raised
@@ -59,6 +63,7 @@ PROBES = [
     ("wms-helsinki", "radar_wms", (24.94, 60.17), 900, "FMI"),
     ("wms-berlin", "radar_wms", (13.40, 52.52), 900, "DWD"),
     ("smhi-stockholm", "radar_smhi", (18.07, 59.33), 1800, "SMHI"),
+    ("chmi-prague", "radar_chmi", (14.42, 50.09), None, "CHMI"),
     ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 
@@ -84,6 +89,15 @@ def check(label, modname, sky, fallback, want_source=None):
         return "ERROR", "%s: %s" % (label, traceback.format_exc().strip().splitlines()[-1])
     took = time.time() - t0
     if got is None:
+        why = None
+        try:
+            why = mod.unavailable()
+        except AttributeError:
+            pass
+        except Exception as e:
+            why = "unavailable() raised %r" % (e,)
+        if why:
+            return "NO-READER", "%s: %s" % (label, why)
         # Declining inside declared coverage is the interesting failure: it is
         # exactly what a dead upstream and a quiet sky both look like from the
         # reader's side, and only this probe can tell them apart, because it

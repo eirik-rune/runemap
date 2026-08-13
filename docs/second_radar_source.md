@@ -122,6 +122,7 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 | Finland | FMI | `Finnish Meteorological Institute en.ilmatieteenlaitos.fi` | 6 km/char; 1.8s cold, 0.20-0.35s cached |
 | Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
 | Sweden | SMHI national composite (GeoTIFF, values not colours) | `SMHI opendata.smhi.se, CC BY 4.0` | dBZ from their own HDF5 gain/offset; UTM 33N projected here |
+| Czechia | CHMI MAX_Z composite (ODIM HDF5, values not colours) | `Czech Hydrometeorological Institute, CC BY 4.0` | dBZ from each file's own gain/offset (0.5/-32, Denmark's pair, **not** Sweden's); spherical Mercator, 1x1 km, 5-minute cadence; needs the `hdf5` extra |
 | Germany | DWD WN analysis | `Datenbasis: Deutscher Wetterdienst, Raster veraendert` | dBZ palette from their SLD; declines a window >25% no-data |
 | Mumbai | **nothing** | -- | RainViewer is non-commercial and has no paid tier to buy (their support, 2026-08-13); IMD's images have no published geographic extent |
 
@@ -467,5 +468,97 @@ that answers.
 | Switzerland, swisstopo | 200, 2029 layers | **no live radar**. The 24 "radar-ish" names are geology and climate normals; the only MeteoSwiss precipitation layers are `klimanormwerte-niederschlag_1961_1990` and `_aktuelle_periode`. The first run of the sweep reported "GetMap ok" here -- for `ch.swisstopo.geologie-reflexionsseismik`, matched on "refl". The tool names the layer it probed now |
 | Estonia, Maa-amet | 200, 108 layers, `Fees=tasuta / none` | no radar layer; that server is base mapping |
 | Norway, met.no | 503 | separately refused already: their own page says the WMS is for demonstration, not operational use |
-| Poland IMGW, Czech CHMI, Slovenia ARSO | 404 / DNS / 499 | the endpoint I had was wrong, not the service. Unfinished, not refused |
+| Poland IMGW, Slovenia ARSO | 404 / DNS / 499 | the endpoint I had was wrong, not the service. Unfinished, not refused |
+| Czech CHMI | **shipped** -- see below. The WMS endpoint I had was wrong; they do not front this with a WMS at all, they publish files |
 | UK Met Office, Australia BOM | 403 on capabilities | both front their open data with a registered API key. Not refused on principle -- unasked |
+
+
+## Czechia (CHMI) -- the eighth country, and the first whose licence is machine-readable
+
+`https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/hdf5/`
+
+MAX_Z: the maximum reflectivity in the vertical column over each grid point,
+composited from the Brdy-Praha and Skalky radars, 1x1 km, every five minutes,
+ODIM HDF5 v2.4, spherical Mercator (EPSG:3857 -- so no projection library, two
+divisions). Each file states its own scale: `gain 0.5, offset -32.0,
+undetect 0, nodata 255`. That is **Denmark's pair and not Sweden's 0.4 / -30.0**,
+which is the entire argument for reading constants out of the file instead of
+restating them: a restated scale draws the right map at the wrong intensity and
+looks completely normal.
+
+**The licence is the reason this shipped, and it is RDF rather than prose.**
+The Czech national catalogue publishes the terms for this exact distribution:
+
+```
+autorské-dílo                CC BY 4.0
+databáze-jako-autorské-dílo  CC BY 4.0
+databáze-chráněná-...        not protected by the database maker's right
+osobní-údaje                 contains no personal data
+autor                        Český hydrometeorologický ústav
+```
+
+Denmark sits unshipped three directories from a working download because its
+terms could not be read at all; Belgium serves 403 on the layer it advertises.
+Against those, a licence that can be *asked again* is worth more than one read
+once, so `ops/chmi_terms.py` re-asks it and fails if any of the four move --
+including on an empty answer, because a catalogue that has been taken down
+returns zero bindings, and zero bindings passes any lazily written check.
+
+### Two things that nearly went wrong, both of the usual family
+
+**The PNG twin is a trap.** The same product is published as PNG in EPSG:3857,
+which needs no HDF5 reader at all -- and it is drawn with a frame, a legend
+panel, borders and rivers on it. Those are opaque pixels a classifier reads as
+echo. A picture that already contains decoration cannot be turned back into
+values. Taking the numbers costs an optional dependency; taking the picture
+would have cost the map.
+
+**The directory listing is 301 KB and I read the first 200 KB of it.** That
+returns a newest frame three days old, with nothing marking the cut -- a
+silently truncated answer that reads as a stale service. Nothing in the adapter
+parses that listing: filenames come from the documented pattern and the clock,
+walking back six frames from now.
+
+### Which way up is the raster? Measured, not assumed
+
+Row 0 being north is what ODIM says and what everyone does, and it is exactly
+the kind of assumption that hurts here: a raster read upside down still draws a
+map, with the right scale and a fresh timestamp, and puts the weather in the
+wrong half of the country. The file does not say.
+
+`ops/chmi_orient.py` measures it against the one asymmetry the product cannot
+fake -- where it is blind. Each radar has a stated 260 km range, so rank the
+four corners by distance from the nearer radar, and rank them by how much
+`nodata` each holds. Measured 2026-08-13 12:40 UTC:
+
+| corner | min range | nodata pixels |
+|---|---|---|
+| NE | 296 km | 1447 |
+| NW | 269 km | 94 |
+| SE | 263 km | 9 |
+| SW | 259 km | 0 |
+
+Perfect agreement across all four. Under the flipped reading the blind corners
+would be the two *nearest* the radars, which is not how radars fail. All four
+verdicts of that tool have been fired: OK upright, FLIPPED on the reversed
+array, DISAGREE on a scrambled one, and INSUFFICIENT on a frame with too little
+nodata to rank -- "I cannot tell" and "it is fine" must not print the same word.
+
+### What it costs, and why it is an extra rather than a dependency
+
+h5py bundles libhdf5: **13 MB resident per process, measured**, so 26 MB across
+the two instances, on a box with 121 MB available that is already swapping. Every
+other source in the fleet works without it, so it is `pip install runemap[hdf5]`
+and `scripts/radar_chmi.py` declines out loud when it is absent
+(`CHMI-NO-H5PY`). The health probe reports that as **NO-READER**, not NO-MAP:
+a missing library and a dead upstream both reach the reader as an empty grid,
+but they have different repairs, and one word for both aims the next hour of
+debugging at a network that is answering perfectly.
+
+### The rectangle reaches into four neighbours, on purpose
+
+48.05-51.46N, 11.27-19.62E: the composite merges foreign radars when a Czech one
+is out, and it really does see Saxony, Upper Austria, Silesia and western
+Slovakia. Claiming to stop at the border would be a lie about the data. What
+keeps Germany on DWD is the chain order, and that is asserted in
+`tests/test_second_source.py` at Dresden -- inside both -- rather than trusted.

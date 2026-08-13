@@ -15,6 +15,14 @@ dependencies = ["numpy>=1.20", "pillow>=8"]
 
 [project.optional-dependencies]
 image = ["pillow>=8"]   # retained as alias; pillow is required since 0.3
+# Czechia publishes its radar composite as ODIM HDF5 -- values with a stated
+# gain and offset, rather than a picture whose colours have to be decoded. That
+# is the better data, and h5py is the only way to read it. It is an extra
+# rather than a dependency because it carries a bundled libhdf5 (measured: 13 MB
+# resident per process) and every other source in the fleet works without it;
+# scripts/radar_chmi.py declines out loud when it is absent instead of handing
+# back an empty grid.
+hdf5 = ["h5py>=3"]
 
 [project.urls]
 Homepage = "https://github.com/eirik-rune/runemap"

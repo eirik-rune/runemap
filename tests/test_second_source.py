@@ -92,6 +92,55 @@ class TheFallbackIsOffAndCannotThrowIntoTheReader(unittest.TestCase):
             radar_second.draw = orig
 
 
+class TheChainKnowsCzechia(unittest.TestCase):
+    """A source wired into the dispatcher but spelled differently in the env
+    var is a source that silently never runs: `SECOND-UNKNOWN` is written to
+    stderr and the chain moves on, which from the reader's side is a country
+    that simply has no map."""
+
+    def setUp(self):
+        self._was = RS.SECOND_SOURCE
+
+    def tearDown(self):
+        RS.SECOND_SOURCE = self._was
+
+    def test_chmi_dispatches_to_the_czech_adapter(self):
+        RS.SECOND_SOURCE = "chmi"
+        import radar_chmi
+        orig = radar_chmi.draw
+        want = (ART, 11.7, 1.0, None, 1.0, "CHMI")
+        radar_chmi.draw = lambda *a, **k: want
+        try:
+            self.assertEqual(RS._second_source("><", 14.42, 50.09, False), want)
+        finally:
+            radar_chmi.draw = orig
+
+    def test_dwd_answers_dresden_before_chmi_is_asked(self):
+        """Dresden is inside both the DWD service and the Czech composite. The
+        order in the chain is the whole guarantee, so it is asserted where it
+        is decided rather than trusted."""
+        RS.SECOND_SOURCE = "wms,chmi"
+        import radar_wms, radar_chmi
+        ow, oc = radar_wms.draw, radar_chmi.draw
+        radar_wms.draw = lambda *a, **k: (ART, 11.7, 1.0, None, 1.0, "DWD")
+        radar_chmi.draw = lambda *a, **k: self.fail("CHMI was asked first")
+        try:
+            self.assertEqual(RS._second_source("><", 13.74, 51.05, False)[5], "DWD")
+        finally:
+            radar_wms.draw, radar_chmi.draw = ow, oc
+
+    def test_chmi_answers_when_the_services_before_it_decline(self):
+        RS.SECOND_SOURCE = "wms,chmi"
+        import radar_wms, radar_chmi
+        ow, oc = radar_wms.draw, radar_chmi.draw
+        radar_wms.draw = lambda *a, **k: None
+        radar_chmi.draw = lambda *a, **k: (ART, 11.7, 1.0, None, 1.0, "CHMI")
+        try:
+            self.assertEqual(RS._second_source("><", 14.42, 50.09, False)[5], "CHMI")
+        finally:
+            radar_wms.draw, radar_chmi.draw = ow, oc
+
+
 class TheSourceRefusesToLieAboutFreshness(unittest.TestCase):
 
     def test_a_frame_older_than_the_limit_is_refused(self):
