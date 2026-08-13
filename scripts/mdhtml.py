@@ -293,7 +293,14 @@ def render(text, marker="><"):
         # of spaces (rstrip made those "" and London lost most of its map).
         if in_grid:
             if not s or set(s) <= _GRID_CHARS:
-                grid.append(s)
+                # UNSTRIPPED. A cell with no rain on the eastern edge is a
+                # space, and dropping it does not merely shorten the picture:
+                # the window is centred on the reader, so the marker sits at
+                # column cols/2 BY CONSTRUCTION. Narrow the grid from the right
+                # and the marker is no longer in the middle of it -- every echo
+                # is then drawn at the wrong bearing and the wrong distance
+                # from the person reading. bob: "不然紫色块儿就不在中心了".
+                grid.append(raw.rstrip("\n"))
                 if "map" not in order:
                     order.append("map")
                 continue
@@ -337,7 +344,12 @@ def render(text, marker="><"):
         if len(s) >= 8 and set(s) <= _GRID_CHARS and any(
                 c in RAMP[1:] or c in "?><" for c in s):
             in_grid = True
-            grid.append(s)
+            # raw, not s: same reason as the branch above. This is the path a
+            # document takes when it has no [><]= scale line, and it had the
+            # trailing-space bug all along -- I fixed the two paths I had a
+            # failing page for and left the third, which is how this family
+            # got to three instances in one day.
+            grid.append(raw.rstrip("\n"))
             continue
         # -- provenance and scale lines
         if _META.match(s) or "]=" in s:
