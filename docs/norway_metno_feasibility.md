@@ -95,11 +95,24 @@ keeps meeting.
   that has been moved or withdrawn both answer 404. Walking back a bounded
   number of stamps and finding nothing must therefore print its own verdict
   and must not be reported as a clear sky.
-* **Caching key.** Per-reader subsets must be shared between readers in the
-  same place, or every request spends met.no's bandwidth: cache on (frame
-  stamp, rounded centre, span, shape).
-* **Orientation check in ops/**, on the pattern of `dmi_orient.py`, using
-  `is_nodata` against the Norwegian radar sites.
+* ~~**Caching key.**~~ Done: two shared caches (stamp 60 s, window 150 s),
+  keyed on (frame stamp, box). First reader 3.6 s, every reader after 0.006 s.
+* **Orientation check in ops/** — still open, and worth being precise about why,
+  because I nearly recorded it as done.
+
+  The projection test in `tests/test_radar_metno.py` computes four cities into
+  (row, col) and checks the file's own `lat`/`lon` arrays agree. That validates
+  **my arithmetic against the file's georeference** — a real check, and it
+  would catch a wrong proj4, a wrong origin or a flipped Y axis in my code.
+
+  It cannot catch the failure `dmi_orient.py` exists for: the data array being
+  laid out differently from what the file's own coordinates claim. Both my
+  computed cell and the `lat`/`lon` arrays come from the same file, so they
+  agree with each other whatever the payload does. Catching that needs a
+  control the product cannot forge — the `is_nodata` mask against the
+  Norwegian radar sites, exactly as Denmark's does.
+
+  Not "mostly covered". Two different questions, and only one is answered.
 * **Coverage box** and the dBZ floor: the shared `scripts/dbz.py` table applies,
   including the 7 dBZ floor, and must not be re-derived here.
 
