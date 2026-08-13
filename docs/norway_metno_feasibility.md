@@ -172,3 +172,31 @@ shape as the Czechia PNG a few hours earlier, where I derived "it has borders
 and rivers drawn on it" from colour counts and, on finally opening the image,
 found neither. **Having looked at a picture is not the same as having measured
 it.**
+
+## One end-to-end check against an independent rendering (2026-08-13 20:40Z)
+
+The projection test proves my arithmetic agrees with the file's coordinates. It
+does not exercise `window()` or `level_at()`, and it cannot say whether the
+picture a reader gets has the weather in the right place. So: MET publish a
+rendered PNG for human eyes. It is useless to a program — that is the whole
+point of the section above — but it is perfectly readable to me.
+
+Their `central_norway` frame at 20:40Z, beside our Trondheim grid from the same
+minute:
+
+| | their image | our grid |
+|---|---|---|
+| west / south-west (Kristiansund–Molde) | large, intense mass | dense cells, the heaviest of the run |
+| north (Namsos, Steinkjer) | scattered echo | activity in the upper left |
+| east (toward Östersund) | clear | nearly empty right half |
+| at Trondheim itself | light to moderate | light cells around the marker |
+
+Orientation, the wet/dry split and the intensity ordering all agree.
+
+**What this is and is not.** It exercises the whole chain — projection, window,
+level mapping, marker placement — which the coordinate test does not. It is
+*not* independent of the data: both pictures come from the same mosaic, so it
+confirms that I read the grid correctly, not that the grid is correct. And it
+is one manual look at one frame by me, not a guard: it will not notice if this
+breaks next week. The `is_nodata` check in the section above is still the thing
+that is missing, and this does not substitute for it.
