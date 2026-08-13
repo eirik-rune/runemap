@@ -207,3 +207,42 @@ Doing India therefore means registering the image against known geography
 than assuming a standard range. That is real work, but it has a check that can
 fail -- the coastline either lines up everywhere or it does not -- which is the
 only kind worth starting. It is not started.
+
+## Japan, 8/13: everything except the one thing that would let it ship
+
+Established, all by measurement:
+
+- **The tiles work and are plain XYZ.** `targetTimes_N1.json` lists frames every
+  5 minutes; `.../nowc/{basetime}/none/{validtime}/surf/hrpns/{z}/{x}/{y}.png`
+  returns real 256px tiles over Tokyo at z6 (2254 / 5662 / 1470 / 798 bytes for
+  the four tiles -- different sizes, so genuinely different content). Our
+  existing tile geometry (`radar_rainviewer.plan`) computes the rectangle
+  unchanged.
+- **The licence permits it.** JMA content is under the Public Data Usage Terms
+  v1.0 unless marked otherwise: attribution required, modified content must be
+  labelled as modified and must not be presented as official government
+  material. We already print both the source and the change notice.
+- **One rule to respect:** the nowcast contains forecast frames, and the
+  Meteorological Business Act regulates forecasting. Use only frames where
+  `validtime == basetime` -- which is also the only thing our product claims to
+  show.
+- **A trap, pinned here before it bites:** asking for zoom `64` instead of `6`
+  returns **200 with a valid 334-byte PNG**. Same family as the RainViewer z8
+  image that was identical for every coordinate. Any adapter must assert the
+  zoom it asked for, not merely that bytes came back.
+
+What is missing is the same thing that stopped the Netherlands: **a published
+colour -> intensity mapping**. The tiles use exactly 8 discrete colours
+(242,242,255 · 160,210,255 · 33,140,255 · 0,65,255 · 250,245,0 · 255,153,0 ·
+255,40,0 · 180,0,104), which is a much better starting point than a ramp, but
+the mm/h thresholds are not in their capabilities, their tile bundle, or
+`contents.json`, and I would be typing them from memory. That is the guess this
+whole file exists to refuse -- and refusing it here while refusing it for KNMI
+is the point: the rule has to cost something occasionally or it is decoration.
+
+**The way to settle it without their legend**, for whoever picks this up: our
+scale only needs an ORDER, not rain rates, and order is derivable from the data
+itself. Heavier cores are spatially nested inside lighter ones, so for each
+pair of colours you can measure which encloses which across many tiles and many
+frames. That is a derivation with a check that can fail -- if the nesting is
+inconsistent, the assumption was wrong and you stop.
