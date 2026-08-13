@@ -30,7 +30,7 @@ cities that flicker.
 |---|---|---|---|---|
 | RainViewer tiles | both | free tier is "personal or educational use only"; we are a company. Commercial pricing is not published. Asked `support@rainviewer.com` 06:31 UTC (mail log `250 ... status=sent`) | fine | draws; palette maps across all five intensity levels |
 | REDEMET (Brazilian air force) | saopaulo | Terms of Use: content is copyright (Berne), framing REDEMET images in other sites is **not** authorised, links only to the main page. A derived 48x24 text grid is not named either way. Asked `redemet@decea.gov.br` 06:46 UTC (`250 ... Queued mail for delivery`) | **blocked** -- `api-redemet` and `estatico-redemet` both time out from prod, 200 from Tokyo | draws; the API hands us `lat_min/lat_max/lon_min/lon_max` per radar, so no polar calibration is needed |
-| IMD (India) | mumbai | **nothing forbids it**: the disclaimer carries only `(c) Ministry of Earth Sciences`; `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are 404. Silence is not a prohibition either -- see the note below | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
+| IMD (India) | mumbai (Veravali radar, 73 km from the city) | **nothing forbids it**: the disclaimer carries only `(c) Ministry of Earth Sciences`; `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are 404. Silence is not a prohibition either -- see the note below | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
 | NOAA GOES-19 `ABI-L2-RRQPEF` | saopaulo (Americas only) | **US Government work, public domain. No gatekeeper at all** | fine, straight from prod | **fails, see below** |
 | Open-Meteo | both | data CC BY 4.0, commercial requires a paid plan | fine | **fails, see below** |
 | DWD (Germany) | germany | commercial use allowed: `Fees=none`, `AccessConstraints=dwd.de/copyright` -> CC BY 4.0 with a source note, and their template requires that note even for a change of data format. **Shipping** | fine | draws; needs their dBZ palette and a no-data share guard |
@@ -183,3 +183,27 @@ Two things followed:
   already declares, so Finland shipped credited as a bare "FMI". A duplicated
   table does not fail when it falls behind -- it under-credits somebody whose
   data we are using.
+
+## India, 8/13: the half that was published, and the half that is not
+
+`reactjs.imd.gov.in` runs a GeoServer (Fees NONE, AccessConstraints NONE) whose
+WFS layer `imd:radar_station_status` hands out all 39 IMD radar stations as
+GeoJSON -- code, name, latitude, longitude, and a status flag with the time
+that station's image was last updated. 28 were updating when this was written.
+Mumbai is covered by **Veravali (vrv), 73 km from the city, updating**.
+
+That kills the part of the India problem I had called expensive: the station
+coordinates were never something to guess, and I had guessed four of them at a
+national met service to find one. `ops/imd_stations.py` reads them properly.
+
+What is still genuinely unpublished is the **georeference of the images**. The
+products are animated GIFs (`mausam.imd.gov.in/Radar/{caz,ppi,ppz,sri}_{code}
+.gif`), there is no GeoTIFF or PNG variant, and IMD's own radar page does not
+put them on a map -- it loads Leaflet only to place station markers. So nobody,
+including IMD's own website, is publishing the extent of that picture.
+
+Doing India therefore means registering the image against known geography
+(Mumbai's coastline is the obvious anchor) and solving for the scale rather
+than assuming a standard range. That is real work, but it has a check that can
+fail -- the coastline either lines up everywhere or it does not -- which is the
+only kind worth starting. It is not started.
