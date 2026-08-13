@@ -127,8 +127,64 @@ def check(label, modname, sky, fallback, want_source=None):
                   % (label, got[5] if len(got) > 5 else "?", age / 60.0, kmcol, took))
 
 
+UNIT = os.environ.get("RUNEMAP_HEALTH_UNIT", "runemap")
+
+
+def adopt_unit_env(unit=UNIT, run=None):
+    """Take the running service's own settings, rather than restating them.
+
+    8/13: this probe reported NO-READER for the Netherlands -- "no KNMI key" --
+    while production held the key perfectly well. The service is told where the
+    key is by a drop-in (RUNEMAP_KNMI_KEY_FILE=/etc/runemap/knmi_key); cron
+    told this probe nothing, so it looked in a default path that does not
+    exist. **The probe was measuring a configuration nobody runs**, and the
+    alarm it raised was about itself.
+
+    It passed for five hours before that only because a cached frame let the
+    adapter answer without a key at all -- so it was passing for a reason other
+    than the one it claimed, which is how a ruler starts lying.
+
+    Variables already set win: a person asking a question on the command line
+    is not overruled by the unit.
+
+    -> list of names adopted, so the log says what was taken. If systemd cannot
+    be asked, that is said out loud rather than silently falling back to
+    defaults -- "I could not find out" and "there was nothing to find" must not
+    print the same thing.
+    """
+    import subprocess
+    try:
+        out = (run or (lambda: subprocess.run(
+            ["systemctl", "show", unit, "-p", "Environment"],
+            capture_output=True, text=True, timeout=10).stdout))()
+    except Exception as e:
+        sys.stderr.write("HEALTH-ENV-UNREADABLE %s: %r\n" % (unit, e))
+        return None
+    if not out.startswith("Environment="):
+        sys.stderr.write("HEALTH-ENV-UNREADABLE %s: %r\n" % (unit, out[:80]))
+        return None
+    took = []
+    for tok in out[len("Environment="):].strip().split():
+        if "=" not in tok:
+            continue
+        k, v = tok.split("=", 1)
+        if k in os.environ:
+            continue
+        os.environ[k] = v
+        took.append(k)
+    return took
+
+
 def main():
     wanted = sys.argv[1:]
+    took = adopt_unit_env()
+    if took is None:
+        print("NO-CONFIG could not read %s's environment; "
+              "the probe would be testing settings production does not use"
+              % UNIT)
+        sys.exit(1)
+    if took:
+        print("-- adopted from %s: %s" % (UNIT, " ".join(sorted(took))))
     rows = [p for p in PROBES if not wanted or any(w in p[0] for w in wanted)]
     if not wanted:
         pass
