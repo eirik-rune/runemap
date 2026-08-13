@@ -141,6 +141,18 @@ class TheChainKnowsCzechia(unittest.TestCase):
             radar_wms.draw, radar_chmi.draw = ow, oc
 
 
+    def test_knmi_dispatches_to_the_dutch_adapter(self):
+        RS.SECOND_SOURCE = "knmi"
+        import radar_knmi
+        orig = radar_knmi.draw
+        want = (ART, 11.7, 1.0, None, 1.0, "KNMI")
+        radar_knmi.draw = lambda *a, **k: want
+        try:
+            self.assertEqual(RS._second_source("><", 4.90, 52.37, False), want)
+        finally:
+            radar_knmi.draw = orig
+
+
 class TheSourceRefusesToLieAboutFreshness(unittest.TestCase):
 
     def test_a_frame_older_than_the_limit_is_refused(self):

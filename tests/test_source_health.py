@@ -115,7 +115,8 @@ class ItShipsProbesForEveryShippedSource(unittest.TestCase):
         """A source added without a probe here is a source whose death is
         invisible, which is how all of today's failures behaved."""
         watched = {p[1] for p in H.PROBES}
-        for mod in ("radar_jma", "radar_wms", "radar_redemet", "radar_chmi"):
+        for mod in ("radar_jma", "radar_wms", "radar_redemet", "radar_chmi",
+                    "radar_knmi"):
             self.assertIn(mod, watched, mod)
 
     def test_every_wms_service_has_its_own_probe_not_just_the_module(self):

@@ -61,11 +61,10 @@ TIMEOUT = 12.0
 GAIN, OFFSET = 0.4, -30.0
 UNDETECT, NODATA = 0, 255
 
-# The same dBZ bands the DWD row uses. dBZ is a physical quantity, so one
-# intensity has to draw one character whether the radar is German or Swedish;
-# giving each source its own thresholds would make the map's scale depend on
-# which country the reader is standing in.
-DBZ_LEVELS = ((19.0, 1), (28.0, 2), (37.0, 3), (46.0, 4))
+# The bands live in scripts/dbz.py now -- one table, not one copy per source.
+# The name is kept because tests and ops tools refer to it.
+import dbz as _dbz                                            # noqa: E402
+DBZ_LEVELS = _dbz.LEVELS
 
 # The Nordic area this composite actually sees, not "Sweden": its own corners
 # run 53.7N-69.8N and 5.3E-29.8E, and it genuinely observes southern Norway and
@@ -143,13 +142,7 @@ def level_of(dn):
         return -1
     if dn == UNDETECT:
         return 0
-    dbz = GAIN * dn + OFFSET
-    lv = 5
-    for edge, v in DBZ_LEVELS:
-        if dbz < edge:
-            lv = v
-            break
-    return lv
+    return _dbz.level_for(GAIN * dn + OFFSET)
 
 
 def _fetch(get=None):

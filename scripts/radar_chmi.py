@@ -64,11 +64,6 @@ STEP = 300.0                 # their publication cadence, stated in the docs
 FRAME_MAX_AGE = 1800.0       # five missed beats; the probe reports STALE past it
 LOOKBACK = 6                 # frames to walk back before giving up
 
-# The same dBZ bands every other source in the fleet uses. dBZ is a physical
-# quantity, so one intensity draws one character whichever country the reader
-# is standing in.
-DBZ_LEVELS = ((19.0, 1), (28.0, 2), (37.0, 3), (46.0, 4))
-
 # The composite's own corners, which reach into Germany, Austria, Poland and
 # Slovakia -- it really does see them, and says so (foreign radars are merged in
 # when a Czech one is out). The rectangle is honest about that rather than
@@ -209,13 +204,8 @@ def level_of(dn, scale):
         return -1
     if dn == scale["undetect"]:
         return 0
-    dbz = scale["gain"] * dn + scale["offset"]
-    lv = 5
-    for edge, v in DBZ_LEVELS:
-        if dbz < edge:
-            lv = v
-            break
-    return lv
+    import dbz as _dbz
+    return _dbz.level_for(scale["gain"] * dn + scale["offset"])
 
 
 def _merc_y(lat):

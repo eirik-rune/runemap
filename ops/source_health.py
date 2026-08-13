@@ -64,6 +64,7 @@ PROBES = [
     ("wms-berlin", "radar_wms", (13.40, 52.52), 900, "DWD"),
     ("smhi-stockholm", "radar_smhi", (18.07, 59.33), 1800, "SMHI"),
     ("chmi-prague", "radar_chmi", (14.42, 50.09), None, "CHMI"),
+    ("knmi-amsterdam", "radar_knmi", (4.90, 52.37), None, "KNMI"),
     ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 

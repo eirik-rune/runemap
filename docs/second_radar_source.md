@@ -123,6 +123,7 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 | Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
 | Sweden | SMHI national composite (GeoTIFF, values not colours) | `SMHI opendata.smhi.se, CC BY 4.0` | dBZ from their own HDF5 gain/offset; UTM 33N projected here |
 | Czechia | CHMI MAX_Z composite (ODIM HDF5, values not colours) | `Czech Hydrometeorological Institute, CC BY 4.0` | dBZ from each file's own gain/offset (0.5/-32, Denmark's pair, **not** Sweden's); spherical Mercator, 1x1 km, 5-minute cadence; needs the `hdf5` extra |
+| Netherlands | KNMI 5-minute reflectivity composite (ODIM HDF5, values not colours) | `KNMI dataplatform.knmi.nl, CC BY 4.0` | dBZ from the calibration string in each file; polar stereographic checked against their own four corners (16 m on a 1000 m cell) |
 | Germany | DWD WN analysis | `Datenbasis: Deutscher Wetterdienst, Raster veraendert` | dBZ palette from their SLD; declines a window >25% no-data |
 | Mumbai | **nothing** | -- | RainViewer is non-commercial and has no paid tier to buy (their support, 2026-08-13); IMD's images have no published geographic extent |
 
@@ -594,3 +595,82 @@ what the transformation is and offering the attribution line.
 
 Until they answer, nothing is fetched and no adapter exists. An endpoint that
 does not enforce a rule has not waived it.
+
+
+## The Netherlands (KNMI) -- a refusal that was about the route, not the country
+
+**This country was refused on 2026-08-12 and the refusal was wrong.** Through
+their WMS, colour and value are not registered to the same cell and every
+colour sampled back as the same sentinel rain rate, so the map could not be
+made honest. The conclusion I wrote was "the Netherlands cannot be done" -- the
+true statement was **"the endpoint I had was wrong, not the service"**, which is
+the same sentence already sitting next to the Czech row. KNMI publishes the grid
+itself on their Data Platform: ODIM-style HDF5, dBZ, 5-minute cadence, radars at
+Herwijnen and Den Helder, reflectivity at 1500 m.
+
+Licence: **CC BY 4.0**, machine-readable in the Dutch national catalogue, on the
+entry whose own resource link is
+`x-dataset=radar_reflectivity_composites&x-dataset-version=2.0` -- which is the
+dataset the adapter fetches. That link is the join between "the entry I read"
+and "the files I take", and it is written into the module so it can be checked
+rather than believed.
+
+Access is by KNMI's **anonymous key**, published on their developer portal,
+which "provides unregistered access to open data". A sanctioned path, taken as
+offered: no account, no claiming to be a person.
+
+### What the file says about itself
+
+    image_geo_parameter   REFLECTIVITY_[DBZ]
+    calibration_formulas  "GEO = 0.500000 * PV + -32.000000"   -- parsed, not restated
+    calibration_missing_data / _out_of_image   0 / 255
+    geo_pixel_def         LU     -- the raster states its own orientation, which
+                          the Czech product did not, so no measurement was needed
+    geo_product_corners   four lat/lons
+
+The projection is polar stereographic (`ops/stereo.py`, EPSG 9810 formulas, all
+constants asserted against the proj4 string in the file). The control is KNMI's
+four stated corners, computed independently of the projection parameters:
+**all four agree to 16 m on a 1000 m cell.** A first version had the pole-relative
+axis sign backwards and put the Netherlands in the Pacific -- the corners caught
+it in one run.
+
+### The shared quota, and a 429 I caused
+
+The anonymous key is **shared among all unregistered users** (50 req/min,
+3000/hour, shared). The first version of the fetch walked six candidate
+timestamps asking for each in turn, and ran it into a 429 -- a burst against a
+budget that is not ours to spend. It now asks the listing endpoint once for the
+newest file (3 requests per 5-minute cycle, cached and shared by every reader)
+and on 429 it stops rather than walking down the list making it worse. Their 429
+means what it says, unlike the hub's, which is an authentication failure wearing
+a rate limit's clothes.
+
+## The 7 dBZ floor -- found while shipping the Netherlands, and it was drawing weather that was not there
+
+Every source that hands us values (SMHI, CHMI, KNMI) classified anything above
+"no echo" as at least light rain. Their floors go down to **-31 dBZ**, and on the
+2026-08-13 13:10 frames **82% of KNMI's echo pixels and 83% of CHMI's were below
+7 dBZ**.
+
+What that looked like: the Amsterdam window rendered as a screen full of light
+rain. The primary source for the same city, the same minute, said `CLEAR_DAY
+31C humidity 17% precip 0.00mm/h`. Those returns are clear-air clutter --
+insects and ground echo, which is exactly what a hot dry afternoon produces --
+and we were drawing them as rain.
+
+**The floor is not a textbook number, it is DWD's**, taken from a service
+already in this fleet whose pictures we already classify. Their published style
+for the WN analysis declares its first entry:
+
+    #ffffff   opacity=0   quantity=7   dBz
+
+transparent below 7 dBZ. So a German sky at 3 dBZ has always drawn nothing,
+while a Dutch or Czech sky at 3 dBZ drew light rain -- the same character
+meaning two different things depending on which country the reader stood in.
+
+The table now lives in `scripts/dbz.py`, once. It used to be copied into three
+modules, each with a comment saying it was the fleet's table; four copies that
+agree are a coincidence, not a construction. And the change was invisible to 369
+passing tests, because no test had ever handed a classifier a sub-floor value --
+`tests/test_dbz.py` fires it in both directions now.
