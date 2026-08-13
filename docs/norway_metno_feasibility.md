@@ -172,6 +172,40 @@ keeps meeting.
   that hands back confident wrong answers. The next thing to try is met.no's own
   Frost API station catalogue -- the operator's own numbers rather than a
   third party's -- which needs a client registration.
+* **Orientation — partly settled, 2026-08-13 late.** The route that failed
+  earlier (WMO ids joined to NOAA's `isd-history.csv`, 3 of 12 with two wrong by
+  120 and 180 km) has a correct replacement: **WMO OSCAR/Surface, keyed by the
+  same ids the BALTRAD registry gives for each ODIM node**, with the registry's
+  place name asserted against OSCAR's station name and the row refused when they
+  disagree. That yields **9 of 13 Norwegian sites**, every one of them labelled
+  `RADAR <place>` by OSCAR. The guard is deliberately conservative: `noosl`
+  ("Oslo") resolves to `RADAR Asker`, which really is the Oslo radar, and is
+  refused anyway. Losing a true site is the cheaper error.
+
+  With those 9 positions and one strided `is_nodata` request (stride 12,
+  178x142), the mask gives a real verdict on the axis that matters:
+
+      share of cells within 150 km of a KNOWN radar that are SEEN
+        as read           94.9%
+        up-down flip      58.4%      <- rejected, 36-point margin
+        left-right flip   73.9%
+        180 rotate        92.8%      <- NOT separable, 2.1 points
+
+  **Read as it is, not as I would like it.** A pure up-down flip -- the failure
+  `dmi_orient.py` exists for, and the realistic one for a row-major array -- is
+  excluded with room to spare. A 180 rotation is **not** excluded by this
+  statistic: Norway runs diagonally, so the two flips very nearly cancel, and
+  2.1 points is the same coin-on-its-edge that made Switzerland's mask useless.
+
+  One statistic had to be thrown away first, and the reason generalises. Mean
+  distance from a seen cell to the nearest radar *prefers the 180 rotation*
+  (318.6 km against 387.8). It is invalid here because it assumes "seen implies
+  near a known radar", and **this is the Nordic mosaic while I hold only
+  Norwegian positions** -- much of the seen area belongs to Swedish and Finnish
+  radars I cannot locate. The one-way form, "near a known radar implies seen",
+  is all the incomplete site list supports. **Pick the statistic whose
+  assumption you actually satisfy, not the one that is easiest to compute.**
+
 * **Coverage box** and the dBZ floor: the shared `scripts/dbz.py` table applies,
   including the 7 dBZ floor, and must not be re-derived here.
 
