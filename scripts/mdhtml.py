@@ -67,6 +67,25 @@ _NO_COVER = "no radar here"
 # (which is box-drawing characters, the same risk again) into plain labels.
 BARS = {chr(0x2580 + n): n for n in range(1, 9)}
 _GRID_CHARS = set(RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")
+_TICKS = set("\u2500\u251c\u252c\u2524\u253c ")
+_BAR_CHARS = set(BARS) | {" "}
+
+
+def _title(s):
+    """Strip whatever the document calls itself in its own language."""
+    for tail in (" weather scene", " \u5929\u6c14\u4e00\u5c4f",
+                 " \u5929\u6c17\u4e00\u89a7"):
+        if s.endswith(tail):
+            return s[:-len(tail)]
+    return s
+
+
+def _next_is_curve(lines, i):
+    """True if the next non-empty line is drawn in eighth-blocks."""
+    for nxt in lines[i + 1:i + 3]:
+        if nxt.strip():
+            return set(nxt.rstrip()) <= _BAR_CHARS
+    return False
 
 # bob: "界面有点儿扁". It is not taste, it is geometry, and the renderer says so
 # itself: "km_per_row is twice that on purpose: a terminal cell is about twice
@@ -95,7 +114,15 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .now{font-size:1.05rem;margin:0 0 .3rem}
 .say{margin:0 0 1.1rem}
 .map{border:1px solid var(--line);border-radius:10px;padding:.5rem;margin:0 0 .5rem}
-.grid{display:flex;flex-direction:column;width:100%%}
+/* The square is held by the old padding-bottom trick, not by `aspect-ratio`.
+   `aspect-ratio` is unsupported on Safari before 15, and where it is
+   unsupported the grid does not degrade -- it collapses to zero height and the
+   map is simply gone, which is what bob reported seeing. Same shape as the
+   missing glyphs: a feature the reader's device lacks does not announce
+   itself. padding-bottom on a zero-height box has worked since 2010. */
+.ar{position:relative;height:0}
+.grid{position:absolute;top:0;left:0;right:0;bottom:0;
+display:flex;flex-direction:column;width:100%%}
 .grid .row{flex:1;display:flex}
 .grid .row i{display:block}
 
@@ -172,8 +199,14 @@ def _is_axis(w):
     return len(toks) >= 3 and sum(1 for t in toks if t[0].isdigit()) >= 3
 
 
-def _curve_html(lines):
-    """The 2h rain curve as bars, for the same reason the map is boxes."""
+def _curve_html(lines, heading=""):
+    """The 2h rain curve as bars, for the same reason the map is boxes.
+
+    The heading is the document's own ("rain curve (next 2h, 6min/bucket)",
+    "雨量曲线(未来2h, 6min/格)", "雨量曲線(今後2h, 6min/枠)"), not a phrase of mine:
+    an English caption over a Chinese page is the same defect as an English
+    legend, one line up.
+    """
     bars, labels, words = [], [], []
     for ln in lines:
         hits = [BARS[c] for c in ln if c in BARS]
@@ -195,8 +228,9 @@ def _curve_html(lines):
     if not bars:
         # No bars at all is a real answer -- "no precipitation expected" -- and
         # it must be shown, not silently dropped.
-        return ('<div class="curve"><h2>next 2 hours</h2><p class="flat">%s</p>'
-                '</div>\n' % html.escape(" ".join(words))) if words else ""
+        return ('<div class="curve"><h2>%s</h2><p class="flat">%s</p>'
+                '</div>\n' % (html.escape(heading or "next 2 hours"),
+                              html.escape(" ".join(words)))) if words else ""
     cells = "".join('<i style="height:%d%%"></i>' % (100 * b // 8)
                     for b in bars)
     axis = ("".join('<span>%s</span>' % html.escape(t) for t in labels)
@@ -204,92 +238,119 @@ def _curve_html(lines):
     # Any prose on the curve line ("peaks in 30 min") is the most useful part
     # of it and must not be dropped for the sake of the picture.
     note = ('<p class="flat">%s</p>' % html.escape(" ".join(words))) if words else ""
-    return ('<div class="curve"><h2>next 2 hours</h2>%s'
+    return ('<div class="curve"><h2>%s</h2>%s'
             '<div class="bars">%s</div><div class="axis">%s</div></div>\n'
-            % (note, cells, axis))
+            % (html.escape(heading or "next 2 hours"), note, cells, axis))
 
 
 def render(text, marker="><"):
+    """Parse by SHAPE, not by English words.
+
+    bob opened the page on his phone and saw a title, a timestamp and nothing
+    else -- and he was right three times running while every check I ran here
+    passed. His page is the Chinese one. The first parser keyed on `now:`,
+    `rain curve`, `~4km/char` and `legend:`, so on /zh (当前:, 雨量曲线,
+    每字符≈4km, 图例:) and on /ja nothing matched and the whole document fell
+    through to "prose". **A parser that only understands one language does not
+    fail on the others, it empties them** -- and the language I tested in was
+    of course the one I wrote the keys in.
+
+    The document has the same SHAPE in all three: two `#` header lines, a
+    conditions line, a forecast sentence, a curve drawn in eighth-blocks, a
+    grid drawn in ramp characters, a legend that pairs ramp characters with
+    words, and provenance lines. Every one of those is recognisable without
+    reading a word of it.
+    """
     place = when = now = say = ""
     meta, grid, curve, pairs = [], [], [], []
-    # 8/13, bob: the text puts the rain curve ABOVE the map and my first page
-    # put it below, because the template hard-coded the order. That is the page
-    # editing the document, which is the one thing it must not do. Which block
-    # was met first is recorded here and the page follows it.
-    order = []
-    in_curve = False
-    # A grid row that is entirely empty sky is entirely spaces, and rstrip()
-    # turned it into "" -- which the loop then skipped. London's map collapsed
-    # from 24 rows to 1 and the aspect ratio said 26/1: the map was not wrong,
-    # it was *deleted*, and only in the calmest weather. So while the grid is
-    # being read, a blank line is a row.
-    in_grid = False
-    for raw in text.split("\n"):
+    order, in_grid, head_seen, curve_head = [], False, 0, ""
+    lines = text.split("\n")
+    for i, raw in enumerate(lines):
         s = raw.rstrip()
-        # The grid starts on the line after the scale line ("~4km/char,
-        # [><]=London"), which is the document's own marker for it, and runs
-        # until something that is not grid-shaped. Deciding row by row on
-        # content alone loses the empty ones: a row of clear sky is 48 spaces,
-        # rstrip() makes it "", and London's map collapsed from 24 rows to 1 --
-        # the map was not wrong, it was deleted, and only in calm weather.
+        # -- the grid: rows of ramp characters, and a row of clear sky is a row
+        # of spaces (rstrip made those "" and London lost most of its map).
         if in_grid:
-            if not raw.strip() or set(raw.rstrip("\n")) <= _GRID_CHARS:
-                grid.append(raw.rstrip("\n"))
+            if not s or set(s) <= _GRID_CHARS:
+                grid.append(s)
                 if "map" not in order:
                     order.append("map")
                 continue
             in_grid = False
-        if s.startswith("~") and "km/char" in s:
-            in_grid = True
-            meta.append(s)
+        if s.startswith("# "):
+            head_seen += 1
+            if head_seen == 1:
+                place = _title(s[2:])
+            elif not when:
+                when = s[2:]
             continue
-        if s.startswith("# ") and not place:
-            place = s[2:].replace(" weather scene", "")
+        if not s:
             continue
-        if s.startswith("# updated"):
-            when = s[2:]
+        # -- the legend FIRST: it ends in \u2588, which is also the tallest bar,
+        # so testing for bars first read the legend as a chart -- and the page
+        # then fell back to labels I had generated in English, which is exactly
+        # the failure this rewrite is about.
+        toks = s.split()
+        if sum(1 for t in toks if t in CLASS) >= 3:
+            pairs.extend((toks[k], toks[k + 1])
+                         for k in range(0, len(toks) - 1)
+                         if toks[k] in CLASS and toks[k + 1] not in CLASS)
             continue
-        if s.startswith("now:"):
-            now = s[4:].strip()
-            continue
-        if s.startswith("rain curve"):
-            # The curve answers "when does it stop", which is the question a
-            # person actually has. The first parser dropped it because its
-            # block characters were not in RAMP -- the filter decided the shape
-            # of the blind spot, and what fell in it was the product.
-            in_curve = True
+        # -- the curve: a line that is NOTHING BUT eighth-blocks and spaces
+        if s.strip() and set(s) <= _BAR_CHARS:
+            curve.append(s)
             if "curve" not in order:
                 order.append("curve")
-            rest = s.split(":", 1)[1].strip() if ":" in s else ""
+            continue
+        if set(s) <= _TICKS:
+            curve.append(s)
+            continue
+        if curve and not grid and _is_axis(s):
+            curve.append(s)
+            continue
+        # -- a grid row met without a scale line before it
+        if len(s) >= 8 and set(s) <= _GRID_CHARS and any(
+                c in RAMP[1:] or c in "?><" for c in s):
+            in_grid = True
+            grid.append(s)
+            continue
+        # -- provenance and scale lines
+        if _META.match(s) or "]=" in s:
+            # A looser test here ("km" anywhere in the first field) swallowed
+            # the Chinese conditions line -- 当前: 小雨 24C 湿度 84% 风速 9km/h --
+            # and the page lost the one fact a reader opens it for. The scale
+            # line is recognised by the marker it names, which every language
+            # writes the same way: [><]=Tokyo.
+            meta.append(s.strip())
+            if "]=" in s:
+                # The grid begins on the next line, blank rows included.
+                in_grid = True
+            continue
+        # -- the label that introduces the curve: "雨量曲线(未来2h, 6min/格):" or
+        # "rain curve (next 2h): no precipitation expected". Whatever follows
+        # the colon is content and is kept; the label itself is a heading.
+        # ...and only once the conditions and the forecast are in hand, so
+        # that "= echo motion: NE 21km/h" cannot be mistaken for it. It was:
+        # the lookahead found the legend line, which ends in \u2588, and the
+        # motion line was split into a heading and a stray "NE 21km/h".
+        if now and say and (s.endswith(":") or (":" in s and _next_is_curve(lines, i))):
+            head, rest = s.split(":", 1)[0].strip(), s.split(":", 1)[1].strip()
+            if head:
+                curve_head = head
             if rest:
                 curve.append(rest)
+            if "curve" not in order:
+                order.append("curve")
             continue
-        if in_curve:
-            if s.strip():
-                curve.append(s)
-                continue
-            in_curve = False
+        # -- the first two prose-ish lines after the headers are the conditions
+        # and the forecast. Position, not vocabulary: 当前:/現在:/now: differ,
+        # their place in the document does not.
+        if not now:
+            now = s.split(":", 1)[1].strip() if ":" in s[:12] else s
             continue
-        if _DROP.match(s):
-            # Not thrown away: the labels ARE the legend, in the language the
-            # document is written in. My first page generated English ones, so
-            # /tokyo/zh -- whose own legend line reads 图例: · 毛毛雨 ... -- would
-            # have been captioned in a language the reader did not ask for.
-            body = s.split(":", 1)[1] if ":" in s else ""
-            toks = body.split()
-            pairs.extend((toks[i], toks[i + 1])
-                         for i in range(0, len(toks) - 1, 2)
-                         if toks[i] in CLASS)
+        if not say:
+            say = s
             continue
-        if _META.match(s):
-            meta.append(s.strip())
-            continue
-
-        if s.strip() and not say:
-            # Any remaining prose is the forecast sentence. Matching on "Over
-            # the next" lost it the moment the wording became "After one hour",
-            # and that sentence is the most useful line on the page.
-            say = s.strip()
+        meta.append(s.strip())
     if not pairs:
         pairs = list(zip(RAMP, ("drizzle", "light", "moderate",
                                 "heavy", "storm")))
@@ -331,11 +392,12 @@ def render(text, marker="><"):
     _w = max((len(r) for r in grid), default=48)
     grid = [r.ljust(_w) for r in grid]
     blocks = {
-        "map": ('<div class="map"><div class="grid" style="aspect-ratio:%d/%d">'
-                '%s</div></div>\n<p class="legend">%s</p>\n'
-                % (_w, len(grid) * _CELL_TALL,
+        "map": ('<div class="map"><div class="ar" style="padding-bottom:%.1f%%">'
+                '<div class="grid">%s</div></div></div>\n'
+                '<p class="legend">%s</p>\n'
+                % (100.0 * len(grid) * _CELL_TALL / max(1, _w),
                    paint(grid, marker), legend)) if grid else "",
-        "curve": _curve_html(curve) if curve else "",
+        "curve": _curve_html(curve, curve_head) if curve else "",
     }
     return PAGE % {
         "title": html.escape(place.split(",")[0] or "runemap"),
