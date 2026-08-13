@@ -514,6 +514,9 @@ def _motion_peek(imgs, lng, lat):
 #
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
+# Credit as each source asks to be credited, keyed by the name it reports.
+_SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com"}
+
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
 # Derived from the picture, not picked to make the logs look good.
@@ -916,6 +919,27 @@ def _radar_render(code, lng, lat, imgs, small):
     return None
 
 
+# Off unless switched on, and named rather than boolean: the day there are two
+# fallbacks, "which one drew this" must be answerable from the environment and
+# from the body, not from reading this file.
+SECOND_SOURCE = os.environ.get("RUNEMAP_SECOND_SOURCE", "").strip()
+
+
+def _second_source(code, lng, lat, small):
+    """Never raises into the reader's path: a broken fallback must degrade to
+    the sentence we already have, not to a 500."""
+    if not SECOND_SOURCE:
+        return None
+    try:
+        if SECOND_SOURCE == "rainviewer":
+            import radar_second
+            return radar_second.draw(code, lng, lat, small)
+        sys.stderr.write("SECOND-UNKNOWN %r\n" % (SECOND_SOURCE,))
+    except Exception as e:
+        sys.stderr.write("SECOND-FAILED %r\n" % (e,))
+    return None
+
+
 def radar_resolve(code, lng, lat, token, small=False, wait=None):
     """(state, payload) -- this thread opens no socket and joins no thread.
 
@@ -1005,6 +1029,16 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     hit = _from_cache()
     if hit is not None:
         return hit
+    # Order matters and it is not a preference: ask the second source BEFORE
+    # computing why there is no map. If it draws, there is no missing map to
+    # explain, and _reason_after_wait would be answering a question nobody
+    # asked. (Eirik's three lines below arrived in the same place at 05:29;
+    # the conflict was ordering, not meaning.)
+    alt = _second_source(code, lng, lat, small)
+    if alt is not None:
+        note_reason(None)               # a reason belongs to a map we did NOT draw
+        return STATE_OK, alt
+
     with _RA_LOCK:
         refused = _RA_FAIL.get(key)
     _why["v"] = _reason_after_wait(_why["v"], refused, _t0)
@@ -1351,9 +1385,19 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # not a line an agent can grep, and this text exists for the reader who
         # got no map. Same token in every language for exactly that reason.
     L.append("")
+    # Whoever's data drew the radar is named here. When the fallback drew it,
+    # the primary did not, and saying "Caiyun" would be taking credit for a map
+    # they did not make -- and withholding the credit the other source asks for.
+    _src = rb[5] if rb and len(rb) > 5 and rb[5] else None
     L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
+    # Its own line, and its own token. Appending it to the data line measured 88
+    # cells (Eirik's width guard caught it); and it cannot reuse "radar:", which
+    # an agent greps for the state. Present only when the fallback drew the map,
+    # so its absence is also information: the primary upstream drew this one.
+    if _src:
+        L.append("radar-data: " + _SECOND_ATTRIB.get(_src, _src))
     return "\n".join(L) + "\n"
 
 def main():
