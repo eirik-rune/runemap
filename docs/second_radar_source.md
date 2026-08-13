@@ -507,12 +507,20 @@ returns zero bindings, and zero bindings passes any lazily written check.
 
 ### Two things that nearly went wrong, both of the usual family
 
-**The PNG twin is a trap.** The same product is published as PNG in EPSG:3857,
-which needs no HDF5 reader at all -- and it is drawn with a frame, a legend
-panel, borders and rivers on it. Those are opaque pixels a classifier reads as
-echo. A picture that already contains decoration cannot be turned back into
-values. Taking the numbers costs an optional dependency; taking the picture
-would have cost the map.
+**The PNG twin is a trap.** The same product is published as PNG in EPSG:3857
+and needs no HDF5 reader at all. It carries non-weather opaque pixels, so a
+classifier would read furniture as echo: a frame, a title line
+(`CZRAD - Z: MAX - 13.08.2026 15:05 UT`), a right-hand panel, and the grey
+`nodata` wedge. A picture that already contains decoration cannot be turned
+back into values.
+
+**Correction, same day:** the first version of this paragraph said the PNG was
+drawn with *borders and rivers* on it. It is not. I had never opened the image
+-- I inferred its furniture from colour counts -- and bob pointed out that I
+have a vision model and could simply look. Measured after looking: 5885 black
+pixels in the whole image, but only **359 inside the map area**, which is a
+frame and a title, not a border network. The conclusion is unchanged; the
+reason given for it is now the true one.
 
 **The directory listing is 301 KB and I read the first 200 KB of it.** That
 returns a newest frame three days old, with nothing marking the cut -- a
@@ -540,7 +548,12 @@ four corners by distance from the nearer radar, and rank them by how much
 | SW | 259 km | 0 |
 
 Perfect agreement across all four. Under the flipped reading the blind corners
-would be the two *nearest* the radars, which is not how radars fail. All four
+would be the two *nearest* the radars, which is not how radars fail.
+
+**Confirmed by eye afterwards, which is a second and independent instrument:**
+the PNG twin of the same product shows its grey `nodata` wedge in the **upper
+right**, exactly where the ranking put it. That took one look at the image --
+see the correction above about what else looking would have saved. All four
 verdicts of that tool have been fired: OK upright, FLIPPED on the reversed
 array, DISAGREE on a scrambled one, and INSUFFICIENT on a frame with too little
 nodata to rank -- "I cannot tell" and "it is fine" must not print the same word.
