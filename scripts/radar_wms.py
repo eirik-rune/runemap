@@ -25,6 +25,15 @@ alternative rectangle would hand Detroit and Seattle to Canada. The first
 matching service wins, so the order of SERVICES is the tie-break, and there is a
 test pinning that Toronto lands on NEXRAD on purpose.
 
+Some services PAINT their zeros. DWD's radar layers fill everything they can
+see -- and everything they cannot -- with grey (126,126,126); over Paris that is
+100% of the image. Our classifier reads any visible pixel as at least drizzle,
+so adopting such a layer unchecked would draw a screen full of rain that is not
+there, and it would look completely normal. Hence `nodata_rgb` per service, a
+required field with no default, and hence DWD is NOT in the table yet: its
+echoes are magenta, which our ramp reads as a storm, so it needs a palette of
+its own before it can be trusted with a reader.
+
 Coverage is a declared rectangle per service, not something we probe. A service
 outside its own country returns an empty image, and an empty image is also what
 a dry sky looks like: we would not be able to tell "not covered" from "not
@@ -53,6 +62,9 @@ SERVICES = [
         # continental US plus a margin; Alaska and Hawaii are separate layers
         # and are deliberately not claimed here rather than half-claimed.
         "coverage": (24.0, -125.0, 50.0, -66.0),
+        # Colours that mean "we have no echo here", which this server does not
+        # paint. Required, never defaulted: see the note above.
+        "nodata_rgb": [],
     },
     {
         "key": "ca-geomet",
@@ -64,6 +76,7 @@ SERVICES = [
         "crs_param": "crs",
         "axis": "yx",
         "coverage": (41.0, -141.0, 70.0, -52.0),
+        "nodata_rgb": [],
     },
 ]
 
@@ -93,6 +106,32 @@ def url_for(svc, bbox, px=768):
     return svc["url"] + "?" + urllib.parse.urlencode(q)
 
 
+def _strip_nodata(raw, svc):
+    """Make a service's painted zeros transparent again.
+
+    A no-data fill and light rain are the same thing to the renderer: both are
+    visible pixels. Whoever adds a service is the one who knows which colours
+    are furniture, so the list is theirs to declare and empty means "this
+    server paints nothing", not "nobody looked".
+    """
+    colours = svc.get("nodata_rgb")
+    if colours is None:
+        raise KeyError("%s must declare nodata_rgb (empty list is an answer)"
+                       % svc["key"])
+    if not colours:
+        return raw
+    import numpy as np
+    from PIL import Image
+    im = Image.open(io.BytesIO(raw)).convert("RGBA")
+    a = np.array(im)
+    for r, g, b in colours:
+        hit = (a[..., 0] == r) & (a[..., 1] == g) & (a[..., 2] == b)
+        a[hit, 3] = 0
+    out = io.BytesIO()
+    Image.fromarray(a).save(out, format="PNG")
+    return out.getvalue()
+
+
 def draw(code, lng, lat, small=False, get=None):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None.
 
@@ -118,6 +157,7 @@ def draw(code, lng, lat, small=False, get=None):
                          % (svc["key"], len(raw or b""), (raw or b"")[:80]))
         return None
     import tempfile
+    raw = _strip_nodata(raw, svc)
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
         fh.write(raw)
         p = fh.name

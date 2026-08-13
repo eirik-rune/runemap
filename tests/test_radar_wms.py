@@ -70,3 +70,43 @@ class ErrorsArriveAsTwoHundredsWithXml(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class PaintedZerosMustNotReadAsRain(unittest.TestCase):
+    """DWD fills its radar layers with grey where there is no echo -- over
+    Paris that is 100% of the image. Every visible pixel is at least drizzle to
+    the renderer, so a painted zero draws rain that is not there and looks
+    entirely normal."""
+
+    def _png(self, colour):
+        import io
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (8, 8), colour).save(b, "PNG")
+        return b.getvalue()
+
+    def test_a_declared_nodata_colour_becomes_transparent(self):
+        import numpy as np
+        from PIL import Image
+        import io as _io
+        svc = {"key": "t", "nodata_rgb": [(126, 126, 126)]}
+        out = W._strip_nodata(self._png((126, 126, 126, 255)), svc)
+        a = np.array(Image.open(_io.BytesIO(out)).convert("RGBA"))
+        self.assertEqual(int((a[..., 3] > 50).sum()), 0)
+
+    def test_real_echo_is_left_alone(self):
+        import numpy as np
+        from PIL import Image
+        import io as _io
+        svc = {"key": "t", "nodata_rgb": [(126, 126, 126)]}
+        out = W._strip_nodata(self._png((0, 200, 0, 255)), svc)
+        a = np.array(Image.open(_io.BytesIO(out)).convert("RGBA"))
+        self.assertEqual(int((a[..., 3] > 50).sum()), 64)
+
+    def test_a_service_that_forgot_to_declare_is_an_error_not_a_default(self):
+        with self.assertRaises(KeyError):
+            W._strip_nodata(self._png((1, 2, 3, 255)), {"key": "t"})
+
+    def test_every_shipped_service_has_declared(self):
+        for s in W.SERVICES:
+            self.assertIsNotNone(s.get("nodata_rgb"), s["key"])
