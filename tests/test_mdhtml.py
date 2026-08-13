@@ -158,6 +158,39 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         for t in ("0", "30", "60", "90", "120min"):
             self.assertIn(">%s<" % t, axis)
 
+    def test_a_curve_that_stops_early_still_spans_two_hours(self):
+        """The case my own verification could not have caught. When the rain
+        ends at 27 minutes, `spark` writes five bars and fifteen SPACES -- and
+        trailing spaces do not survive being written down, so the chart came
+        out five buckets wide and every one of them stretched across two hours.
+        bob saw it as "又变成只有五格了".
+
+        The tick line is the only witness to the full width, which is why it is
+        read rather than skipped. And I "verified" the previous fix on Tokyo,
+        whose curve had no dry tail: **a check run on a case that cannot
+        exhibit the bug is not a check.**"""
+        import re as _re
+        scene = SCENE.replace("  ▁▂▄█▆▃▁",
+                              "█▇▆▅▃               \n├────┼────┼────┼────┤")
+        heights = [int(x) for x in
+                   _re.findall(r"height:(\d+)%", MD.render(scene))]
+        self.assertEqual(len(heights), 21)
+        self.assertEqual(heights[:5], [100, 87, 75, 62, 37])
+        self.assertEqual(set(heights[5:]), {0})
+
+    def test_dry_buckets_survive_even_with_no_tick_line(self):
+        """Two things carry the width: the tick line, and the bar line's own
+        trailing spaces. The tick line covers today's documents, so a test that
+        keeps it passes whether or not the second half works -- and I nearly
+        recorded that as two guards when I had one. This removes the tick line
+        so the other half has to hold on its own."""
+        import re as _re
+        scene = SCENE.replace("  ▁▂▄█▆▃▁", "█▇▆▅▃          ")
+        heights = [int(x) for x in
+                   _re.findall(r"height:(\d+)%", MD.render(scene))]
+        self.assertEqual(len(heights), 15)
+        self.assertEqual(set(heights[5:]), {0})
+
     def test_the_conditions_line_survives(self):
         self.assertIn("CLEAR_DAY", self.h)
 
