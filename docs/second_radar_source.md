@@ -256,6 +256,34 @@ product -- is what ships.
   independent expectation of the order to check the derivation against.
 - **Open-Meteo, NOAA GOES**: failed the product test, see above.
 
+### Open: the REDEMET ceiling measures two different things at once
+
+`radar_redemet.MAX_AGE = 2700` (45 min) was derived this morning from **one
+pull** across 18 radars: 13.4 / 19.6 / 23.2 minutes old, min/median/max. Six
+hours later a single pull read **13.3 / 23.9 / 52.7** -- the median barely
+moved, the maximum more than doubled, and Sao Paulo's own radar (`sr`) sat at
+52.7 with `be` at 40.9 while everything else was under 31. The mirror was
+running and succeeding the whole time; the lag is upstream, on individual
+radars.
+
+The probe correctly reported NO-MAP. What it exposed is that the constant is
+answering two questions with one number:
+
+  * **is the mirror alive?** -- an ops question, and the reason the ceiling was
+    written ("a dead timer's ages climb past it within one period")
+  * **is this frame worth drawing?** -- a product question, which we already
+    answer honestly a different way, by printing `obs age` and warning past
+    `RADAR_STALE_MIN`
+
+Those are the two orthogonal axes this repo already refused to compress once,
+for `predict` and `stale`. Raising the number would blunt the first question;
+keeping it silences a working radar during upstream lag.
+
+**Not changed yet, on purpose.** Two snapshots are not a distribution, and
+setting the number from a snapshot is exactly how it got here. `ops/redemet_pull.py`
+now records min/median/p90/max on every ten-minute pull, so the next version of
+this constant can come from data. Nothing reads that field yet.
+
 ### Constants that must come from the source, not from the last source
 
 - **REDEMET frame ceiling is 45 min, not 30.** Measured across all 18 mirrored
