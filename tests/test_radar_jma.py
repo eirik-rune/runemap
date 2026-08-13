@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import unittest
+import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
@@ -136,6 +137,76 @@ class TheCacheKeyNamesEverythingThatChangesThePicture(unittest.TestCase):
     def test_two_skies_are_two_files(self):
         self.assertNotEqual(J._cache_path(139.69, 35.69, "20260813094000"),
                             J._cache_path(135.50, 34.69, "20260813094000"))
+
+
+class CachedOnlyMeansNoThirdPartyAtAll(unittest.TestCase):
+    """The tile cache is not the whole third party. The frame index is a second
+    request to jma.go.jp (0.57s measured), and gating only the tiles left every
+    reader arriving on a cold scene paying it -- for an upgrade to a map they
+    already held. It showed up as a median cold render of 1.4s against
+    yesterday's 0.9s, which the tile gate could not explain."""
+
+    def setUp(self):
+        self._saved = dict(J._INDEX)
+        J._INDEX["at"], J._INDEX["v"] = 0.0, None
+
+    def tearDown(self):
+        J._INDEX.update(self._saved)
+
+    def _count_calls(self):
+        """Count the reaches, do not raise on them.
+
+        The first version of these two raised from the fake urlopen, and one of
+        them stayed green against the unfixed code: `_times` catches Exception
+        so the network failure path can degrade to the last index, and it
+        swallowed the assertion along with it. A fire test the subject can catch
+        is not a fire test -- so the probe records instead of throwing.
+        """
+        calls = []
+        def fake(*a, **k):
+            calls.append(a[0] if a else None)
+            raise OSError("no network in tests")
+        self._old = urllib.request.urlopen
+        urllib.request.urlopen = fake
+        self.addCleanup(lambda: setattr(urllib.request, "urlopen", self._old))
+        return calls
+
+    def test_an_empty_index_is_not_fetched_on_a_readers_thread(self):
+        calls = self._count_calls()
+        self.assertIsNone(J._times(cached_only=True))
+        self.assertEqual(J.observed_frame(cached_only=True), (None, None))
+        self.assertIsNone(J.draw("><", 139.69, 35.69, cached_only=True))
+        self.assertEqual(calls, [])
+
+    def test_a_stale_index_is_not_refreshed_on_a_readers_thread(self):
+        now = stamp(0)
+        J._INDEX["at"] = time.time() - J.INDEX_TTL - 1
+        J._INDEX["v"] = [{"basetime": now, "validtime": now}]
+        calls = self._count_calls()
+        self.assertIsNone(J._times(cached_only=True))
+        self.assertEqual(calls, [])
+
+    def test_a_fresh_index_is_still_served_without_the_network(self):
+        now = stamp(0)
+        J._INDEX["at"] = time.time()
+        J._INDEX["v"] = [{"basetime": now, "validtime": now}]
+        self.assertEqual(J.observed_frame(cached_only=True)[1], now)
+
+    def test_the_warm_path_may_still_fetch(self):
+        """Otherwise nobody ever fetches it and Japan goes dark quietly --
+        the guard would be a permanently closed gate rather than a gate."""
+        calls = []
+        class R:
+            def read(self_):
+                calls.append(1)
+                now = stamp(0)
+                return ('[{"basetime":"%s","validtime":"%s"}]' % (now, now)).encode()
+        old, urllib.request.urlopen = urllib.request.urlopen, lambda *a, **k: R()
+        try:
+            self.assertTrue(J._times())
+            self.assertEqual(len(calls), 1)
+        finally:
+            urllib.request.urlopen = old
 
 
 if __name__ == "__main__":
