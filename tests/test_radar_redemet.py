@@ -109,3 +109,42 @@ class TheCeilingCoversOneWholeCycle(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheMirrorRecordsTheAgeDistributionNotJustACount(unittest.TestCase):
+    """The 45-minute ceiling in radar_redemet.py was derived from ONE pull
+    (13.4 / 19.6 / 23.2 min, min/median/max) and set to clear it. Six hours
+    later a single pull read 13.3 / 23.9 / 52.7 -- the median barely moved and
+    the maximum more than doubled. A constant set from a sample that cannot
+    show its own tail is a constant that will be wrong later, quietly, in the
+    direction of refusing a working radar."""
+
+    def setUp(self):
+        import os, sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ops"))
+        import redemet_pull
+        self.R = redemet_pull
+
+    def _idx(self, minutes):
+        import time
+        now = time.time()
+        return {"radars": [
+            {"data": time.strftime("%Y-%m-%d %H:%M:%S",
+                                   time.gmtime(now - m * 60))} for m in minutes]}
+
+    def test_it_reports_the_tail_not_only_the_middle(self):
+        got = self.R._age_quantiles(self._idx([10, 20, 20, 20, 60]))
+        self.assertEqual(got.split("/")[0], "10")
+        self.assertEqual(got.split("/")[-1], "60")
+
+    def test_an_index_with_no_times_says_so_rather_than_reporting_zero(self):
+        """'no ages' and 'every radar is current' must not print the same
+        thing; only one of them is good news."""
+        self.assertEqual(self.R._age_quantiles({"radars": []}), "unparseable")
+        self.assertEqual(self.R._age_quantiles({"radars": [{"data": "soon"}]}),
+                         "unparseable")
+
+    def test_one_bad_row_does_not_discard_the_others(self):
+        idx = self._idx([10, 30])
+        idx["radars"].append({"data": "soon"})
+        self.assertEqual(self.R._age_quantiles(idx).split("/")[0], "10")

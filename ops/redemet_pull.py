@@ -75,6 +75,28 @@ os.system("cd %s && tar cf - ." % OUT)
 '''
 
 
+def _age_quantiles(idx):
+    """min/median/p90/max frame age in minutes, or a word saying why not.
+
+    "no ages" and "0 ages" must not print the same thing: the first means the
+    index carried no parseable times, the second would mean every radar was
+    current, and only one of those is good news.
+    """
+    now = time.time()
+    ages = []
+    for r in idx.get("radars", []):
+        try:
+            ts = time.mktime(time.strptime(r["data"], "%Y-%m-%d %H:%M:%S")) - time.timezone
+        except Exception:
+            continue
+        ages.append((now - ts) / 60.0)
+    if not ages:
+        return "unparseable"
+    ages.sort()
+    return "%.0f/%.0f/%.0f/%.0f" % (ages[0], ages[len(ages) // 2],
+                                    ages[int(len(ages) * 0.9)], ages[-1])
+
+
 def main():
     t0 = time.time()
     with tempfile.TemporaryDirectory() as tmp:
@@ -99,8 +121,18 @@ def main():
         os.replace(os.path.join(stage, "index.json"), os.path.join(DEST, "index.json"))
     # listed vs mirrored, always both: "17 radars" alone cannot tell you whether
     # 12 were missing or there were only 17.
-    print("REDEMET-MIRROR listed=%d mirrored=%d dest=%s %.1fs | %s"
+    #
+    # The ages go in the same line because the frame ceiling in
+    # scripts/radar_redemet.py was derived from ONE pull (13.4 / 19.6 / 23.2 min,
+    # min/median/max) and set to 45 to clear it. Six hours later a single pull
+    # showed 13.3 / 23.9 / 52.7 -- the median barely moved and the maximum more
+    # than doubled, so the constant was set from a sample that could not show
+    # its own tail. Recording the quantiles every ten minutes is what lets the
+    # next version of that number come from a distribution instead of a
+    # snapshot. Nothing reads this yet, and that is stated rather than implied.
+    print("REDEMET-MIRROR listed=%d mirrored=%d dest=%s %.1fs ages=%s | %s"
           % (idx["listed"], idx["mirrored"], DEST, time.time() - t0,
+             _age_quantiles(idx),
              err.strip().splitlines()[-1] if err.strip() else "-"))
 
 
