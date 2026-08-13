@@ -58,6 +58,7 @@ _META = re.compile(r"^(radar|data|~|\[|obs|=)")
 # reads -- but printing it again under a coloured legend that says the same
 # thing is the page arguing with itself. Looking at the render is what showed
 # it; the parser was happily filing it as provenance.
+_NO_COVER = "no radar here"
 _DROP = re.compile(r"^(legend|\u56fe\u4f8b|\u51e1\u4f8b)\s*:")
 
 PAGE = """<!doctype html>
@@ -92,7 +93,10 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .curve .axis{color:var(--dim);font-size:12px}
 .curve h2{font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 .3rem}
 .curve{margin:0 0 1.1rem}
-.me{color:#111;background:#ffd54a;border-radius:2px;font-weight:700}
+/* The marker used to be dark text on a yellow chip. Once every cell became a
+   solid block, the dark colour painted the whole cell and "you are here" read
+   as a hole punched in the map. It is now a colour no rain level uses. */
+.me{color:#7b3fe4}
 .r0{color:transparent}
 .r1{color:#4aa3df;opacity:.45}.r2{color:#3fb56b}.r3{color:#e0c341}.r4{color:#e08b3f}.r5{color:#d64545}
 .rq{color:var(--line);opacity:.5}
@@ -198,9 +202,23 @@ def render(text, marker="><"):
     if not pairs:
         pairs = list(zip(RAMP, ("drizzle", "light", "moderate",
                                 "heavy", "storm")))
+    # The marker and "no coverage" are cells on the map too, and an unexplained
+    # colour is worse than none: a reader who cannot place it will read it as
+    # weather. The marker's label is the document's own ([><]=Tokyo, Tokyo, JP),
+    # so it stays in the reader's language, and the unknown entry appears only
+    # when the grid actually contains unknown cells.
+    extra = []
+    here = next((m.split("]=", 1)[1] for m in meta if "]=" in m), "")
+    if grid and here:
+        extra.append('<span><i class="me">\u2588</i> %s</span>'
+                     % html.escape(here.split(",")[0]))
+    if any("?" in r for r in grid):
+        extra.append('<span><i class="rq">\u2588</i> %s</span>'
+                     % html.escape(_NO_COVER))
     legend = " ".join(
-        '<span><i class="%s">%s</i> %s</span>'
-        % (CLASS[c], CELL_GLYPH.get(c, c), html.escape(n)) for c, n in pairs)
+        ['<span><i class="%s">%s</i> %s</span>'
+         % (CLASS[c], CELL_GLYPH.get(c, c), html.escape(n)) for c, n in pairs]
+        + extra)
     # A scene that is still fetching has no conditions line, no forecast
     # sentence, no curve and no grid -- and my first page rendered that as two
     # empty paragraphs and a footnote in grey, which reads as "the site is

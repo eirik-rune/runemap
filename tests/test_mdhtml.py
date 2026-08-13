@@ -192,6 +192,29 @@ class ASceneWithNothingInItSaysWhy(unittest.TestCase):
         self.assertNotIn('class="say"></p>', h)
 
 
+class EveryColourOnTheMapIsExplained(unittest.TestCase):
+    """An unexplained colour is worse than none: a reader who cannot place it
+    reads it as weather. The marker was also dark-on-yellow, which once cells
+    became solid blocks painted the whole cell and looked like a hole in the
+    map -- visible only by looking at the render."""
+
+    def test_the_marker_is_named_in_the_readers_own_words(self):
+        h = MD.render(SCENE)
+        legend = h.split('<p class="legend">')[1].split("</p>")[0]
+        self.assertIn("London", legend)
+        self.assertIn('class="me"', legend)
+
+    def test_the_marker_colour_is_not_a_rain_colour(self):
+        css = MD.PAGE.split("<style>")[1]
+        me = css.split(".me{color:")[1].split("}")[0]
+        for cls in ("r1", "r2", "r3", "r4", "r5"):
+            self.assertNotIn(me, css.split(".%s{color:" % cls)[1].split(";")[0])
+
+    def test_unknown_cells_are_explained_only_when_present(self):
+        self.assertIn("no radar here", MD.render(SCENE))
+        self.assertNotIn("no radar here", MD.render(SCENE.replace("?", " ")))
+
+
 class ItKeepsTheDocumentsOrder(unittest.TestCase):
     """bob, 8/13: the text has the rain curve above the map and the first page
     had it below, because the template hard-coded the order. A rendering that
