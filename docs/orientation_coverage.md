@@ -48,16 +48,55 @@ ours is what places the weather, and getting it backwards is silent.
 | `radar_chmi` | CZ | `ops/chmi_orient.py` | **verified** |
 | `radar_meteoswiss` | CH | `ops/ch_orient.py` — rain gauges, corr +0.934 vs +0.059 flipped | **verified** |
 | `radar_metno` | NO | blind mask vs 9 OSCAR-resolved sites | **partial**: up-down flip excluded by 36 points; **180° rotation not excluded** (2.1 points) |
-| `radar_smhi` | SE | none | **unverified** |
+| `radar_smhi` | SE | `ops/se_orient.py` — blind mask vs 10 OSCAR-resolved sites; p10 blind-cell distance 254 km as read vs 88 flipped | **partial**: row order confirmed by 143 km; **180° rotation not excluded** (45 km) |
 | `radar_knmi` | NL | corner check only — same file on both sides | **unverified** |
 
-So the honest count is **three verified, one partial, two unverified**, out of
-six grid-indexing sources — not "three of twelve".
+So the honest count is **three verified, two partial, one unverified**, out of
+six grid-indexing sources — not "three of twelve". Sweden moved from unverified
+to partial on 2026-08-13 without waiting for rain (see below); the Netherlands is
+the one that has nothing.
 
-## Sweden and the Netherlands are the open risk
+## Sweden was settled with the other instrument, and needed no rain
 
-Both read a national grid and neither has a control independent of the file
-they read. Neither is known to be wrong; the point is that **if either were
+The gauge route above assumed Sweden had to wait for an archived rainy hour.
+It did not. **The blind mask — the instrument that settled Denmark — has power
+in Sweden, and that was measured rather than assumed**, which is the whole
+lesson from Switzerland: there the composite is centred on MeteoSwiss's own
+network, so flipping mapped the mask almost onto itself (140.6 km vs 142.0) and
+the control was worthless. Sweden's composite is a tall box with a large blind
+margin and disagrees with its own vertical flip on 38% of cells.
+
+**Which statistic matters more than which instrument.** "Cells near a radar are
+seen" assumes a complete site list, and Norway showed what that costs — it
+*preferred* the wrong orientation there. Sweden's list is incomplete too (10 of
+12: Gotland refused by the name guard, Bålsta absent from OSCAR), so the
+judgement runs on the direction that survives a missing site: **a blind cell
+must be far from every known radar.** A site we failed to resolve can only turn
+blind cells into seen ones — it can weaken the evidence, never manufacture it.
+
+Measured on the 23:0x frame of 2026-08-13 (`ops/se_orient_run.py`):
+
+| orientation | blind-cell distance p10 | median | mean | seen within 50 km |
+|---|---|---|---|---|
+| as read | **253.7 km** | 349.0 | 365.6 | 100.0% |
+| vertical flip | 88.3 km | 241.3 | 257.4 | 72.1% |
+| horizontal flip | 111.1 km | 241.0 | 265.3 | 81.4% |
+| 180° rotation | 209.0 km | 334.0 | 346.5 | 100.0% |
+
+**Row order — the realistic mistake, the one every ODIM reader here can make —
+is excluded by 143 km.** A 180° rotation is not: it scores 45 km worse, inside
+the margin. It requires both axes reversed at once, which no single convention
+error produces, but this instrument cannot rule it out and the verdict says so
+in words rather than rounding up to "verified". Norway carries the identical
+open corner.
+
+Fired both ways: the runner exits 1 and prints FLIPPED when handed the array
+upside down, and every verdict has a test built to earn it.
+
+## The Netherlands is the remaining open risk
+
+The Netherlands reads a national grid and has no control independent of the
+file it reads. Neither is known to be wrong; the point is that **if either were
 wrong, nothing here would say so.**
 
 The method that settled Switzerland transfers directly and needs no new idea:
@@ -80,8 +119,13 @@ that is perfectly flipped, and one that is pure noise all return INSUFFICIENT,
 because the gauge side alone fails the wet-station minimum. **That is the
 verdict, not a gap in the tooling** — Sweden was simply dry.
 
-So Sweden needs an archived rainy hour, exactly as Switzerland did (four hours
-out of the 14-day radar archive).
+So Sweden needed an archived rainy hour — **and then didn't**, because the
+blind mask turned out to have power there and needs no rain at all. Kept above
+rather than deleted: the gauge attempt is what made me measure the mask instead
+of assuming Switzerland's outcome generalised. **Reaching for the instrument
+that worked last time is how a whole night gets spent waiting for weather.**
+SMHI's archive route stays recorded here in case the 180° corner is ever worth
+closing, which needs a rain-based instrument.
 
 **Both archives exist and are deep — checked, so tomorrow does not start by
 re-deriving this.** The Netherlands was dry too tonight (24-25 C, humidity
