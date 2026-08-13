@@ -180,12 +180,34 @@ class ItAsksOnceAndBacksOffOnTheirLimit(unittest.TestCase):
 class ItSaysWhyItCannotWork(unittest.TestCase):
 
     def test_a_missing_key_is_named_not_silently_declined(self):
-        old = K.api_key
-        K.api_key = lambda: None
+        """Both absences are pinned, and both are forced.
+
+        The first version only forced the key away and asserted on the
+        sentence -- which passed here, where h5py is installed, and failed in
+        CI, where it is not and the other reason answers first. A test that
+        reads whatever the machine happens to have is not testing the code."""
+        oldk, oldh = K.api_key, K.have_h5py
+        K.api_key, K.have_h5py = (lambda: None), (lambda: True)
         try:
             self.assertIn("no KNMI key", K.unavailable() or "")
         finally:
-            K.api_key = old
+            K.api_key, K.have_h5py = oldk, oldh
+
+    def test_a_missing_reader_is_named_too(self):
+        oldk, oldh = K.api_key, K.have_h5py
+        K.api_key, K.have_h5py = (lambda: "k"), (lambda: False)
+        try:
+            self.assertIn("h5py", K.unavailable() or "")
+        finally:
+            K.api_key, K.have_h5py = oldk, oldh
+
+    def test_with_both_present_it_is_available(self):
+        oldk, oldh = K.api_key, K.have_h5py
+        K.api_key, K.have_h5py = (lambda: "k"), (lambda: True)
+        try:
+            self.assertIsNone(K.unavailable())
+        finally:
+            K.api_key, K.have_h5py = oldk, oldh
 
     def test_outside_coverage_is_declined_before_anything_else(self):
         old = K.unavailable
