@@ -6,7 +6,8 @@ the right tool for JMA. It is the wrong tool wherever the service will simply
 tell you, and two of ours will:
 
   KNMI   GetFeatureInfo returns `image1.image_data ... mm/hr`, with the unit
-         declared by the server
+         declared by the server -- but see the warning below about what a
+         "pixel" means to this request
   FMI    GetFeatureInfo returns `GRAY_INDEX`, the raster value behind the colour
 
 So this asks. It fetches one map, finds the distinct visible colours, and for
@@ -14,6 +15,16 @@ each one queries a handful of pixels that carry it. What comes back is a
 measured colour -> value table, not a derivation, and it can be checked: if a
 colour spans values that another colour also spans, then colour is not a
 function of value at this resolution and the table must not be shipped.
+
+**What it cannot do on its own**: GetFeatureInfo answers about the grid CELL
+under the query at the RESOLUTION OF THE REQUEST, while the colour is a
+property of the rendered pixel. Measured on KNMI: a red pixel in a 384px window
+over 10.85 degrees reads 3.6 mm/hr, and the same point in a 0.02 degree window
+reads 27.3 mm/hr. Both are honest answers to different questions. So a table
+built from this is only valid if one image pixel is one grid cell -- and even
+then KNMI's "no echo" sentinel (0.000365 mm/hr) still appears under every
+colour, so some queries are resolving to a cell that was not the one drawn.
+That is why KNMI comes back REFUSED and why the verdict is left alone.
 
 It is a calibration tool, run by hand when the sky has weather in it. It is not
 on any reader's path and it must never be: it costs one request per sample.
