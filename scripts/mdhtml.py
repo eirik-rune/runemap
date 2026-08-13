@@ -95,7 +95,15 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .now{font-size:1.05rem;margin:0 0 .3rem}
 .say{margin:0 0 1.1rem}
 .map{border:1px solid var(--line);border-radius:10px;padding:.5rem;margin:0 0 .5rem}
-.grid{display:flex;flex-direction:column;width:100%%}
+/* The square is held by the old padding-bottom trick, not by `aspect-ratio`.
+   `aspect-ratio` is unsupported on Safari before 15, and where it is
+   unsupported the grid does not degrade -- it collapses to zero height and the
+   map is simply gone, which is what bob reported seeing. Same shape as the
+   missing glyphs: a feature the reader's device lacks does not announce
+   itself. padding-bottom on a zero-height box has worked since 2010. */
+.ar{position:relative;height:0}
+.grid{position:absolute;top:0;left:0;right:0;bottom:0;
+display:flex;flex-direction:column;width:100%%}
 .grid .row{flex:1;display:flex}
 .grid .row i{display:block}
 
@@ -329,9 +337,10 @@ def render(text, marker="><"):
     _w = max((len(r) for r in grid), default=48)
     grid = [r.ljust(_w) for r in grid]
     blocks = {
-        "map": ('<div class="map"><div class="grid" style="aspect-ratio:%d/%d">'
-                '%s</div></div>\n<p class="legend">%s</p>\n'
-                % (_w, len(grid) * _CELL_TALL,
+        "map": ('<div class="map"><div class="ar" style="padding-bottom:%.1f%%">'
+                '<div class="grid">%s</div></div></div>\n'
+                '<p class="legend">%s</p>\n'
+                % (100.0 * len(grid) * _CELL_TALL / max(1, _w),
                    paint(grid, marker), legend)) if grid else "",
         "curve": _curve_html(curve) if curve else "",
     }

@@ -166,8 +166,17 @@ class TheGridIsBoxesNotText(unittest.TestCase):
         scene = ("# X weather scene\n~6km/char, [><]=X\n"
                  + "\n".join(rows) + "\n= echo motion: n/a\n")
         h = MD.render(scene)
-        self.assertIn("aspect-ratio:8/10", h)     # 5 rows, each cell 1:2
+        self.assertIn("padding-bottom:125.0%", h)   # 5 rows of 8, cells 1:2
         self.assertEqual(h.count('class="row"'), 5)
+
+    def test_the_square_does_not_depend_on_aspect_ratio_support(self):
+        """`aspect-ratio` is unsupported on Safari before 15, and where it is
+        unsupported the grid collapses to zero height -- the map is not
+        distorted, it is gone. Same shape as the missing glyphs: a feature the
+        reader's device lacks does not announce itself."""
+        import re as _re
+        css = _re.sub(r"/\*.*?\*/", "", MD.render(SCENE), flags=_re.S)
+        self.assertNotIn("aspect-ratio:", css)   # the property, not the comment
 
     def test_the_grid_states_its_aspect_ratio(self):
         """Without it the boxes have no height and the map is invisible -- and
@@ -180,7 +189,7 @@ class TheGridIsBoxesNotText(unittest.TestCase):
         rows = [l for l in SCENE.split("\n")
                 if l and set(l) <= set(MD.RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")]
         cols = max(len(r) for r in rows)
-        self.assertIn("aspect-ratio:%d/%d" % (cols, len(rows) * 2), h)
+        self.assertIn("padding-bottom:%.1f%%" % (100.0 * len(rows) * 2 / cols), h)
 
 
 class TheLegendSpeaksTheDocumentsLanguage(unittest.TestCase):
