@@ -69,6 +69,9 @@ PROBES = [
     ("chmi-prague", "radar_chmi", (14.42, 50.09), None, "CHMI"),
     ("knmi-amsterdam", "radar_knmi", (4.90, 52.37), None, "KNMI"),
     ("dmi-copenhagen", "radar_dmi", (12.57, 55.68), None, "DMI"),
+    # Oslo, not a point picked for looking healthy: it is the city this source
+    # was added for, and it is inside every Norwegian radar's reach.
+    ("metno-oslo", "radar_metno", (10.75, 59.91), None, "MET Norway"),
     ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 

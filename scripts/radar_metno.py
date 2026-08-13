@@ -27,6 +27,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -76,6 +77,47 @@ LOOKBACK = 12                # 60 minutes of stamps to try, newest first
 FRAME_MAX_AGE = 3600.0
 MAX_NODATA_SHARE = 0.6
 FILL_MIN = 1e30              # _FillValue is 9.96921E36
+
+
+# Two caches, both small and both shared by every reader in a place.
+#
+# Without them each reader pays the whole cost -- one discovery walk plus one
+# window fetch, measured at ~2.9s -- and met.no pays a request per reader for
+# an answer that is identical for all of them. A frame only changes every five
+# minutes, so anything shorter than that is spending someone else's bandwidth
+# to re-learn a number that did not move.
+_LOCK = threading.Lock()
+_STAMP = {"stamp": None, "at": 0.0}
+_WINDOWS = {}
+STAMP_TTL = 60.0
+WINDOW_TTL = 150.0
+_WINDOW_MAX = 64
+
+
+def _cached_window(key):
+    with _LOCK:
+        hit = _WINDOWS.get(key)
+    if hit and time.time() - hit[0] < WINDOW_TTL:
+        return hit[1]
+    return None
+
+
+def _put_window(key, parsed):
+    with _LOCK:
+        if len(_WINDOWS) >= _WINDOW_MAX:
+            # Oldest out. A cache that only grows is a slow leak in a process
+            # that is meant to outlive every request it serves.
+            oldest = min(_WINDOWS, key=lambda k: _WINDOWS[k][0])
+            _WINDOWS.pop(oldest, None)
+        _WINDOWS[key] = (time.time(), parsed)
+
+
+def forget():
+    """Drop both caches. For tests, and for anyone who needs to prove that a
+    measurement is not just reading back something this process already had."""
+    with _LOCK:
+        _WINDOWS.clear()
+        _STAMP.update(stamp=None, at=0.0)
 
 
 def covers(lng, lat):
@@ -293,24 +335,36 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None."""
     if not covers(lng, lat):
         return None
-    if cached_only:
-        # Nothing is held on disk for this source, so there is no cheap answer
-        # to give; spending a reader's wait on the network here is exactly what
-        # cached_only exists to prevent.
-        return None
     cols, rows = (24, 12) if small else (48, 24)
     span = float(os.environ.get("RUNEMAP_SPAN_KM", "280") or 280)
     box = box_for(lng, lat, span, cols, rows)
     if box is None:
         return None
-    stamp, _probe = newest(get)
-    if not stamp:
+    now = time.time()
+    with _LOCK:
+        stamp = (_STAMP["stamp"]
+                 if now - _STAMP["at"] < STAMP_TTL else None)
+    parsed = _cached_window((stamp, box)) if stamp else None
+    if parsed is None and cached_only:
+        # `cached_only` means "answer from what you already have, and open no
+        # socket". Once this window is warm that is a real answer, so refusing
+        # outright would keep Norway on the slow path forever -- a guard whose
+        # release condition is the very thing it forbids.
         return None
-    try:
-        parsed = fetch_window(stamp, box, get)
-    except Exception as e:
-        sys.stderr.write("METNO-WINDOW-FAILED %r\n" % (e,))
-        return None
+    if stamp is None:
+        stamp, _probe = newest(get)
+        if not stamp:
+            return None
+        with _LOCK:
+            _STAMP.update(stamp=stamp, at=now)
+        parsed = _cached_window((stamp, box))
+    if parsed is None:
+        try:
+            parsed = fetch_window(stamp, box, get)
+        except Exception as e:
+            sys.stderr.write("METNO-WINDOW-FAILED %r\n" % (e,))
+            return None
+        _put_window((stamp, box), parsed)
     ts = frame_time(parsed)
     if ts is None:
         sys.stderr.write("METNO-NO-TIME frame carried no time variable\n")
