@@ -66,15 +66,19 @@ class ReasonReachesTheReader(unittest.TestCase):
         self.fail("no radar line in body")
 
     def why_line(self, lang="en"):
-        """The reason lives on its OWN line (see WhyLineFitsEightyColumns)."""
-        for l in self.body(lang).split("\n"):
-            if l.startswith("radar-why: "):
-                return l
-        return ""
+        """The reason IS the radar line now, not a second one.
+
+        bob 8/13: "why add a line? just replace the sentence." A second line
+        was me adding rather than replacing -- the half that carries no risk.
+        This helper returns "" when the line is the generic fallback, so every
+        "must stay silent" assertion below still means what it meant.
+        """
+        l = self.radar_line(lang)
+        return "" if l == self.plain_line(lang) else l
 
     def test_named_reason_reaches_the_body(self):
         RS.note_reason("sky-empty")
-        self.assertIn("upstream listed no frames", self.why_line())
+        self.assertIn("upstream listed no radar frames", self.why_line())
 
     def test_sentence_is_about_us_not_about_the_world(self):
         RS.note_reason("sky-empty")
@@ -94,9 +98,9 @@ class ReasonReachesTheReader(unittest.TestCase):
         self.assertEqual(self.radar_line(), self.plain_line())
         self.assertEqual(self.why_line(), "")
 
-    def plain_line(self):
-        return ("radar: fetching -- no radar frames for this sky yet; "
-                "weather above is live")
+    def plain_line(self, lang="en"):
+        import render_scene as _RS
+        return (_RS._BASE_NOT_DRAWN[lang if lang in ("en", "ja") else "zh"])
 
     def test_a_drawn_map_carries_no_clause(self):
         # `rb` (not radar_state) is what decides whether a map was drawn --
@@ -107,7 +111,7 @@ class ReasonReachesTheReader(unittest.TestCase):
         rb = ("MAP", 6.0, time.time(), None, None)   # rb[2] is an epoch, not a label
         body = RS.build("en", NAME, "PARTLY_CLOUDY_NIGHT", NAME,
                         76.9, 43.2, 6, WX, rb, radar_state=RS.STATE_OK)
-        self.assertNotIn("upstream listed no frames", body)
+        self.assertNotIn("upstream listed no radar frames", body)
         self.assertIn("MAP", body)
 
     def test_body_peeks_so_the_header_can_still_pop(self):
