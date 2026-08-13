@@ -80,6 +80,31 @@ class EveryVerdictHasBeenFired(unittest.TestCase):
         self.assertEqual(state, "NO-READER")
         self.assertIn("h5py", msg)
 
+    def test_a_credential_this_user_cannot_read_is_not_a_missing_reader(self):
+        """The third absence, and the only one that is a fact about WHO RAN THE
+        PROBE. On 8/13 this printed NO-READER and "no KNMI key" for the
+        Netherlands while production was serving Amsterdam a 13-minute-old
+        frame: the key is 0640 root:root and I am not root. NO-READER sends
+        you to pip, NO-MAP sends you to the network, and the cure was to ask
+        the service."""
+        m = fake(lambda *a, **k: None)
+        m.unavailable = lambda: "KNMI key at /etc/runemap/knmi_key is not readable by this user"
+        state, msg = H.check("probe", "fake_source", (0.0, 0.0), None)
+        self.assertEqual(state, "NO-ACCESS")
+        self.assertIn("not readable", msg)
+
+    def test_the_three_absences_print_three_different_words(self):
+        """The positive control for the distinction itself: a missing library,
+        an unreadable credential and a declining adapter must not collapse."""
+        got = []
+        for why in ("h5py is not installed",
+                    "KNMI key at /x is not readable by this user",
+                    None):
+            m = fake(lambda *a, **k: None)
+            m.unavailable = (lambda w: (lambda: w))(why)
+            got.append(H.check("probe", "fake_source", (0.0, 0.0), None)[0])
+        self.assertEqual(len(set(got)), 3, got)
+
     def test_an_available_reader_that_declines_is_still_no_map(self):
         """The guard must not swallow the real failure it sits in front of."""
         m = fake(lambda *a, **k: None)

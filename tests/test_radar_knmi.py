@@ -9,6 +9,7 @@ that is the control, not my arithmetic.
 import os
 import sys
 import time
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -186,28 +187,28 @@ class ItSaysWhyItCannotWork(unittest.TestCase):
         sentence -- which passed here, where h5py is installed, and failed in
         CI, where it is not and the other reason answers first. A test that
         reads whatever the machine happens to have is not testing the code."""
-        oldk, oldh = K.api_key, K.have_h5py
-        K.api_key, K.have_h5py = (lambda: None), (lambda: True)
+        oldk, oldh = K.key_status, K.have_h5py
+        K.key_status, K.have_h5py = (lambda: (None, "absent")), (lambda: True)
         try:
             self.assertIn("no KNMI key", K.unavailable() or "")
         finally:
-            K.api_key, K.have_h5py = oldk, oldh
+            K.key_status, K.have_h5py = oldk, oldh
 
     def test_a_missing_reader_is_named_too(self):
-        oldk, oldh = K.api_key, K.have_h5py
-        K.api_key, K.have_h5py = (lambda: "k"), (lambda: False)
+        oldk, oldh = K.key_status, K.have_h5py
+        K.key_status, K.have_h5py = (lambda: ("k", None)), (lambda: False)
         try:
             self.assertIn("h5py", K.unavailable() or "")
         finally:
-            K.api_key, K.have_h5py = oldk, oldh
+            K.key_status, K.have_h5py = oldk, oldh
 
     def test_with_both_present_it_is_available(self):
-        oldk, oldh = K.api_key, K.have_h5py
-        K.api_key, K.have_h5py = (lambda: "k"), (lambda: True)
+        oldk, oldh = K.key_status, K.have_h5py
+        K.key_status, K.have_h5py = (lambda: ("k", None)), (lambda: True)
         try:
             self.assertIsNone(K.unavailable())
         finally:
-            K.api_key, K.have_h5py = oldk, oldh
+            K.key_status, K.have_h5py = oldk, oldh
 
     def test_outside_coverage_is_declined_before_anything_else(self):
         old = K.unavailable
@@ -246,6 +247,94 @@ class TheWindowLandsWhereItShould(unittest.TestCase):
         self.arr[:, :] = 255
         _lv, share = K.window(self.arr, SCALE, GEO, 4.90, 52.37, 280, 24, 12)
         self.assertEqual(share, 1.0)
+
+
+
+class TheKeyHasMoreThanOneWayToBeMissing(unittest.TestCase):
+    """"There is no key" and "the key is there and I may not read it" are two
+    different facts with two different cures, and they used to print the same
+    sentence -- `api_key()` caught every exception and returned None.
+
+    Found on 8/13 by running the health probe as myself: it said 10 of 11 and
+    named a missing KNMI key, while production was serving Amsterdam with a
+    13-minute-old frame. The key is 0640 root:root. Nothing was wrong with the
+    source; the probe was describing its own permissions.
+    """
+
+    def setUp(self):
+        self._env = os.environ.pop("RUNEMAP_KNMI_KEY", None)
+        self._file = K.KEY_FILE
+
+    def tearDown(self):
+        K.KEY_FILE = self._file
+        if self._env is not None:
+            os.environ["RUNEMAP_KNMI_KEY"] = self._env
+
+    def _open_raising(self, exc):
+        import builtins
+        real = builtins.open
+
+        def fake(path, *a, **kw):
+            if path == K.KEY_FILE:
+                raise exc
+            return real(path, *a, **kw)
+        return fake
+
+    def test_a_key_that_is_simply_not_there(self):
+        K.KEY_FILE = os.path.join(tempfile.mkdtemp(), "nope")
+        self.assertEqual(K.key_status(), (None, "absent"))
+        self.assertIn("no KNMI key", K.unavailable() or "")
+
+    def test_a_key_this_user_may_not_read_says_so(self):
+        """Monkeypatched rather than chmod 000: the test must give the same
+        verdict for root, who can read a 0000 file and would have seen this
+        pass for the wrong reason."""
+        import builtins
+        K.KEY_FILE = os.path.join(tempfile.mkdtemp(), "knmi_key")
+        real = builtins.open
+        builtins.open = self._open_raising(PermissionError(13, "denied"))
+        try:
+            self.assertEqual(K.key_status(), (None, "unreadable"))
+            msg = K.unavailable() or ""
+        finally:
+            builtins.open = real
+        self.assertIn("not readable", msg)
+        self.assertNotIn("no KNMI key", msg)
+
+    def test_the_two_sentences_are_not_the_same_sentence(self):
+        """The positive control for the whole point of this class."""
+        import builtins
+        K.KEY_FILE = os.path.join(tempfile.mkdtemp(), "knmi_key")
+        absent = K.unavailable()
+        real = builtins.open
+        builtins.open = self._open_raising(PermissionError(13, "denied"))
+        try:
+            denied = K.unavailable()
+        finally:
+            builtins.open = real
+        self.assertTrue(absent and denied)
+        self.assertNotEqual(absent, denied)
+
+    def test_an_empty_key_file_is_not_a_key(self):
+        d = tempfile.mkdtemp()
+        K.KEY_FILE = os.path.join(d, "knmi_key")
+        with open(K.KEY_FILE, "w") as fh:
+            fh.write("   \n")
+        self.assertEqual(K.key_status(), (None, "empty"))
+
+    def test_the_reason_never_carries_the_key_itself(self):
+        """A mask that fails open prints the secret. This path must not be able
+        to reach a printer with contents in hand at all."""
+        d = tempfile.mkdtemp()
+        K.KEY_FILE = os.path.join(d, "knmi_key")
+        with open(K.KEY_FILE, "w") as fh:
+            fh.write("s3cret-value-abc123")
+        key, why = K.key_status()
+        self.assertEqual(key, "s3cret-value-abc123")
+        self.assertIsNone(why)
+        self.assertIsNone(K.unavailable() if K.have_h5py() else None)
+        for text in (K.unavailable() or "", str(why)):
+            self.assertNotIn("s3cret", text)
 
 
 if __name__ == "__main__":

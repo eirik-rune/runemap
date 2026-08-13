@@ -108,3 +108,44 @@ device. "I looked at the image" covers my box's fonts and nothing else.
 His screenshots, incidentally, I could not open at all: 0xchat encrypts
 attachments, so the URL yields ciphertext. Every one of these was located from
 his sentences.
+
+## 2026-08-13, fourth catch: the grid narrowed to its own weather
+
+bob, on Chiang Mai: "右侧本来不下雨，不下雨的内容你也得保留，不然紫色块儿就不在
+中心了" — then the general form: "横向的格你不能都删了，然后纵向的格没数据，你也
+不能删了，他没数据也得表示点什么。"
+
+Measured on the live page before the fix:
+
+    source grid rows: 24  widths: [48]   marker at row 12, col 24
+    rendered: padding-bottom 114.3% => implied cols 47.2
+
+Two mechanisms stacked. The parser appended each grid row `raw.rstrip()`, so
+cells with no rain on the eastern edge disappeared; the width was then taken as
+`max(len(r) for r in grid)` — the widest **surviving** row. When no row happened
+to have weather in the last column, the whole grid narrowed.
+
+Why that is not "a slightly smaller picture": the window is centred on the
+reader by construction, so the marker sits at column `cols/2` and every echo is
+read as a bearing and a distance **from it**. Narrow the grid and the marker is
+no longer in the middle — every echo silently moves to a wrong direction and a
+wrong distance.
+
+**Third instance of the family in one day** (London 26×12; the curve's 20
+buckets rendered as 6), and the reason there was a third is the shape of the
+first two fixes: I fixed the paths I had a visibly broken page for and did not
+sweep the rest. The missed one was the branch a document takes when it has no
+`[><]=` scale line — same `grid.append(s)`, same bug.
+
+Two tests that nearly passed for the wrong reason:
+
+* `left == 24` for the marker passes on the **broken** renderer. The truncation
+  trims to the *right* of the marker, so the count before it never moves. The
+  assertion now compares both halves against the grid's own width.
+* The first fixture drew rain as a row of `█` and spaces — which is a legal
+  **rain curve**, because `█` is also the tallest eighth-block. It was parsed as
+  a chart, so the test measured a different block entirely and said nothing.
+  The fixture now uses a mixed ramp.
+
+All three assertions fire: put the strip back and width, height and centring go
+red together.

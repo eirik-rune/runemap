@@ -18,6 +18,9 @@ So the check is per source and it has to be able to fail:
                dependency is absent). The upstream is not implicated, and
                folding this into NO-MAP would aim the next hour of debugging
                at a network that is fine.
+  NO-ACCESS    the credential this source needs exists and THIS USER cannot
+               read it -- a fact about who ran the probe, not about the source.
+               Production may well be serving it; ask the service.
   WRONG-SOURCE another service answered, so the one this probe names is not
                being exercised at all
   ERROR        it raised
@@ -99,6 +102,14 @@ def check(label, modname, sky, fallback, want_source=None):
         except Exception as e:
             why = "unavailable() raised %r" % (e,)
         if why:
+            # A third absence, and it is not the adapter's: the credential is
+            # present and this user may not read it. NO-READER sends you to
+            # pip and NO-MAP sends you to the network; the cure here is to ask
+            # the service, which is reading the same file as its own user and
+            # answering fine. 8/13: the fleet was 11 of 11 while this printed
+            # 10 of 11 and named a missing KNMI key.
+            if "not readable" in why or "is empty" in why:
+                return "NO-ACCESS", "%s: %s" % (label, why)
             return "NO-READER", "%s: %s" % (label, why)
         # Declining inside declared coverage is the interesting failure: it is
         # exactly what a dead upstream and a quiet sky both look like from the
