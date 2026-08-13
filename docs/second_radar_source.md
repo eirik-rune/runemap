@@ -211,6 +211,64 @@ nothing at all. A service-level silence does not grant what a layer name
 refuses, so the file API -- which is unambiguously the documented open-data
 product -- is what ships.
 
+### Denmark (DMI): technically solved, blocked on terms I cannot read
+
+Everything the adapter would need is published and costs 42 KB:
+
+    GET /v1/radardata/collections/composite/items?datetime=<from>/<to>
+    -> dk.com.202608131205.500_max.h5   (ODIM HDF5, 13 min old, 42 KB)
+
+    /what   quantity=DBZH, gain=0.5, offset=-32.0, undetect=0.0, nodata=255
+    /where  projdef=+proj=stere +ellps=WGS84 +lat_0=56 +lon_0=10.5666
+            +lat_ts=56, xscale=500, yscale=500, and four corner lat/lons
+
+so `dBZ = 0.5 * DN - 32` -- **different from Sweden's 0.4 / -30**, which is the
+whole argument for taking every constant from the source that serves it.
+
+It is **not shipped**, and the reason is the terms, not the technique:
+
+  * `opendatadocs.dmi.govcloud.dk` answers 404 on every page, and
+    `opendataapi.dmi.dk` points at `dmi.dk/frie-data`, which does not state
+    them.
+  * Secondary material quoting DMI says users "may not make changes to the
+    actual data". If that is the wording it is aimed straight at what we do.
+    We do not redistribute or alter their files, but we do redraw the values,
+    and the permissive reading is not ours to pick.
+  * The API answers **without an API key** -- and that is not permission. The
+    same material says a key is required. An endpoint that does not enforce a
+    rule has not waived it.
+
+Asking them failed too, loudly: mail to `opendata@dmi.dk` **bounced**, `554 ...
+rejected due to poor reputation of a domain used in message transfer` from
+`mx04.statens-it.dk`. Our own authentication is fine -- SPF `v=spf1 mx -all`
+passes from the MX itself, DMARC is published, and outbound is DKIM-signed
+(`d=echorune.net; s=ls2607`, verified on a probe). The Danish state mail system
+is scoring a young domain from a datacenter address, which is the same shape as
+every other reputation wall this year.
+
+**A near miss worth keeping**: I first concluded we were not signing at all,
+because `grep "d=echorune.net" /var/log/mail.log` returned 0 -- and was about
+to "fix" a working config. opendkim logs `s=/d=` for messages it **verifies**,
+not for ones it **signs**. The log answers *what did I check*; I asked it *what
+did I send*. Testing before changing is what caught it.
+
+### Norway (met.no): a different quantity, and a size problem
+
+`thredds.met.no/thredds/catalog/remotesensingradaraccr/` carries a live daily
+file, updated within the last ten minutes, on **UTM 33 North at 1 km** -- so
+`ops/utm.py` would work unchanged. Two reasons it is not next:
+
+  * the product is `sri-acrr-1h`, **one-hour accumulated rainfall**, not
+    instantaneous reflectivity. Drawing it under a line that says `radar: obs`
+    would be the JMA-forecast mistake in another costume: an honest number
+    answering a different question than the one the reader asked.
+  * the file is 15 MB per day and grows; a reader's window would have to come
+    through the THREDDS subset service or its ncWMS rather than the file.
+
+The earlier refusal of `public-wms.met.no` (their own page says demonstration
+only) is a statement about that server, not about THREDDS, and should not be
+carried across without checking.
+
 ### Measured, deliberately not shipped
 
 - **Netherlands (KNMI): three claims corrected, one route left open.**
