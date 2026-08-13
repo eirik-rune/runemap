@@ -209,19 +209,32 @@ def _curve_html(lines, heading=""):
     """
     bars, labels, words, width = [], [], [], 0
     for ln in lines:
-        if ln.strip() and set(ln.rstrip()) <= _BAR_CHARS:
+        if ln.strip() and set(ln.rstrip("\n")) <= _BAR_CHARS:
             # EVERY position is a bucket. Taking only the characters that are
             # bars dropped the gaps -- and in this chart a space is a bucket
             # with no rain, so a 20-bucket line came out as 6 bars crowded at
             # the left and every one of them at the wrong time. bob: "本来应该
             # 是20个就变成六格了". The dropped character was not decoration, it
             # was the value zero.
-            row = [BARS.get(c, 0) for c in ln.rstrip()]
+            # NOT rstripped: this function was undoing what the parser had
+            # just taken care to preserve. Two rstrips on the same value, one
+            # in each half, and removing either alone changes nothing -- which
+            # is how the first fix here measured as working.
+            row = [BARS.get(c, 0) for c in ln.rstrip("\n")]
             if len(row) > len(bars):
                 bars = row
             continue
-        if set(ln.strip()) <= set("\u2500\u251c\u252c\u2524\u253c "):
-            continue                      # the tick line: characters again
+        if ln.strip() and set(ln.strip()) <= _TICKS:
+            # The tick line states the chart's FULL width, which the bar line
+            # cannot when its last buckets are dry: trailing spaces do not
+            # survive being written down. 8/13: this assignment was in a patch
+            # whose target string did not match, so it silently did not land
+            # and `width` stayed 0 -- the padding below was dead code, and I
+            # "verified" the fix on Tokyo, whose curve happened to have no dry
+            # tail. **A check run on a case that cannot exhibit the bug is not
+            # a check.**
+            width = max(width, len(ln.rstrip()))
+            continue
         if ln.strip():
             words.append(ln.strip())
     # The axis line becomes the axis; everything else on those lines is prose.
@@ -304,9 +317,13 @@ def render(text, marker="><"):
                          for k in range(0, len(toks) - 1)
                          if toks[k] in CLASS and toks[k + 1] not in CLASS)
             continue
-        # -- the curve: a line that is NOTHING BUT eighth-blocks and spaces
+        # -- the curve: a line that is NOTHING BUT eighth-blocks and spaces.
+        # Appended UNSTRIPPED: a trailing space is a bucket with no rain, and
+        # the loop's `s` has already lost them. Exactly the bug that deleted
+        # most of London's map this morning, in the other block -- I fixed the
+        # grid and did not sweep the family.
         if s.strip() and set(s) <= _BAR_CHARS:
-            curve.append(s)
+            curve.append(raw.rstrip("\n"))
             if "curve" not in order:
                 order.append("curve")
             continue
