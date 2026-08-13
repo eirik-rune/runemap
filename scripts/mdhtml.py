@@ -184,12 +184,14 @@ def _curve_html(lines):
             continue                      # the tick line: characters again
         if ln.strip():
             words.append(ln.strip())
-    words = [w for w in words if not _is_axis(w)]
+    # The axis line becomes the axis; everything else on those lines is prose.
+    # Splitting them the other way round (filter first, then look for labels in
+    # what is left) is how the scale silently vanished from the chart -- the
+    # bars stayed, so it looked fine until you asked "0 to what?".
     for w in words:
-        # "0   30   60   90 120min" -> the labels, kept in the document's own
-        # words (that trailing "min" is the unit, and it is not mine to invent)
-        if any(ch.isdigit() for ch in w):
+        if _is_axis(w):
             labels = w.split()
+    words = [w for w in words if not _is_axis(w)]
     if not bars:
         # No bars at all is a real answer -- "no precipitation expected" -- and
         # it must be shown, not silently dropped.
