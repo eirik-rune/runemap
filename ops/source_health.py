@@ -72,6 +72,7 @@ PROBES = [
     # Oslo, not a point picked for looking healthy: it is the city this source
     # was added for, and it is inside every Norwegian radar's reach.
     ("metno-oslo", "radar_metno", (10.75, 59.91), None, "MET Norway"),
+    ("chrzc-zurich", "radar_meteoswiss", (8.55, 47.3667), None, "MeteoSwiss"),
     ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 
