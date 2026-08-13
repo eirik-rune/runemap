@@ -60,6 +60,20 @@ class EveryVerdictHasBeenFired(unittest.TestCase):
         self.assertEqual(H.check("p", "no_such_module", (0.0, 0.0), None)[0],
                          "ERROR")
 
+    def test_another_service_answering_is_wrong_source_not_ok(self):
+        """The dangerous shape: the probe is green about SOMETHING. The
+        Toronto probe was answered by NEXRAD -- its rectangle reaches past the
+        border and it sorts first -- so Environment Canada had no probe at all
+        while this file printed '7 of 7 healthy'."""
+        fake(lambda *a, **k: ("art", 12.0, 1.0, None, time.time(), "NWS NEXRAD"))
+        self.assertEqual(H.check("probe", "fake_source", (0.0, 0.0), None,
+                                 "Environment Canada")[0], "WRONG-SOURCE")
+
+    def test_the_expected_source_matching_is_still_ok(self):
+        fake(lambda *a, **k: ("art", 12.0, 1.0, None, time.time(), "FMI"))
+        self.assertEqual(H.check("probe", "fake_source", (0.0, 0.0), None,
+                                 "FMI")[0], "OK")
+
 
 class TheLimitComesFromTheSourceNotFromHere(unittest.TestCase):
     """A restated constant drifts, and the drift is silent -- this morning's
@@ -82,3 +96,12 @@ class ItShipsProbesForEveryShippedSource(unittest.TestCase):
         watched = {p[1] for p in H.PROBES}
         for mod in ("radar_jma", "radar_wms", "radar_redemet"):
             self.assertIn(mod, watched, mod)
+
+    def test_every_wms_service_has_its_own_probe_not_just_the_module(self):
+        """Counting modules was the coarse version of this check, and it is
+        what let Environment Canada go unwatched: radar_wms was 'covered' four
+        times over by probes that all reached the same two services."""
+        import radar_wms as W
+        named = {p[4] for p in H.PROBES}
+        for svc in W.SERVICES:
+            self.assertIn(svc["name"], named, svc["key"])
