@@ -22,7 +22,17 @@ import time
 
 NAME = "REDEMET/DECEA"
 ATTRIB = "REDEMET/DECEA redemet.decea.mil.br"
-MAX_AGE = 1800.0          # older than this and "now" would be a lie
+# Derived from THIS source's cycle, not copied from the global composite's.
+# Measured 8/13 across all 18 mirrored radars in one pull: at the moment we
+# fetched them the frames were already 13.4 / 19.6 / 23.2 min old (min /
+# median / max) -- REDEMET publishes with about twenty minutes of latency of
+# its own. Add the 10-minute mirror period and a frame is 23-33 min old by the
+# time a reader asks, so the 30 min this used to be refused most of the cycle:
+# Sao Paulo drew at "obs age: 28min" and would have gone dark two minutes
+# later, with nothing wrong anywhere. 45 min accepts one whole cycle and still
+# catches the failure this ceiling exists for -- a dead mirror timer, whose
+# ages climb past it within one extra period and never come back.
+MAX_AGE = 2700.0
 DIR = os.environ.get("REDEMET_DIR",
                      os.path.join(os.environ.get("RUNEMAP_CACHE",
                                                  "/var/cache/runemap"), "redemet"))
