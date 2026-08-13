@@ -514,6 +514,12 @@ def _motion_peek(imgs, lng, lat):
 #
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
+# Credit as each source asks to be credited, keyed by the name it reports.
+_SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com",
+                  "REDEMET/DECEA": "REDEMET/DECEA redemet.decea.mil.br",
+                  "NWS NEXRAD": "NWS NEXRAD via mesonet.agron.iastate.edu",
+                  "Environment Canada": "Environment and Climate Change Canada geo.weather.gc.ca"}
+
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
 # Derived from the picture, not picked to make the logs look good.
@@ -568,45 +574,65 @@ def peek_reason():
 #     only an operator could see it.
 _FETCH_CLAUSE = {
     "list-nofile": {
-        "en": "we have not looked at this sky yet; a fetch has just started",
-        "zh": "\u8fd9\u7247\u5929\u6211\u4eec\u8fd8\u6ca1\u770b\u8fc7, \u521a\u5f00\u59cb\u53d6",
-        "ja": "\u3053\u306e\u7a7a\u306f\u672a\u53d6\u5f97\u3067\u3059\u3002\u4eca\u53d6\u5f97\u3092\u958b\u59cb\u3057\u307e\u3057\u305f",
+        "en": "not looked at this sky yet; fetching",
+        "zh": "\u8fd9\u7247\u5929\u8fd8\u6ca1\u770b\u8fc7, \u521a\u5f00\u59cb\u53d6",
+        "ja": "\u3053\u306e\u7a7a\u306f\u672a\u53d6\u5f97; \u53d6\u5f97\u958b\u59cb",
     },
     "list-toostale": {
-        "en": "our copy of this sky was too old to draw; fetching a new one",
-        "zh": "\u624b\u4e0a\u8fd9\u4efd\u592a\u65e7\u4e86, \u6b63\u5728\u91cd\u65b0\u53d6",
-        "ja": "\u624b\u5143\u306e\u30c7\u30fc\u30bf\u304c\u53e4\u3059\u304e\u307e\u3059\u3002\u518d\u53d6\u5f97\u4e2d",
+        "en": "our copy was too old to draw",
+        "zh": "\u624b\u4e0a\u8fd9\u4efd\u592a\u65e7, \u6b63\u5728\u91cd\u53d6",
+        "ja": "\u624b\u5143\u304c\u53e4\u3059\u304e; \u518d\u53d6\u5f97\u4e2d",
     },
     "list-unreadable": {
-        "en": "we had a copy of this sky but could not read it",
-        "zh": "\u6211\u4eec\u5b58\u8fc7\u8fd9\u7247\u5929, \u4f46\u8bfb\u4e0d\u51fa\u6765",
-        "ja": "\u4fdd\u5b58\u6e08\u307f\u3067\u3059\u304c\u8aad\u307f\u53d6\u308c\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "we could not read our stored copy",
+        "zh": "\u5b58\u8fc7, \u4f46\u8bfb\u4e0d\u51fa\u6765",
+        "ja": "\u4fdd\u5b58\u5206\u3092\u8aad\u307f\u53d6\u308c\u305a",
     },
     "list-unusable": {
-        "en": "what we had stored for this sky was not a usable frame",
-        "zh": "\u5b58\u7740\u7684\u4e1c\u897f\u4e0d\u662f\u4e00\u5e27\u53ef\u7528\u7684\u56fe",
-        "ja": "\u4fdd\u5b58\u3055\u308c\u3066\u3044\u305f\u306e\u306f\u4f7f\u3048\u308b\u30d5\u30ec\u30fc\u30e0\u3067\u306f\u3042\u308a\u307e\u305b\u3093",
+        "en": "what we stored was not a frame",
+        "zh": "\u5b58\u7740\u7684\u4e0d\u662f\u4e00\u5e27\u56fe",
+        "ja": "\u4fdd\u5b58\u5206\u306f\u30d5\u30ec\u30fc\u30e0\u3067\u306a\u3044",
     },
     "list-unparseable": {
-        "en": "upstream answered, but we could not parse its frame list",
-        "zh": "\u4e0a\u6e38\u56de\u4e86\u8bdd, \u4f46\u5e27\u5217\u8868\u6211\u4eec\u89e3\u4e0d\u5f00",
-        "ja": "\u4e0a\u6d41\u306e\u5fdc\u7b54\u306e\u30d5\u30ec\u30fc\u30e0\u4e00\u89a7\u3092\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "upstream's frame list did not parse",
+        "zh": "\u4e0a\u6e38\u7684\u5e27\u5217\u8868\u89e3\u4e0d\u5f00",
+        "ja": "\u4e0a\u6d41\u306e\u4e00\u89a7\u3092\u89e3\u6790\u3067\u304d\u305a",
     },
     "sky-empty": {
-        "en": "upstream listed no frames for this sky when we asked",
-        "zh": "\u6211\u4eec\u95ee\u4e86\u4e0a\u6e38, \u5b83\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
-        "ja": "\u4e0a\u6d41\u306b\u554f\u3044\u5408\u308f\u305b\u307e\u3057\u305f\u304c\u3053\u306e\u7a7a\u306e\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "upstream listed no radar frames",
+        "zh": "\u4e0a\u6e38\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
+        "ja": "\u4e0a\u6d41\u304c\u30d5\u30ec\u30fc\u30e0\u3092\u8fd4\u3055\u305a",
     },
     "cooldown": {
-        "en": "upstream refused our last request; waiting before we ask again",
-        "zh": "\u4e0a\u6e38\u521a\u62d2\u7edd\u4e86\u6211\u4eec, \u7a0d\u540e\u518d\u95ee",
-        "ja": "\u76f4\u524d\u306e\u554f\u3044\u5408\u308f\u305b\u304c\u62d2\u5426\u3055\u308c\u305f\u305f\u3081\u5f85\u6a5f\u4e2d",
+        "en": "upstream refused us; waiting",
+        "zh": "\u4e0a\u6e38\u521a\u62d2\u7edd, \u7a0d\u540e\u518d\u95ee",
+        "ja": "\u4e0a\u6d41\u306b\u62d2\u5426\u3055\u308c\u5f85\u6a5f\u4e2d",
     },
     "render-failed": {
-        "en": "we had frames but could not draw them",
-        "zh": "\u5e27\u62ff\u5230\u4e86, \u4f46\u6211\u4eec\u6ca1\u753b\u51fa\u6765",
-        "ja": "\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u3057\u305f\u304c\u63cf\u753b\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "we had frames but could not draw",
+        "zh": "\u5e27\u6709, \u4f46\u6ca1\u753b\u51fa\u6765",
+        "ja": "\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308b\u304c\u63cf\u753b\u3067\u304d\u305a",
     },
+}
+
+# The three fixed parts the reason slots between. They are not decoration:
+# `radar: fetching` is the untranslated token an agent greps (that contract has
+# its own test), and the tail tells a human the weather above is real even
+# though the radar is not. Keeping BOTH is why the clauses above are terse --
+# 24 (reason, lang) pairs, widest 78 of 79 cells.
+# The fallback, for a reason we have no sentence for. Module level so a test
+# can assert against the shipped string instead of keeping its own copy --
+# a hand-copied line in a test is prose that falls behind the code silently.
+_BASE_NOT_DRAWN = {
+    "en": "radar: fetching -- no radar frames for this sky yet; weather above is live",
+    "zh": "radar: fetching -- \u8fd8\u6ca1\u62ff\u5230\u8fd9\u7247\u5929\u7684\u96f7\u8fbe\u6570\u636e; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6",
+    "ja": "radar: fetching -- \u3053\u306e\u7a7a\u306e\u30ec\u30fc\u30c0\u30fc\u306f\u307e\u3060\u53d6\u5f97\u3067\u304d\u3066\u3044\u307e\u305b\u3093; \u4e0a\u306e\u5929\u6c17\u306f\u5b9f\u6cc1\u3067\u3059",
+}
+_FETCH_HEAD = "radar: fetching -- "
+_FETCH_TAIL = {
+    "en": "; weather above is live",
+    "zh": "; \u4ee5\u4e0a\u5929\u6c14\u4e3a\u5b9e\u65f6",
+    "ja": "; \u4e0a\u306e\u5929\u6c17\u306f\u5b9f\u6cc1\u3067\u3059",
 }
 
 
@@ -896,6 +922,41 @@ def _radar_render(code, lng, lat, imgs, small):
     return None
 
 
+# Off unless switched on, and named rather than boolean: the day there are two
+# fallbacks, "which one drew this" must be answerable from the environment and
+# from the body, not from reading this file.
+SECOND_SOURCE = os.environ.get("RUNEMAP_SECOND_SOURCE", "").strip()
+
+
+def _second_source(code, lng, lat, small):
+    """Never raises into the reader's path: a broken fallback must degrade to
+    the sentence we already have, not to a 500."""
+    if not SECOND_SOURCE:
+        return None
+    # A comma-separated chain, tried in order. Order is a judgement about data,
+    # not about code: a national radar beats a global composite over the country
+    # that owns it, so redemet goes before rainviewer for a Brazilian sky and
+    # simply declines everywhere else.
+    for which in [w.strip() for w in SECOND_SOURCE.split(",") if w.strip()]:
+        try:
+            if which == "rainviewer":
+                import radar_second as _m
+            elif which == "redemet":
+                import radar_redemet as _m
+            elif which == "wms":
+                import radar_wms as _m
+            else:
+                sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
+                continue
+            got = _m.draw(code, lng, lat, small)
+            if got is not None:
+                return got
+        except Exception as e:
+            # One broken adapter must not take the rest of the chain with it.
+            sys.stderr.write("SECOND-FAILED %s %r\n" % (which, e))
+    return None
+
+
 def radar_resolve(code, lng, lat, token, small=False, wait=None):
     """(state, payload) -- this thread opens no socket and joins no thread.
 
@@ -985,6 +1046,16 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     hit = _from_cache()
     if hit is not None:
         return hit
+    # Order matters and it is not a preference: ask the second source BEFORE
+    # computing why there is no map. If it draws, there is no missing map to
+    # explain, and _reason_after_wait would be answering a question nobody
+    # asked. (Eirik's three lines below arrived in the same place at 05:29;
+    # the conflict was ordering, not meaning.)
+    alt = _second_source(code, lng, lat, small)
+    if alt is not None:
+        note_reason(None)               # a reason belongs to a map we did NOT draw
+        return STATE_OK, alt
+
     with _RA_LOCK:
         refused = _RA_FAIL.get(key)
     _why["v"] = _reason_after_wait(_why["v"], refused, _t0)
@@ -1311,25 +1382,39 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # It cannot be wrong about the world, which is why radar_err no longer
         # changes it and why nothing has to be earned before we may say it.
         st = radar_state or STATE_FETCHING
-        _base = ("radar: fetching -- no radar frames for this sky yet; weather above is live"
-                 if lang == "en" else
-                 "radar: fetching -- この空のレーダーはまだ取得できていません; 上の天気は実況です"
-                 if lang == "ja" else
-                 "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
+        _base = _BASE_NOT_DRAWN[lang if lang in ("en", "ja") else "zh"]
         # peek, not pop: serve.py owns the clearing (see peek_reason).
-        L.append(_base)
-        # Its OWN line, not appended: Eirik measured all 9 real (reason, lang)
+        # bob 8/13: "why add a line? just replace the sentence." He is right --
+        # the generic clause ("no radar frames for this sky yet") is a tautology
+        # of the reason, and a second line was me adding rather than replacing,
+        # which is the half that carries no risk. So the reason IS the sentence,
+        # and the live-weather tail rides along; only an unexplained reason
+        # falls back to the generic line. All 24 (reason, lang) pairs measured
+        # at <= 79 cells WITH the tail -- the clauses were shortened to fit,
+        # because 'weather above is live' disappearing was a real loss, not a
+        # width problem.
+        _why = fetching_clause(peek_reason(), lang)
+        _lg = lang if lang in ("en", "ja") else "zh"
+        L.append(_FETCH_HEAD + _why + _FETCH_TAIL[_lg] if _why else _base)
+        # Kept for the fallback only: Eirik measured all 9 real (reason, lang)
         # combinations past 80 columns when the clause rode along -- the ja base
         # is already 79 cells, so anything appended must wrap. A wrapped line is
         # not a line an agent can grep, and this text exists for the reader who
         # got no map. Same token in every language for exactly that reason.
-        _why = fetching_clause(peek_reason(), lang)
-        if _why:
-            L.append("radar-why: " + _why)
     L.append("")
+    # Whoever's data drew the radar is named here. When the fallback drew it,
+    # the primary did not, and saying "Caiyun" would be taking credit for a map
+    # they did not make -- and withholding the credit the other source asks for.
+    _src = rb[5] if rb and len(rb) > 5 and rb[5] else None
     L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
+    # Its own line, and its own token. Appending it to the data line measured 88
+    # cells (Eirik's width guard caught it); and it cannot reuse "radar:", which
+    # an agent greps for the state. Present only when the fallback drew the map,
+    # so its absence is also information: the primary upstream drew this one.
+    if _src:
+        L.append("radar-data: " + _SECOND_ATTRIB.get(_src, _src))
     return "\n".join(L) + "\n"
 
 def main():

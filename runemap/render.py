@@ -19,11 +19,18 @@ def classify(arr):
     lv[vis & (r > 200) & (g < 120)] = 5                     # red/magenta storm
     return lv
 
-def ascii_radar(png_path, bbox, loc_lng, loc_lat, cols=48, rows=24, marker="H", ramp=RAMP):
+def ascii_radar(png_path, bbox, loc_lng, loc_lat, cols=48, rows=24, marker="H", ramp=RAMP,
+                classifier=None):
+    """classifier: colour -> intensity, defaulting to the built-in heuristic.
+
+    A national service ships its own colour scale and some of them run in the
+    opposite direction at the top end (DWD ends in blue at >=150 mm/h), so the
+    caller who knows the scale passes it in. The pooling and the marker stay
+    here, with one owner, rather than being copied per source."""
     lat0, lon0, lat1, lon1 = bbox
     im = np.asarray(Image.open(png_path).convert("RGBA"))
     h, w = im.shape[:2]
-    lv = classify(im)
+    lv = (classifier or classify)(im)
     # max-pool into cols x rows via crop-to-multiple then reshape
     ch, cw = h // rows, w // cols
     pooled = lv[:ch*rows, :cw*cols].reshape(rows, ch, cols, cw).max(axis=(1, 3))
