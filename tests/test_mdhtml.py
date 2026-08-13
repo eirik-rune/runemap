@@ -96,9 +96,10 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
             # "CLEAR_DAY 35C" into a needle with blocks in it and the test
             # failed on a line the page renders perfectly.
             if set(s) <= set(MD.RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "):
-                # the "you are here" marker is drawn as cells too
-                frag = frag.replace("&gt;&lt;", "\u2588\u2588")
-                frag = "".join(MD.CELL_GLYPH.get(c, c) for c in frag)
+                # Grid rows carry no text at all now -- they are boxes, so
+                # their content cannot be matched as a string. What must
+                # survive is the CELL COUNT, checked in TheGridIsBoxesNotText.
+                continue
             self.assertIn(frag, hay, ln)
 
     def test_the_sources_own_legend_line_is_replaced_not_duplicated(self):
@@ -109,47 +110,50 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         self.assertEqual(self.h.count("drizzle"), 1)
 
 
-class ItDrawsTheGridWithOneGlyph(unittest.TestCase):
-    """`░ ▒ ▓` are absent from the monospace faces phones ship with, so each is
-    pulled from a different fallback at that font's advance width and the grid
-    goes ragged -- bob saw it before I did. One glyph cannot disagree with
-    itself about width; the level is carried by colour instead."""
+class TheGridIsBoxesNotText(unittest.TestCase):
+    """Three font surprises in one hour ended this argument. `░ ▒ ▓` are absent
+    from phone monospace faces; then U+2588 came from a CJK fallback where it is
+    FULL width, so 48 columns were twice as wide as the arithmetic assumed and
+    bob could see only the left half. Sizing text by calculation only works if
+    you know which font will draw it, and from here you never do.
 
-    def test_empty_cells_are_the_same_glyph_too(self):
-        """bob, from his phone: "主要是那个空格没对齐". Replacing only the rain
-        glyphs was half a fix -- empty cells were still ordinary spaces from
-        the primary face while the blocks came from a fallback, and two fonts
-        do not agree on width."""
-        painted = MD.paint(["  ··  "])
-        import re
-        text = "".join(re.findall(r">([^<]*)<", painted))
-        self.assertNotIn(" ", text, painted)
-        self.assertIn('class="r0"', painted)
+    So the grid has no glyphs: each row is a flex line and each run a box with
+    `flex: n`. Widths are fractions of the container, which no font can argue
+    with."""
 
-    def test_the_marker_is_not_two_characters_from_a_third_font(self):
+    def test_the_grid_contains_no_text(self):
+        h = MD.render(SCENE)
+        # from the end of the opening tag, so the tag's own attributes are
+        # not mistaken for content
+        grid = h.split('class="grid"')[1].split(">", 1)[1].split("</div></div>")[0]
+        import re as _re
+        self.assertEqual(_re.sub(r"<[^>]*>", "", grid).strip(), "")
+
+    def test_every_cell_is_accounted_for(self):
+        """The count is the thing that must survive, since the characters no
+        longer do: flex weights across a row must sum to its cell count."""
+        import re as _re
+        row = "??      ··░░▒▒"
+        html_row = MD.paint([row])
+        weights = [int(x) for x in _re.findall(r"flex:(\d+)", html_row)]
+        self.assertEqual(sum(weights), len(row))
+
+    def test_a_run_is_one_box_not_many(self):
+        self.assertEqual(MD.paint(["········"]).count("<i "), 1)
+
+    def test_the_marker_is_a_cell_of_its_own(self):
         painted = MD.paint(["··><··"])
-        me = painted.split('class="me">')[1].split("<")[0]
-        self.assertEqual(me, "\u2588\u2588")
+        self.assertIn('class="me" style="flex:2"', painted)
 
-    def test_every_rain_cell_uses_the_same_character(self):
+    def test_the_grid_states_its_aspect_ratio(self):
+        """Without it the boxes have no height and the map is invisible -- and
+        with the wrong one the map is stretched, which is a lie about where the
+        rain is."""
         h = MD.render(SCENE)
-        body = h.split('class="map"')[1].split("</pre>")[0]
-        for ch in "·░▒▓":
-            self.assertNotIn(ch, body, ch)
-        self.assertIn("\u2588", body)
-
-    def test_the_five_levels_are_still_distinguishable(self):
-        painted = MD.paint(["·░▒▓█"])
-        for cls in ("r1", "r2", "r3", "r4", "r5"):
-            self.assertIn('class="%s"' % cls, painted)
-
-    def test_the_legend_shows_the_shape_the_map_draws(self):
-        """A legend teaching a character the map no longer uses is worse than
-        no legend: it tells the reader to look for something absent."""
-        h = MD.render(SCENE)
-        legend = h.split('class="legend"')[1].split("</p>")[0]
-        for ch in "·░▒▓":
-            self.assertNotIn(ch, legend, ch)
+        rows = [l for l in SCENE.split("\n")
+                if l and set(l) <= set(MD.RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")]
+        cols = max(len(r) for r in rows)
+        self.assertIn("aspect-ratio:%d/%d" % (cols, len(rows)), h)
 
 
 class TheLegendSpeaksTheDocumentsLanguage(unittest.TestCase):
@@ -206,9 +210,9 @@ class EveryColourOnTheMapIsExplained(unittest.TestCase):
 
     def test_the_marker_colour_is_not_a_rain_colour(self):
         css = MD.PAGE.split("<style>")[1]
-        me = css.split(".me{color:")[1].split("}")[0]
+        me = css.split(".me{background:")[1].split("}")[0]
         for cls in ("r1", "r2", "r3", "r4", "r5"):
-            self.assertNotIn(me, css.split(".%s{color:" % cls)[1].split(";")[0])
+            self.assertNotIn(me, css.split(".%s{background:" % cls)[1].split(";")[0])
 
     def test_unknown_cells_are_explained_only_when_present(self):
         self.assertIn("no radar here", MD.render(SCENE))
@@ -285,10 +289,10 @@ class ItStaysSmall(unittest.TestCase):
         css = h.split("<style>")[1].split("</style>")[0]
         self.assertLess(len(css.encode()), 3000, len(css.encode()))
 
-    def test_a_run_of_identical_cells_is_one_span_not_many(self):
+    def test_a_run_of_identical_cells_is_one_box_not_many(self):
         """The mechanism the ratio depends on, measured directly -- a ratio
         test alone would pass on a small scene and fail in production."""
-        self.assertEqual(MD.paint(["········"]).count("<span"), 1)
+        self.assertEqual(MD.paint(["········"]).count("<i "), 1)
 
     def test_nothing_is_fetched_from_anywhere(self):
         """ONE request is the product. An external font or stylesheet would

@@ -77,17 +77,11 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .sub{color:var(--dim);font-size:.8rem;margin:0 0 1rem}
 .now{font-size:1.05rem;margin:0 0 .3rem}
 .say{margin:0 0 1.1rem}
-.map{overflow-x:auto;border:1px solid var(--line);border-radius:10px;padding:.6rem .7rem;margin:0 0 .5rem}
-/* letter-spacing put a white gutter between every cell once the cells became
-   solid blocks -- it was there to loosen the old dotted glyphs. And a 48-column
-   grid at a fixed size is 576px, so on a 390px phone the east half of the map
-   was simply off-screen behind a scrollbar: the reader could not see the rain
-   coming. The size is derived from the grid's own column count, which the page
-   writes into --cols, so a 24-column small map is not shrunk for nothing. 0.6em
-   is the advance width of a monospace cell. */
-.map pre{margin:0;white-space:pre;letter-spacing:0;line-height:1.02;
-font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-font-size:min(13px, calc((100vw - 3.6rem) / var(--cols) / 0.6))}
+.map{border:1px solid var(--line);border-radius:10px;padding:.5rem;margin:0 0 .5rem}
+.grid{display:flex;flex-direction:column;width:100%%}
+.grid .row{flex:1;display:flex}
+.grid .row i{display:block}
+
 .curve pre{margin:0;white-space:pre;overflow-x:auto;color:#4aa3df;
 font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .curve .axis{color:var(--dim);font-size:12px}
@@ -96,12 +90,14 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 /* The marker used to be dark text on a yellow chip. Once every cell became a
    solid block, the dark colour painted the whole cell and "you are here" read
    as a hole punched in the map. It is now a colour no rain level uses. */
-.me{color:#7b3fe4}
-.r0{color:transparent}
-.r1{color:#4aa3df;opacity:.45}.r2{color:#3fb56b}.r3{color:#e0c341}.r4{color:#e08b3f}.r5{color:#d64545}
-.rq{color:var(--line);opacity:.5}
+.me{background:#7b3fe4}
+.r0{background:transparent}
+.r1{background:#b9dcf2}.r2{background:#3fb56b}.r3{background:#e0c341}
+.r4{background:#e08b3f}.r5{background:#d64545}
+.rq{background:var(--line)}
+.legend i{width:.85rem;height:.85rem;border-radius:2px;display:inline-block;
+vertical-align:-.12rem}
 .legend{display:flex;gap:.7rem;flex-wrap:wrap;color:var(--dim);font-size:.75rem;margin:0 0 1rem}
-.legend i{font-style:normal;font-family:ui-monospace,monospace}
 .meta{color:var(--dim);font-size:.75rem;border-top:1px solid var(--line);padding-top:.6rem}
 .meta div{margin:.15rem 0}
 </style>
@@ -115,26 +111,37 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 
 def paint(lines, marker="><"):
-    """Colour the grid, one span per RUN of identical characters."""
+    """The grid as boxes, not text. One box per RUN of identical cells.
+
+    8/13, bob's third round: "还是只能看到左半边的雷达图，能不能强制半角?" Even with
+    every cell drawn as U+2588, his phone renders that glyph from a CJK
+    fallback where it is FULL width, so 48 columns are twice as wide as the
+    arithmetic assumed and half the map is off-screen. Sizing text by
+    calculation only works if you know which font will draw it, and from here
+    I never do -- that is the third font surprise in one hour.
+
+    So no glyphs at all. Each row is a flex line, each run a box with
+    `flex: <n>`, and the whole grid carries the aspect ratio. Widths are then
+    fractions of the container, which no font can argue with, and the page
+    gets smaller because the cells have no content.
+    """
     out = []
     for ln in lines:
         buf, i = [], 0
         while i < len(ln):
             if ln[i:i + len(marker)] == marker:
-                buf.append('<span class="me">%s</span>'
-                           % ("\u2588" * len(marker)))
+                buf.append('<i class="me" style="flex:%d"></i>' % len(marker))
                 i += len(marker)
                 continue
             ch = ln[i]
             j = i
             while j < len(ln) and ln[j] == ch and ln[j:j + len(marker)] != marker:
                 j += 1
-            cls = CLASS.get(ch)
-            run = html.escape(CELL_GLYPH.get(ch, ch) * (j - i))
-            buf.append('<span class="%s">%s</span>' % (cls, run) if cls else run)
+            buf.append('<i class="%s" style="flex:%d"></i>'
+                       % (CLASS.get(ch, "r0"), j - i))
             i = j
-        out.append("".join(buf))
-    return "\n".join(out)
+        out.append('<div class="row">%s</div>' % "".join(buf))
+    return "".join(out)
 
 
 def render(text, marker="><"):
@@ -210,14 +217,14 @@ def render(text, marker="><"):
     extra = []
     here = next((m.split("]=", 1)[1] for m in meta if "]=" in m), "")
     if grid and here:
-        extra.append('<span><i class="me">\u2588</i> %s</span>'
+        extra.append('<span><i class="me"></i> %s</span>'
                      % html.escape(here.split(",")[0]))
     if any("?" in r for r in grid):
-        extra.append('<span><i class="rq">\u2588</i> %s</span>'
+        extra.append('<span><i class="rq"></i> %s</span>'
                      % html.escape(_NO_COVER))
     legend = " ".join(
-        ['<span><i class="%s">%s</i> %s</span>'
-         % (CLASS[c], CELL_GLYPH.get(c, c), html.escape(n)) for c, n in pairs]
+        ['<span><i class="%s"></i> %s</span>'
+         % (CLASS[c], html.escape(n)) for c, n in pairs]
         + extra)
     # A scene that is still fetching has no conditions line, no forecast
     # sentence, no curve and no grid -- and my first page rendered that as two
@@ -235,9 +242,9 @@ def render(text, marker="><"):
         head += ('<p class="say">%s</p>\n'
                  % html.escape(why or "no reading yet"))
     blocks = {
-        "map": ('<div class="map" style="--cols:%d"><pre>%s</pre></div>\n'
-                '<p class="legend">%s</p>\n'
-                % (max((len(r) for r in grid), default=48),
+        "map": ('<div class="map"><div class="grid" style="aspect-ratio:%d/%d">'
+                '%s</div></div>\n<p class="legend">%s</p>\n'
+                % (max((len(r) for r in grid), default=48), len(grid),
                    paint(grid, marker), legend)) if grid else "",
         "curve": ('<div class="curve"><h2>next 2 hours</h2><pre>%s</pre></div>\n'
                   % html.escape("\n".join(curve))) if curve else "",
