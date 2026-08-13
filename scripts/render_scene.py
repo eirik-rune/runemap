@@ -604,9 +604,14 @@ _FETCH_CLAUSE = {
         "ja": "\u4e0a\u6d41\u304c\u30d5\u30ec\u30fc\u30e0\u3092\u8fd4\u3055\u305a",
     },
     "cooldown": {
-        "en": "upstream refused us; waiting",
-        "zh": "\u4e0a\u6e38\u521a\u62d2\u7edd, \u7a0d\u540e\u518d\u95ee",
-        "ja": "\u4e0a\u6d41\u306b\u62d2\u5426\u3055\u308c\u5f85\u6a5f\u4e2d",
+        # bob 8/13: "failed is not refused". The only branch that sets _RA_FAIL
+        # is `if not imgs` -- upstream answered and the list was empty. Refusal
+        # would mean it has frames and withholds them, which we cannot see. So:
+        # subject us, predicate verifiable, no motive attributed to anyone.
+        # (I reported this fix once before making it. The string is the record.)
+        "en": "our last ask got no frames; waiting",
+        "zh": "\u4e0a\u6b21\u95ee\u6ca1\u62ff\u5230\u5e27, \u7a0d\u540e\u518d\u95ee",
+        "ja": "\u524d\u56de\u306f\u30d5\u30ec\u30fc\u30e0\u3092\u5f97\u3089\u308c\u305a\u5f85\u6a5f\u4e2d",
     },
     "render-failed": {
         "en": "we had frames but could not draw",
@@ -981,9 +986,18 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
         note_reason("cooldown")
         sys.stderr.write("FETCHING-REASON reason=cooldown key=%.1f,%.1f waited=0.00\n"
                          % (key[0], key[1]))
-        # A sky that just refused us: still state 2 (we are not sure it is
-        # "never"), but do not hammer the upstream once per request while we
-        # make up our mind.
+        # A sky whose last ask got nothing: still state 2 (we are not sure it
+        # is "never"), and we will not hammer the upstream once per request
+        # while we make up our mind. But the reader is still standing here with
+        # no map, so the second source gets asked on THIS path too. Measured in
+        # production 07:51: sao paulo spends much of its time in this branch,
+        # and wiring the fallback only at the bottom of the function meant it
+        # was reached on some requests and not others -- two probes a second
+        # apart, one drew and one did not.
+        alt = _second_source(code, lng, lat, small)
+        if alt is not None:
+            note_reason(None)
+            return STATE_OK, alt
         return STATE_FETCHING, None
 
     # Each way out of _from_cache is a DIFFERENT fact about this sky, and they

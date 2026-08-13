@@ -154,3 +154,23 @@ class TheChainTriesInOrderAndFallsThrough(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheCooldownPathAsksToo(unittest.TestCase):
+    """A sky whose last ask got nothing spends most of its life in the cooldown
+    branch, which returned before the fallback was ever consulted. Measured in
+    production: two probes a second apart, one drew and one did not."""
+
+    def test_every_no_map_return_consults_the_second_source(self):
+        import re
+        src = open(os.path.join(os.path.dirname(__file__), "..", "scripts",
+                                "render_scene.py"), encoding="utf-8").read()
+        body = src[src.index("def radar_resolve("):src.index("_WX_LOCK = threading.Lock()")]
+        returns = [m.start() for m in re.finditer(r"return STATE_FETCHING, None", body)]
+        self.assertTrue(returns, "no such return: this guard has lost its subject")
+        for at in returns:
+            window = body[max(0, at - 700):at]
+            self.assertIn("_second_source(", window,
+                          "a 'no map' return with no fallback above it: the "
+                          "reader on this path gets a sentence while another "
+                          "path gets rain")
