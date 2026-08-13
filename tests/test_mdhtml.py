@@ -48,8 +48,16 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         self.assertIn("After one hour the rain stops", self.h)
 
     def test_the_rain_curve_survives(self):
-        self.assertIn("▁▂▄█▆▃▁", self.h)
+        """As bars now, for the same reason the map is boxes: the eighth-block
+        characters are missing from some phone fonts, and where they are
+        missing the curve does not degrade -- it disappears, which is what bob
+        saw. Its SHAPE is what has to survive, so this checks one bar per
+        bucket with heights in the source's proportions."""
+        import re as _re
         self.assertIn("peaks in 30 min", self.h)
+        heights = [int(x) for x in _re.findall(r"height:(\d+)%", self.h)]
+        self.assertEqual(len(heights), len("▁▂▄█▆▃▁"))
+        self.assertEqual(heights, [12, 25, 50, 100, 75, 37, 12])
 
     def test_the_conditions_line_survives(self):
         self.assertIn("CLEAR_DAY", self.h)
@@ -90,6 +98,10 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
             # Grid rows are drawn with one glyph per cell (see CELL_GLYPH):
             # the substitution is deliberate and stated, so the needle is
             # translated the same way rather than the map being exempted.
+            if s.startswith("\u2581") or set(s) <= set("\u2581\u2582\u2583"
+                                                       "\u2584\u2585\u2586"
+                                                       "\u2587\u2588 "):
+                continue        # bars, checked by shape in test_the_rain_curve
             frag = html.escape(" ".join(words[:3]))
             # Only GRID rows are redrawn cell-by-cell. Translating every needle
             # was wrong the moment the space became a cell glyph too: it turned
@@ -144,6 +156,18 @@ class TheGridIsBoxesNotText(unittest.TestCase):
     def test_the_marker_is_a_cell_of_its_own(self):
         painted = MD.paint(["··><··"])
         self.assertIn('class="me" style="flex:2"', painted)
+
+    def test_a_row_of_clear_sky_is_still_a_row(self):
+        """The bug this catches deleted most of London's map and only in calm
+        weather: a row with no rain is 48 spaces, and dropping "blank" lines
+        turned a 48x24 grid into 26x12. The failure was invisible on any city
+        that happened to be wet -- which is every city I had looked at."""
+        rows = ["·" * 8] + [" " * 8] * 3 + ["·" * 8]
+        scene = ("# X weather scene\n~6km/char, [><]=X\n"
+                 + "\n".join(rows) + "\n= echo motion: n/a\n")
+        h = MD.render(scene)
+        self.assertIn("aspect-ratio:8/5", h)
+        self.assertEqual(h.count('class="row"'), 5)
 
     def test_the_grid_states_its_aspect_ratio(self):
         """Without it the boxes have no height and the map is invisible -- and

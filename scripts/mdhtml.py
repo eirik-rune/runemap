@@ -59,6 +59,14 @@ _META = re.compile(r"^(radar|data|~|\[|obs|=)")
 # thing is the page arguing with itself. Looking at the render is what showed
 # it; the parser was happily filing it as provenance.
 _NO_COVER = "no radar here"
+
+# U+2581..U+2588, the eighth-blocks the curve is drawn with. Same trap as the
+# map: they are not in every phone's fonts, and where they are missing the
+# curve does not degrade -- it disappears, which is what bob saw. So the page
+# turns them into bars whose heights are fractions of a box, and the tick line
+# (which is box-drawing characters, the same risk again) into plain labels.
+BARS = {chr(0x2580 + n): n for n in range(1, 9)}
+_GRID_CHARS = set(RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")
 _DROP = re.compile(r"^(legend|\u56fe\u4f8b|\u51e1\u4f8b)\s*:")
 
 PAGE = """<!doctype html>
@@ -82,9 +90,12 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .grid .row{flex:1;display:flex}
 .grid .row i{display:block}
 
-.curve pre{margin:0;white-space:pre;overflow-x:auto;color:#4aa3df;
-font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.curve .axis{color:var(--dim);font-size:12px}
+.curve .bars{display:flex;align-items:flex-end;gap:1px;height:2.6rem;
+border-bottom:1px solid var(--line)}
+.curve .bars i{flex:1;background:#4aa3df;border-radius:1px 1px 0 0;min-height:1px}
+.curve .axis{display:flex;justify-content:space-between;color:var(--dim);
+font-size:.7rem;margin-top:.15rem}
+.curve .flat{margin:0;color:var(--dim);font-size:.85rem}
 .curve h2{font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 .3rem}
 .curve{margin:0 0 1.1rem}
 /* The marker used to be dark text on a yellow chip. Once every cell became a
@@ -144,6 +155,40 @@ def paint(lines, marker="><"):
     return "".join(out)
 
 
+def _curve_html(lines):
+    """The 2h rain curve as bars, for the same reason the map is boxes."""
+    bars, labels, words = [], [], []
+    for ln in lines:
+        hits = [BARS[c] for c in ln if c in BARS]
+        if hits and len(hits) > len(bars):
+            bars = hits
+            continue
+        if set(ln.strip()) <= set("\u2500\u251c\u252c\u2524\u253c "):
+            continue                      # the tick line: characters again
+        if ln.strip():
+            words.append(ln.strip())
+    for w in words:
+        # "0   30   60   90 120min" -> the labels, kept in the document's own
+        # words (that trailing "min" is the unit, and it is not mine to invent)
+        if any(ch.isdigit() for ch in w):
+            labels = w.split()
+    if not bars:
+        # No bars at all is a real answer -- "no precipitation expected" -- and
+        # it must be shown, not silently dropped.
+        return ('<div class="curve"><h2>next 2 hours</h2><p class="flat">%s</p>'
+                '</div>\n' % html.escape(" ".join(words))) if words else ""
+    cells = "".join('<i style="height:%d%%"></i>' % (100 * b // 8)
+                    for b in bars)
+    axis = ("".join('<span>%s</span>' % html.escape(t) for t in labels)
+            if labels else "")
+    # Any prose on the curve line ("peaks in 30 min") is the most useful part
+    # of it and must not be dropped for the sake of the picture.
+    note = ('<p class="flat">%s</p>' % html.escape(" ".join(words))) if words else ""
+    return ('<div class="curve"><h2>next 2 hours</h2>%s'
+            '<div class="bars">%s</div><div class="axis">%s</div></div>\n'
+            % (note, cells, axis))
+
+
 def render(text, marker="><"):
     place = when = now = say = ""
     meta, grid, curve, pairs = [], [], [], []
@@ -153,8 +198,31 @@ def render(text, marker="><"):
     # was met first is recorded here and the page follows it.
     order = []
     in_curve = False
-    for s in text.split("\n"):
-        s = s.rstrip()
+    # A grid row that is entirely empty sky is entirely spaces, and rstrip()
+    # turned it into "" -- which the loop then skipped. London's map collapsed
+    # from 24 rows to 1 and the aspect ratio said 26/1: the map was not wrong,
+    # it was *deleted*, and only in the calmest weather. So while the grid is
+    # being read, a blank line is a row.
+    in_grid = False
+    for raw in text.split("\n"):
+        s = raw.rstrip()
+        # The grid starts on the line after the scale line ("~4km/char,
+        # [><]=London"), which is the document's own marker for it, and runs
+        # until something that is not grid-shaped. Deciding row by row on
+        # content alone loses the empty ones: a row of clear sky is 48 spaces,
+        # rstrip() makes it "", and London's map collapsed from 24 rows to 1 --
+        # the map was not wrong, it was deleted, and only in calm weather.
+        if in_grid:
+            if not raw.strip() or set(raw.rstrip("\n")) <= _GRID_CHARS:
+                grid.append(raw.rstrip("\n"))
+                if "map" not in order:
+                    order.append("map")
+                continue
+            in_grid = False
+        if s.startswith("~") and "km/char" in s:
+            in_grid = True
+            meta.append(s)
+            continue
         if s.startswith("# ") and not place:
             place = s[2:].replace(" weather scene", "")
             continue
@@ -196,11 +264,7 @@ def render(text, marker="><"):
         if _META.match(s):
             meta.append(s.strip())
             continue
-        if s and set(s) <= set(RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "):
-            grid.append(s)
-            if "map" not in order:
-                order.append("map")
-            continue
+
         if s.strip() and not say:
             # Any remaining prose is the forecast sentence. Matching on "Over
             # the next" lost it the moment the wording became "After one hour",
@@ -241,13 +305,17 @@ def render(text, marker="><"):
         why = next((m for m in meta if m.startswith("radar")), "")
         head += ('<p class="say">%s</p>\n'
                  % html.escape(why or "no reading yet"))
+    # Rows arrive rstripped of nothing but the newline, yet a source row may
+    # still be short; pad so every row has the same number of cells, or the
+    # flex weights describe a ragged grid.
+    _w = max((len(r) for r in grid), default=48)
+    grid = [r.ljust(_w) for r in grid]
     blocks = {
         "map": ('<div class="map"><div class="grid" style="aspect-ratio:%d/%d">'
                 '%s</div></div>\n<p class="legend">%s</p>\n'
-                % (max((len(r) for r in grid), default=48), len(grid),
+                % (_w, len(grid),
                    paint(grid, marker), legend)) if grid else "",
-        "curve": ('<div class="curve"><h2>next 2 hours</h2><pre>%s</pre></div>\n'
-                  % html.escape("\n".join(curve))) if curve else "",
+        "curve": _curve_html(curve) if curve else "",
     }
     return PAGE % {
         "title": html.escape(place.split(",")[0] or "runemap"),
