@@ -984,6 +984,47 @@ def _second_source(code, lng, lat, small):
     return None
 
 
+def _fresher_of(hit, code, lng, lat, small):
+    """Let a national radar win when the primary's frame has gone stale.
+
+    Until now the chain only ran when the primary had NOTHING, and the cost of
+    that showed up the hour Germany shipped: Berlin was served a frame 46
+    minutes old, correctly labelled stale, while a German radar frame 0 minutes
+    old sat one function call away. "Has a frame" and "has a frame worth
+    showing" are not the same question, and answering the first was serving the
+    reader the older sky on purpose.
+
+    The threshold is RADAR_STALE_MIN, the age at which we already tell the
+    reader this picture may be a cell out of date -- so the rule reads: once we
+    would warn them, prefer anyone fresher. Below it the primary still wins
+    outright and nothing is asked, which keeps this off the fast path.
+    """
+    try:
+        rb = hit[1]
+        if not rb or len(rb) < 5 or rb[4] is None:
+            # A payload with no observation time is not an error and must not
+            # be logged as one: it is simply a shape this comparison cannot
+            # judge, so the primary keeps the reader.
+            return hit
+        base_ts = rb[4]
+        age = time.time() - float(base_ts)
+        if age <= RADAR_STALE_MIN * 60:
+            return hit
+        alt = _second_source(code, lng, lat, small)
+        if alt is None or float(alt[4]) <= float(base_ts):
+            return hit
+        sys.stderr.write("SECOND-FRESHER %s primary_age=%.0fmin second_age=%.0fmin\n"
+                         % (alt[5] if len(alt) > 5 else "?", age / 60.0,
+                            (time.time() - float(alt[4])) / 60.0))
+        note_reason(None)
+        return STATE_OK, alt
+    except Exception as e:
+        # A comparison that throws must cost the reader nothing: they already
+        # have a map in hand.
+        sys.stderr.write("SECOND-FRESHER-FAILED %r\n" % (e,))
+        return hit
+
+
 def radar_resolve(code, lng, lat, token, small=False, wait=None):
     """(state, payload) -- this thread opens no socket and joins no thread.
 
@@ -1054,7 +1095,7 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
 
     hit = _from_cache()
     if hit is not None:
-        return hit
+        return _fresher_of(hit, code, lng, lat, small)
 
     ev = _radar_start(key, lng, lat, token)
     # How long is worth waiting depends on what waiting can buy.

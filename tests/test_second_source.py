@@ -201,3 +201,55 @@ class TheCreditIsDerivedNotRestated(unittest.TestCase):
         s = next(x for x in radar_wms.SERVICES if x["key"] == "fi-fmi")
         b = body((ART, 12.0, 1.0, None, 1.0, s["name"]))
         self.assertIn("radar-data: " + s["attrib"], b)
+
+
+class AStaleFrameLosesToAFresherRadar(unittest.TestCase):
+    """The hour Germany shipped, Berlin was served a 46-minute-old frame,
+    correctly labelled stale, while a 0-minute German radar frame sat one call
+    away. "Has a frame" and "has a frame worth showing" are different
+    questions, and answering the first served the older sky on purpose."""
+
+    def setUp(self):
+        self._was = RS._second_source
+
+    def tearDown(self):
+        RS._second_source = self._was
+
+    def _hit(self, age_min):
+        import time
+        ts = time.time() - age_min * 60
+        return (RS.STATE_OK, (ART, 12.0, ts, None, ts))
+
+    def _second(self, age_min, name="DWD"):
+        import time
+        ts = time.time() - age_min * 60
+        RS._second_source = lambda *a, **k: (ART, 12.0, ts, None, ts, name)
+
+    def test_a_fresh_primary_never_asks(self):
+        asked = []
+        RS._second_source = lambda *a, **k: asked.append(1)
+        got = RS._fresher_of(self._hit(3), "><", 13.4, 52.5, False)
+        self.assertEqual(asked, [], "the fast path must not pay for this")
+        self.assertEqual(len(got[1]), 5)
+
+    def test_a_stale_primary_yields_to_a_fresher_source(self):
+        self._second(0)
+        got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertEqual(got[1][5], "DWD")
+
+    def test_a_stale_primary_keeps_its_map_if_the_second_is_older(self):
+        """The control that stops this from becoming 'the fallback always
+        wins': older is older, whoever it belongs to."""
+        self._second(90)
+        got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertEqual(len(got[1]), 5, "we took an older frame")
+
+    def test_no_second_source_leaves_the_reader_their_map(self):
+        RS._second_source = lambda *a, **k: None
+        got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertEqual(len(got[1]), 5)
+
+    def test_a_comparison_that_throws_costs_the_reader_nothing(self):
+        RS._second_source = lambda *a, **k: (_ for _ in ()).throw(IOError("boom"))
+        got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertEqual(len(got[1]), 5)
