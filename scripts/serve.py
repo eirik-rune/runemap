@@ -9,6 +9,15 @@ from urllib.parse import urlparse, parse_qs, unquote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_at as SA          # installs the radar cache layer on render_scene._get
 import render_scene as R
+# 8/13 02:12: the line below used to grep for the English bytes b"legend:", so a
+# reader of /london/zh received a map AND was logged as nogrid (that page's legend
+# reads 图例, the ja one 凡例) -- the instrument under-counted the readers this
+# product exists for. The language-independent token is the ramp itself, which every
+# legend line carries, and it is DERIVED from runemap.render.RAMP so the classifier
+# and the renderer cannot drift apart. RAMP[0] is the space that means 'no rain':
+# including it would match every page ever served, so the slice starts at 1.
+from runemap.render import RAMP as _RAMP
+_RAIN_GLYPHS = tuple(c.encode("utf-8") for c in _RAMP[1:])
 import net_budget
 
 import wall as _wall
@@ -214,7 +223,7 @@ class H(BaseHTTPRequestHandler):
             # have nothing to do with radar. `code` was in this function all
             # along, so the information existed and I was dropping it.
             v = ("error" if code != 200 else
-                 "grid" if b"legend:" in b else
+                 "grid" if any(g in b for g in _RAIN_GLYPHS) else
                  "landing" if b.startswith(b"echorune - text radar map") else "nogrid")
             self.send_header("X-Radar-Grid", v)
             # 8/12 19:02: "no map" and "why" used to live in two different files
