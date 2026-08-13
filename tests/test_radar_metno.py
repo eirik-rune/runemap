@@ -7,6 +7,7 @@ copied here literally.
 """
 import os
 import sys
+import time
 import unittest
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -33,13 +34,21 @@ def fixture():
         return fh.read()
 
 
-def dods(rows, cols, dbz_value=20.0, nodata=0, when=1786648800):
+def dods(rows, cols, dbz_value=20.0, nodata=0, when=None):
     """Build a DODS ascii response of a given shape.
 
     A format fixture, not a claim about the weather: the real captured response
     in `fixtures_metno_ascii.txt` is 3x3, and the fast-path test needs one that
     matches a full reader window.
+
+    `when` defaults to a few minutes ago rather than to a literal stamp. The
+    first version hard-coded the evening it was written, so `draw()` rejected
+    it as too old exactly one hour later -- a test that only passes inside a
+    window of wall-clock time, and one that would have gone red in CI the next
+    day no matter what the code did. Age is not what this fixture is for.
     """
+    if when is None:
+        when = int(time.time()) - 600
     def block(var, val):
         out = ["%s.%s[1][%d][%d]" % (var, var, rows, cols)]
         for j in range(rows):
