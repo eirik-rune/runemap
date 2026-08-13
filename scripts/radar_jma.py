@@ -90,11 +90,26 @@ def covers(lng, lat):
     return any(s <= lat <= n and w <= lng <= e for s, w, n, e in COVERAGE)
 
 
-def _times():
+def _times(cached_only=False):
+    """The frame index, from memory when it is fresh enough.
+
+    `cached_only` has to reach this far down. The tile cache alone is not the
+    whole third party: this index is a second request to jma.go.jp, measured at
+    0.57s, and with a 120s TTL roughly half the readers arriving on a cold
+    scene were paying it -- on their own thread, for an upgrade to a map they
+    already had. That is the same rule the tile gate exists for, applied one
+    call earlier, and it is the half I missed the first time: the median cold
+    render went from 0.9s to 1.4s and the tile gate could not explain it.
+
+    When we decline, the background warm still fetches it, so the next reader
+    finds it in memory rather than nobody ever fetching it.
+    """
     now = time.time()
     with _LOCK:
         if _INDEX["v"] is not None and now - _INDEX["at"] < INDEX_TTL:
             return _INDEX["v"]
+        if cached_only:
+            return None
     try:
         v = json.loads(urllib.request.urlopen(TIMES_URL, timeout=8).read())
     except Exception as e:
@@ -106,13 +121,13 @@ def _times():
         return v
 
 
-def observed_frame(times=None):
+def observed_frame(times=None, cached_only=False):
     """-> (unix ts, basetime string) for the newest OBSERVED frame, or (None, None).
 
     `validtime == basetime` is the observation; anything else in this file is a
     forecast step, which is both a different promise and a regulated one.
     """
-    ts_list = times if times is not None else _times()
+    ts_list = times if times is not None else _times(cached_only=cached_only)
     if not ts_list:
         return None, None
     obs = [t for t in ts_list if t.get("basetime") == t.get("validtime")]
@@ -174,7 +189,7 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None."""
     if not covers(lng, lat):
         return None
-    ts, bt = observed_frame()
+    ts, bt = observed_frame(cached_only=cached_only)
     if ts is None:
         return None
     p = _cache_path(lng, lat, bt)
