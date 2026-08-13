@@ -121,6 +121,7 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 | Canada | ECCC GeoMet | `Environment and Climate Change Canada geo.weather.gc.ca` | 0.7s |
 | Finland | FMI | `Finnish Meteorological Institute en.ilmatieteenlaitos.fi` | 6 km/char; 1.8s cold, 0.20-0.35s cached |
 | Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
+| Sweden | SMHI national composite (GeoTIFF, values not colours) | `SMHI opendata.smhi.se, CC BY 4.0` | dBZ from their own HDF5 gain/offset; UTM 33N projected here |
 | Germany | DWD WN analysis | `Datenbasis: Deutscher Wetterdienst, Raster veraendert` | dBZ palette from their SLD; declines a window >25% no-data |
 | Mumbai | **nothing** | -- | RainViewer is non-commercial and has no paid tier to buy (their support, 2026-08-13); IMD's images have no published geographic extent |
 
@@ -150,6 +151,65 @@ Two things followed:
   separately requires indicating changes. A PNG turned into a character grid is
   exactly that, so every drawn map now also carries
   `radar-data-note: redrawn from the source frames as a text grid`.
+
+### Sweden (SMHI) -- the first source that hands us values instead of colours
+
+Every other row makes us work out what a picture's colours mean. SMHI's
+open-data file API publishes the national composite as a single-band GeoTIFF
+whose pixels *are* reflectivity, and the companion ODIM HDF5 of the same frame
+states the scale in its own attributes:
+
+    /dataset1/data1/what: quantity=DBZH, gain=0.4, offset=-30.0,
+                          undetect=0.0, nodata=255.0
+
+so `dBZ = 0.4 * DN - 30`. `ops/smhi_scale.py` re-reads those attributes and
+exits non-zero if any of them move -- fired by pretending our gain had drifted
+to 0.5. A constant copied out of a file is a constant that can rot, and a wrong
+gain does not break anything: the map still draws, in the wrong intensity,
+looking entirely normal.
+
+`undetect` and `nodata` are kept apart all the way to the character grid:
+"looked, saw nothing" renders blank, "did not look here" renders `?`, and a
+window more than 25% nodata is declined outright. Measured over Oslo: 48%
+blind, declined -- which is what actually bounds the coverage, not the
+rectangle.
+
+The dBZ bands are **the same ones the German row uses** (19 / 28 / 37 / 46).
+dBZ is physical, so one intensity has to draw one character whether the radar
+is German or Swedish; per-source thresholds would make the scale depend on
+which country the reader is standing in.
+
+Licence: Creative Commons Attribution 4.0 SE, from SMHI's own terms page --
+commercial use permitted, source must be named and modification indicated. Both
+are printed, the second through the shared `radar-data-note` line.
+
+The awkward part is the projection: the GeoTIFF is UTM zone 33 North, stated by
+its own GeoKeys (3074 = 16033, 3076 = 9001 metres) and asserted rather than
+assumed. `ops/utm.py` projects the reader, and its control is external -- SMHI
+publishes four corner latitudes and longitudes in the HDF5, computed on an
+entirely different grid (polar stereographic, 2 km). Every published corner
+lands inside the GeoTIFF within a few cells, and the box they bound is the
+raster to within 10 cells. A wrong zone is a hundred cells out, asserted
+separately so the control is known to be able to fail.
+
+Two things stated rather than smoothed over: the first version of the
+containment test claimed one grid was a strict bounding box of the other and
+failed by 8 cells at the north-east corner -- that is the rotation, not an
+error, and the claim was rewritten rather than the tolerance widened to fit.
+And the health probe caught `ModuleNotFoundError: runemap` on its first run, a
+packaging fault 331 green tests could not see because they all ran with the
+repo root importable, which is not a path a reader stands on.
+
+One file serves the whole country, so this fetches once per refresh cycle for
+every Swedish reader rather than once per sky. Measured: 0.84s cold for the
+22 KB GeoTIFF, 0.01-0.15s to window it, 13 minutes old at the probe.
+
+**Not used**: `wts.smhi.se` is also a WMS and carries the same composite, but
+its layer list mixes openly-licensed layers with ones whose names literally
+contain `officialuseonly`, while the service-level `AccessConstraints` says
+nothing at all. A service-level silence does not grant what a layer name
+refuses, so the file API -- which is unambiguously the documented open-data
+product -- is what ships.
 
 ### Measured, deliberately not shipped
 

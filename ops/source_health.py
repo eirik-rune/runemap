@@ -58,6 +58,7 @@ PROBES = [
     ("wms-calgary", "radar_wms", (-114.07, 51.05), 900, "Environment Canada"),
     ("wms-helsinki", "radar_wms", (24.94, 60.17), 900, "FMI"),
     ("wms-berlin", "radar_wms", (13.40, 52.52), 900, "DWD"),
+    ("smhi-stockholm", "radar_smhi", (18.07, 59.33), 1800, "SMHI"),
     ("redemet-saopaulo", "radar_redemet", (-46.63, -23.55), None, "REDEMET/DECEA"),
 ]
 
