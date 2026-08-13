@@ -253,3 +253,43 @@ class AStaleFrameLosesToAFresherRadar(unittest.TestCase):
         RS._second_source = lambda *a, **k: (_ for _ in ()).throw(IOError("boom"))
         got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
         self.assertEqual(len(got[1]), 5)
+
+
+class NamingTheSourceIsNotTheWholeObligation(unittest.TestCase):
+    """Eirik read DWD's licence pages after Germany shipped: their template
+    (vorlagen_quellenangabe.html, section 7 DWD-Gesetz) requires a source note
+    even for a change of data format, and CC BY 4.0 separately requires that
+    changes be indicated. We had the mention and not the change notice."""
+
+    def test_dwd_is_credited_in_the_form_its_licence_asks_for(self):
+        import radar_wms
+        s = next(x for x in radar_wms.SERVICES if x["key"] == "de-dwd-wn")
+        self.assertIn("Deutscher Wetterdienst", s["attrib"])
+        self.assertIn("veraendert", s["attrib"])
+
+    def test_every_drawn_map_says_it_was_redrawn(self):
+        for name in ("DWD", "FMI", "RainViewer", "REDEMET/DECEA"):
+            b = body((ART, 12.0, 1.0, None, 1.0, name))
+            self.assertIn("radar-data-note: redrawn", b, name)
+
+    def test_a_primary_map_carries_no_note(self):
+        """Absence stays informative: the primary drew this one, and we make no
+        claim about somebody else's licence on it."""
+        self.assertNotIn("radar-data-note", body((ART, 12.0, 1.0, None, 1.0)))
+
+    def test_the_note_has_its_own_token(self):
+        b = body((ART, 12.0, 1.0, None, 1.0, "DWD"))
+        self.assertEqual(len([l for l in b.split("\n") if l.startswith("radar:")]), 1)
+        self.assertEqual(len([l for l in b.split("\n")
+                              if l.startswith("radar-data:")]), 1)
+
+    def test_both_lines_fit_the_width_budget(self):
+        import unicodedata
+        cells = lambda s: sum(2 if unicodedata.east_asian_width(c) in ("W", "F")
+                              else 1 for c in s)
+        import radar_wms
+        for s in radar_wms.SERVICES:
+            b = body((ART, 12.0, 1.0, None, 1.0, s["name"]))
+            for line in b.split("\n"):
+                if line.startswith("radar-data"):
+                    self.assertLessEqual(cells(line), 79, line)
