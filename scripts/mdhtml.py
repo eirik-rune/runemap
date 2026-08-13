@@ -207,11 +207,18 @@ def _curve_html(lines, heading=""):
     an English caption over a Chinese page is the same defect as an English
     legend, one line up.
     """
-    bars, labels, words = [], [], []
+    bars, labels, words, width = [], [], [], 0
     for ln in lines:
-        hits = [BARS[c] for c in ln if c in BARS]
-        if hits and len(hits) > len(bars):
-            bars = hits
+        if ln.strip() and set(ln.rstrip()) <= _BAR_CHARS:
+            # EVERY position is a bucket. Taking only the characters that are
+            # bars dropped the gaps -- and in this chart a space is a bucket
+            # with no rain, so a 20-bucket line came out as 6 bars crowded at
+            # the left and every one of them at the wrong time. bob: "本来应该
+            # 是20个就变成六格了". The dropped character was not decoration, it
+            # was the value zero.
+            row = [BARS.get(c, 0) for c in ln.rstrip()]
+            if len(row) > len(bars):
+                bars = row
             continue
         if set(ln.strip()) <= set("\u2500\u251c\u252c\u2524\u253c "):
             continue                      # the tick line: characters again
@@ -231,6 +238,8 @@ def _curve_html(lines, heading=""):
         return ('<div class="curve"><h2>%s</h2><p class="flat">%s</p>'
                 '</div>\n' % (html.escape(heading or "next 2 hours"),
                               html.escape(" ".join(words)))) if words else ""
+    if width > len(bars):
+        bars = bars + [0] * (width - len(bars))
     cells = "".join('<i style="height:%d%%"></i>' % (100 * b // 8)
                     for b in bars)
     axis = ("".join('<span>%s</span>' % html.escape(t) for t in labels)

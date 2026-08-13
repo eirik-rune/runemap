@@ -128,8 +128,23 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         import re as _re
         self.assertIn("peaks in 30 min", self.h)
         heights = [int(x) for x in _re.findall(r"height:(\d+)%", self.h)]
-        self.assertEqual(len(heights), len("▁▂▄█▆▃▁"))
-        self.assertEqual(heights, [12, 25, 50, 100, 75, 37, 12])
+        # two leading spaces in the fixture are two dry buckets, and they are
+        # what puts the rest at the right time
+        self.assertEqual(len(heights), len("  ▁▂▄█▆▃▁"))
+        self.assertEqual(heights, [0, 0, 12, 25, 50, 100, 75, 37, 12])
+
+    def test_a_dry_bucket_is_a_bucket(self):
+        """A space in the curve is a bucket with no rain, not a character to
+        skip. Dropping them turned a 20-bucket line into 6 bars crowded at the
+        left, each at the wrong time -- bob saw it as the resolution dropping.
+        The dropped character was not decoration, it was the value zero."""
+        import re as _re
+        scene = SCENE.replace("  ▁▂▄█▆▃▁", "  ▁▂ █ ▃▁")
+        heights = [int(x) for x in
+                   _re.findall(r"height:(\d+)%", MD.render(scene))]
+        self.assertEqual(len(heights), 9)
+        self.assertEqual(heights[4], 0)     # the gap between ▂ and █
+        self.assertEqual(heights[6], 0)
 
     def test_the_curve_keeps_its_scale(self):
         """Bars with no axis look fine until you ask "0 to what?" -- and the
