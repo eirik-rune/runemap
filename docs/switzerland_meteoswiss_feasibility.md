@@ -1,8 +1,10 @@
 # Switzerland (MeteoSwiss) — measured feasibility, 2026-08-13
 
 Measured against the live service, not read off a description of it. Written
-before any adapter exists, because the expensive part of adding a country is
-the georeferencing proof and that part is *not* done here — everything else is.
+before any adapter exists. The expensive part of adding a country is the
+georeferencing proof; the projection half of that **is** done and verified here
+(`ops/somerc.py`), and the payload-layout half is **not**, for a reason that was
+measured rather than assumed.
 
 ## How it was found
 
@@ -101,14 +103,20 @@ built a whole self-consistent story on it. A first attempt here produced six
 many — and the tell was that **a frame I had already downloaded also answered
 403**. Positive control before alarm, every time.
 
-## The orientation control exists, and it is better than Norway's
+## The orientation control is named by the file, but is not usable yet
 
     how/nodes = WMO:06661,06699,06768,06726,06776
 
-Five radars, named by the file itself. This is the forgery-proof control that
-Norway's adapter still lacks: a product cannot fake where it is blind. Denmark's
-`dmi_orient.py` is the template — its check compares a flipped read against the
-real one and the wrong orientation is off by ~113 km.
+Five radars, named by the file itself — the forgery-proof control in principle,
+since a product cannot fake where it is blind. Denmark's `dmi_orient.py` is the
+template: it compares a flipped read against the real one, and there the wrong
+orientation is off by ~113 km.
+
+An earlier draft of this file said that made Switzerland's control *better than
+Norway's*. **Measurement says otherwise** — see the section below. Naming five
+radars is not the same as being able to locate them, and the mask here turns out
+to be too symmetric to orient the array on its own. The claim was written before
+the check was run, which is the habit this repo exists to break.
 
 One caveat carried forward from today: **do not resolve those WMO numbers
 through NOAA's `isd-history.csv`.** Tried for Norway this evening; it returned
@@ -118,40 +126,81 @@ row otherwise. The five Swiss sites (Albis, La Dôle, Monte Lema, Plaine Morte,
 Weissfluhgipfel) are well documented by swisstopo/MeteoSwiss and should come
 from a source that states them, not from a join that guesses.
 
-## What is NOT done: the projection
+## The projection — DONE, 2026-08-13 (`ops/somerc.py`)
 
-    +proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 +k_0=1
-    +x_0=2600000 +y_0=1200000 +ellps=bessel
-    +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs
+Written and verified against numbers this repo did not produce.
 
-Swiss oblique Mercator on the **Bessel** ellipsoid, with a three-parameter
-datum shift to WGS84. This is a genuinely new projection for this repo —
-`ops/stereo_oblique.py` (Denmark), `ops/utm.py` and `scripts/lcc.py` (Norway)
-do not cover it — and `pyproj` is not installed in production, so it has to be
-written and verified the way the others were.
+**swisstopo's own worked example** (Zimmerwald, WGS84 → LV95). Their answer is
+2602030.680 / 1191775.030; this module returns **7 cm east, 2 cm north** of it.
+The residual is their point's 947 m ellipsoidal height, which `forward()` takes
+as zero. The projection origin, fed as CH1903, lands on 2600000 / 1200000
+exactly.
 
-Two things make that tractable:
+**The file's four corners** project to a clean grid:
 
-* The file states its four corners, so the projection can be checked against
-  the file's own numbers rather than against my arithmetic:
+| corner | easting | northing |
+|---|---|---|
+| UL | 2255000.2 | 1480003.0 |
+| UR | 2964997.7 | 1480003.9 |
+| LR | 2964999.2 | 839997.4 |
+| LL | 2254999.9 | 839996.8 |
 
-      LL 43.6290, 3.16878     LR 43.6190, 11.95560
-      UL 49.3744, 2.68942     UR 49.3633, 12.46230
+Width 709 998 m against the declared 710 000; height 640 006 against 640 000.
+Agreement to ~6 m on a **1000 m** cell. The grid is therefore LV95
+`E 2255000 → 2965000`, `N 1480000 → 840000`, 710 × 640 at 1 km, with row 0 at
+the north — so `col = (E - 2255000)/1000`, `row = (1480000 - N)/1000`.
 
-  Projecting those four corners must produce a 710 × 640 km rectangle on a
-  1 km grid. That is a real check and it would catch a wrong ellipsoid, a wrong
-  origin or a flipped axis.
+The residual is not noise on my side: MeteoSwiss's corner latitudes sit far
+outside Switzerland (43.6–49.4 N, 2.7–12.5 E), where swisstopo's *approximate*
+formulas — likely what produced them — degrade to metres. Inside the country
+the agreement is centimetres, as the Zimmerwald check shows.
 
-* The datum shift must not be skipped silently. Ignoring `towgs84` on CH1903
-  displaces positions by enough to matter relative to a 1 km cell, and the
-  failure mode is the dangerous one: a scale-correct, fresh-stamped map with
-  the weather in slightly the wrong place. If the shift is approximated, the
-  approximation belongs in a comment with its measured error, not in silence.
+**The datum shift is applied and is not decoration.** `towgs84` is worth ~200 m
+here, a fifth of a cell: small enough to look right, large enough to put the
+weather in the wrong place. A test asserts that doing it and skipping it
+*disagree*, so the correction cannot quietly become a no-op.
 
-The corner check validates my arithmetic against the file's georeference. As
-with Norway, it **cannot** catch the data array being laid out differently from
-what the coordinates claim — both sides come from the same file. That is what
-`how/nodes` is for, and unlike Norway, here it is available on day one.
+`assert_proj4()` compares values rather than the string, refuses a projdef that
+merely *omits* a parameter rather than defaulting it, and every rejection is
+fired on a projdef built to earn it. The tests themselves were fired four ways:
+zeroing the datum shift, flipping the northing sign, and disabling either
+half of the projdef guard each turn the suite red.
+
+## What is NOT done: proving the payload is laid out as the coordinates claim
+
+The corner check validates my arithmetic against the file's georeference. Both
+sides come from the same file, so they agree whatever the payload does. The
+control that cannot be forged is the blind mask against the radar sites --
+Denmark's `dmi_orient.py`.
+
+**Attempted tonight, and it does not work here.** Two coordinate-free versions
+were tried and both are too weak to record as a check:
+
+* Centroid of the seen mask vs the centre of Switzerland: **35 km** as read,
+  **38 km** flipped. A ratio of 1.1 is not a judgement, it is a coin landing on
+  its edge.
+* Blind fraction by row band, which is nearly symmetric:
+
+      rows   0- 79  seen 39.1%      rows 560-639  seen 31.8%
+      rows  80-159  seen 78.2%      rows 480-559  seen 80.9%
+      rows 160-239  seen 94.5%      rows 400-479  seen 96.7%
+      rows 240-319  seen 99.4%      rows 320-399  seen 99.9%
+
+  An upside-down read produces almost the same profile.
+
+So the mask alone cannot orient this array, and a check built on it would print
+a verdict it had not earned -- the failure mode this repo keeps naming. It
+needs the five site positions, and those are **not yet in hand**: BALTRAD's
+ODIM registry lists only three of the five Swiss nodes (`chalb` Albis, `chdol`
+La Dôle, `chlem` Monte Lema; `06726` and `06776` are absent, the registry
+predates them) and carries no coordinates at all. Typing five well-known
+positions from memory is exactly what the Norway join punished tonight.
+
+**A second thing that could not be checked tonight:** every Swiss city read
+`0.000 mm/h` on the live frame, and so did Milan, Munich and Lyon. It was dry
+across the whole domain. That is consistent with our own service calling Zürich
+`CLEAR_NIGHT`, but it discriminates nothing -- when nothing is raining, the map
+looks the same however it is drawn. The end-to-end look has to wait for weather.
 
 ## Summary
 
@@ -163,5 +212,9 @@ what the coordinates claim — both sides come from the same file. That is what
 | cadence / latency | 5 min / under 2 min |
 | discovery | clock-derived names, both directions checked |
 | units | mm/h; needs MP inversion to reach the shared dBZ table |
-| projection | **not started** — somerc on Bessel, plus datum shift |
-| orientation control | available (`how/nodes`, 5 radars) |
+| projection | **done** — `ops/somerc.py`, 7 cm vs swisstopo, corners to 6 m |
+| datum shift | applied, and tested to be worth ~200 m rather than a no-op |
+| grid geometry | LV95 E 2255000→2965000, N 1480000→840000, row 0 north |
+| payload orientation | **open** — mask too symmetric (1.1×); needs the 5 site positions |
+| end-to-end look | **not possible yet** — the whole domain was dry tonight |
+| adapter | not written |
