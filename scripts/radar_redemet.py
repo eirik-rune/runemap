@@ -79,8 +79,14 @@ def pick(lng, lat, idx=None):
     return best[1] if best else None
 
 
-def draw(code, lng, lat, small=False):
-    """-> (art, km_per_col, ts, motion, base_ts, source) or None."""
+def draw(code, lng, lat, small=False, cached_only=False):
+    """-> (art, km_per_col, ts, motion, base_ts, source) or None.
+
+    cached_only is accepted and ignored: this adapter never touches the
+    network -- the frames arrive by ops/redemet_pull.py on a timer -- so it is
+    always already "cached". Accepting the argument rather than special-casing
+    the caller keeps the chain uniform.
+    """
     idx = _index()
     r = pick(lng, lat, idx)
     if r is None:

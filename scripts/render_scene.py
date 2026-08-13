@@ -955,7 +955,7 @@ def _radar_render(code, lng, lat, imgs, small):
 SECOND_SOURCE = os.environ.get("RUNEMAP_SECOND_SOURCE", "").strip()
 
 
-def _second_source(code, lng, lat, small):
+def _second_source(code, lng, lat, small, cached_only=False):
     """Never raises into the reader's path: a broken fallback must degrade to
     the sentence we already have, not to a 500."""
     if not SECOND_SOURCE:
@@ -977,13 +977,49 @@ def _second_source(code, lng, lat, small):
             else:
                 sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
                 continue
-            got = _m.draw(code, lng, lat, small)
+            try:
+                got = _m.draw(code, lng, lat, small, cached_only=cached_only)
+            except TypeError:
+                # An adapter that predates the flag still works; it just cannot
+                # promise to stay off the network, so it is only asked when we
+                # are allowed to wait.
+                if cached_only:
+                    continue
+                got = _m.draw(code, lng, lat, small)
             if got is not None:
                 return got
         except Exception as e:
             # One broken adapter must not take the rest of the chain with it.
             sys.stderr.write("SECOND-FAILED %s %r\n" % (which, e))
     return None
+
+
+_WARM_LOCK = threading.Lock()
+_WARMING = {}
+_WARM_EVERY = 120.0
+
+
+def _warm_second(code, lng, lat, small):
+    """Fetch the second source off this thread, so the NEXT reader gets it.
+
+    One warm per sky per _WARM_EVERY seconds: without that, every reader of a
+    stale sky starts their own fetch and we would have replaced one slow
+    request with a stampede.
+    """
+    key = (round(float(lat), 1), round(float(lng), 1))
+    now = time.time()
+    with _WARM_LOCK:
+        if now - _WARMING.get(key, 0.0) < _WARM_EVERY:
+            return
+        _WARMING[key] = now
+
+    def run():
+        try:
+            _second_source(code, lng, lat, small)
+        except Exception as e:
+            sys.stderr.write("SECOND-WARM-FAILED %r\n" % (e,))
+    t = threading.Thread(target=run, name="second-warm", daemon=True)
+    t.start()
 
 
 def _fresher_of(hit, code, lng, lat, small):
@@ -1012,8 +1048,17 @@ def _fresher_of(hit, code, lng, lat, small):
         age = time.time() - float(base_ts)
         if age <= RADAR_STALE_MIN * 60:
             return hit
-        alt = _second_source(code, lng, lat, small)
-        if alt is None or float(alt[4]) <= float(base_ts):
+        # Cached only: this reader already holds a map, and buying them a
+        # fresher one at the price of an upstream round trip is a trade nobody
+        # asked for. Measured on production after this shipped without the
+        # flag: mean probe latency 0.96s -> 1.66s, p99 6.7s, 9.3% of probes
+        # over the 3s product line against 4.1% before. The same file's own
+        # docstring says this thread opens no socket.
+        alt = _second_source(code, lng, lat, small, cached_only=True)
+        if alt is None:
+            _warm_second(code, lng, lat, small)   # for whoever asks next
+            return hit
+        if float(alt[4]) <= float(base_ts):
             return hit
         sys.stderr.write("SECOND-FRESHER %s primary_age=%.0fmin second_age=%.0fmin\n"
                          % (alt[5] if len(alt) > 5 else "?", age / 60.0,

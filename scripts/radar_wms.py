@@ -333,7 +333,7 @@ def _cache_path(svc, lat, lng, bucket):
     return os.path.join(CACHE, "wms-" + hashlib.sha1(key.encode()).hexdigest() + ".png")
 
 
-def draw(code, lng, lat, small=False, get=None):
+def draw(code, lng, lat, small=False, get=None, cached_only=False):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None.
 
     ts is our fetch time, not the radar's scan time: a WMS GetMap carries no
@@ -354,6 +354,11 @@ def draw(code, lng, lat, small=False, get=None):
     p, keep = None, False
     if os.path.exists(cached) and os.path.getsize(cached) > 0:
         p, keep = cached, True
+    if p is None and cached_only:
+        # The caller is on a reader's thread and already has a map in hand.
+        # Declining costs that reader nothing; fetching would cost them the
+        # whole upstream round trip for an upgrade they did not ask for.
+        return None
     if p is None:
         url = url_for(svc, bbox)
         try:

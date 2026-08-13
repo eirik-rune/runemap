@@ -170,7 +170,7 @@ def _cache_path(lng, lat, bt, zoom=None):
     return os.path.join(CACHE, "jma-" + hashlib.sha1(key.encode()).hexdigest() + ".png")
 
 
-def draw(code, lng, lat, small=False, get=None):
+def draw(code, lng, lat, small=False, get=None, cached_only=False):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None."""
     if not covers(lng, lat):
         return None
@@ -180,6 +180,8 @@ def draw(code, lng, lat, small=False, get=None):
     p = _cache_path(lng, lat, bt)
     xs, ys, n = RV.plan(lat, lng, 280.0, ZOOM, max_zoom=MAX_ZOOM)
     bbox = RV.bbox_of(xs, ys, n)
+    if cached_only and not (os.path.exists(p) and os.path.getsize(p) > 0):
+        return None          # see radar_wms.draw: never spend a reader's time
     if not (os.path.exists(p) and os.path.getsize(p) > 0):
         kw = {"zoom": ZOOM, "max_zoom": MAX_ZOOM, "tile_px": TILE_PX,
               "url_for": lambda x, y, z, nn: tile_url(bt, x, y, z, nn)}
