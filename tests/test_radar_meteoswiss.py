@@ -206,6 +206,57 @@ class ItRefusesAFrameThatIsNotTheProductItExpects(unittest.TestCase):
                                       "+lon_0=0 +x_0=0 +y_0=0 +k_0=1"))
 
 
+class AStaleCachedFrameMustNotBeatAFresherOne(unittest.TestCase):
+    """The bug this file did not catch when it shipped.
+
+    Production held one cached frame from 36 minutes earlier while MeteoSwiss
+    had published up to 6 minutes ago. draw() scanned the whole cache before
+    trying any download, took the stale one, then correctly refused it as too
+    old -- so the country declined entirely with fresh data sitting there.
+    "Prefer the cache" is right; "prefer ANY cached frame over a newer one" is
+    not, and they look identical until the cache holds exactly one old entry.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        self.old_cache = M.CACHE
+        M.CACHE = self.dir
+
+    def tearDown(self):
+        M.CACHE = self.old_cache
+
+    def test_the_newest_slot_is_tried_before_older_cached_ones(self):
+        st = M.stamps()
+        # Only the OLDEST candidate is on disk, as it was in production.
+        with open(M._cache_path(st[-1]), "wb") as fh:
+            fh.write(b"\x89HDF\r\n\x1a\n" + b"0" * 32)
+        asked = []
+
+        def get(url):
+            asked.append(url)
+            return b"\x89HDF\r\n\x1a\n" + b"1" * 32
+
+        # Call draw() itself. The first version of this test re-implemented
+        # draw()'s loop inline and therefore tested a replica of the code --
+        # it stayed green with the bug put back. Ask the subject about itself.
+        M.draw("><", 8.55, 47.3667, get=get)
+        self.assertTrue(asked,
+                        "no download attempted: a stale cached frame won "
+                        "outright, which is the bug")
+        self.assertIn(M.frame_name(st[0]), asked[0],
+                      "the NEWEST slot must be asked for first, not an older one")
+
+    def test_cached_only_never_opens_a_socket_even_when_the_cache_is_stale(self):
+        """The other half: the flag must still hold. A reader already holding a
+        map does not pay for a round trip."""
+        calls = []
+        r = M.draw("><", 8.55, 47.3667,
+                   get=lambda u: calls.append(u) or b"", cached_only=True)
+        self.assertEqual(calls, [], "cached_only opened a socket")
+        self.assertIsNone(r)
+
+
 class BlindCellsRenderAsBlindNotAsClearSky(unittest.TestCase):
 
     def setUp(self):
