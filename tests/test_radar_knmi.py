@@ -263,10 +263,16 @@ class TheKeyHasMoreThanOneWayToBeMissing(unittest.TestCase):
 
     def setUp(self):
         self._env = os.environ.pop("RUNEMAP_KNMI_KEY", None)
-        self._file = K.KEY_FILE
+        self._file, self._h5 = K.KEY_FILE, K.have_h5py
+        # PINNED, not read off this machine. unavailable() answers with the
+        # missing reader FIRST, so on a box without h5py -- which is CI, and
+        # which is what turned this red -- every assertion below would have
+        # been made against a sentence about h5py. The file's own docstring
+        # says exactly this two classes up; I read it and wrote the bug anyway.
+        K.have_h5py = lambda: True
 
     def tearDown(self):
-        K.KEY_FILE = self._file
+        K.KEY_FILE, K.have_h5py = self._file, self._h5
         if self._env is not None:
             os.environ["RUNEMAP_KNMI_KEY"] = self._env
 
@@ -332,7 +338,7 @@ class TheKeyHasMoreThanOneWayToBeMissing(unittest.TestCase):
         key, why = K.key_status()
         self.assertEqual(key, "s3cret-value-abc123")
         self.assertIsNone(why)
-        self.assertIsNone(K.unavailable() if K.have_h5py() else None)
+        self.assertIsNone(K.unavailable())
         for text in (K.unavailable() or "", str(why)):
             self.assertNotIn("s3cret", text)
 
