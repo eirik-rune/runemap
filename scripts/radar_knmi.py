@@ -75,6 +75,9 @@ LOOKBACK = 6
 # (advertised, then 403), so drawing it here from a composite that genuinely
 # observes it is better than the sentence saying we cannot.
 COVERAGE = (49.4, 0.0, 55.9, 10.8)
+# How stale a cached frame may be before the (three-request, shared-quota)
+# discovery path runs instead. Two slots is ten minutes.
+CACHE_ACCEPT_SLOTS = 2
 MAX_NODATA_SHARE = 0.25
 
 CACHE = os.environ.get("RUNEMAP_CACHE") or os.path.join(tempfile.gettempdir(),
@@ -375,6 +378,13 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
         sys.stderr.write("KNMI-UNAVAILABLE %s\n" % (why,))
         return None
     cand = stamps()
+    # Same ceiling as DMI, and for the same reason -- but NOT the same fix as
+    # MeteoSwiss: this key's quota is shared with every unregistered user, so
+    # the discovery path below stays exactly three requests and must never
+    # become a loop over candidates. Bounding what the cache may answer costs
+    # nothing extra upstream.
+    if not cached_only:
+        cand = cand[:CACHE_ACCEPT_SLOTS]
     path = ts = None
     for stamp in cand:
         p = _cache_path(stamp)

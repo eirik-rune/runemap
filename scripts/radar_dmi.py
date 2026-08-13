@@ -67,6 +67,11 @@ FRAME_MAX_AGE = 1800.0       # five missed beats
 SCALE_M = 500.0              # cell size, also stated per file and asserted
 
 COVERAGE = (54.0, 6.3, 58.5, 16.6)
+CACHE_SLOTS = tuple(range(6))
+# How stale a cached frame may be before we go and ask what is newest. Two
+# slots is ten minutes: still a cache hit for most readers inside one
+# publication cycle, without letting an old entry pin the source.
+CACHE_ACCEPT_SLOTS = 2
 MAX_NODATA_SHARE = 0.25
 
 CACHE = os.environ.get("RUNEMAP_CACHE") or os.path.join(tempfile.gettempdir(),
@@ -270,7 +275,18 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
     # must not pay for discovery when the answer is already on disk.
     path = ts = None
     now = time.time()
-    for i in range(6):
+    # Only the freshest few slots may be answered from cache. Walking the whole
+    # window meant one old cached frame won outright and upstream was never
+    # asked how new it could be -- readers were served a frame up to 25 minutes
+    # old with a 2-minute-old one available, and the cache only refreshed once
+    # the stale entry aged out of the window. Reproduced deliberately: seeding
+    # only an old slot made draw() return without a single network call.
+    # MeteoSwiss had the identical shape tonight and declined outright there,
+    # because its lookback exceeded its own staleness limit.
+    # cached_only keeps the full window: that path must open no socket, so the
+    # best it already holds is the honest answer.
+    horizon = len(CACHE_SLOTS) if cached_only else CACHE_ACCEPT_SLOTS
+    for i in CACHE_SLOTS[:horizon]:
         name = "dk.com.%s.500_max.h5" % time.strftime(
             "%Y%m%d%H%M", time.gmtime(math.floor((now - i * STEP) / STEP) * STEP))
         p = _cache_path(name)
