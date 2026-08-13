@@ -53,7 +53,11 @@ TIMEOUT = float(os.environ.get("RUNEMAP_WMS_TIMEOUT", "6"))
 
 # Kept, unused, deliberately: the machinery is right and the service is not
 # ready. Over Hamburg, 43% of the visible pixels after stripping their grey are
-# a magenta (251,0,255) that appears NOWHERE in the server's own style document
+# a magenta (251,0,255) that appears in neither the server's own
+# style document (GetStyles: 17 ColorMapEntry rows, grey through blue) nor its
+# own legend image (GetLegendGraphic: the same 16 swatches). Asking with an
+# explicit &time= for the latest 5-minute step returns the same colours, so it
+# is not a forecast frame either
 # -- so we do not know what it means, and a colour we cannot name must not be
 # drawn for a reader as rain. When that is explained, this table and the row
 # below it are what turns DWD on.
