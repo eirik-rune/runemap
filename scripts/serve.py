@@ -181,6 +181,22 @@ def _as_coords(spec):
     return round(lat, 4), round(lon, 4)
 
 
+def _why_header(v, why):
+    """Value of X-Radar-Why, given what the reader actually received.
+
+    Extracted from inside the handler on 8/13 04:48 for one reason: as an inline
+    expression the grid-plus-reason case could only be reached by getting a real
+    cold first visit to miss its peek and then fetch successfully. I tried ten
+    coordinates on dev and could not produce one -- warming london put that
+    station into fail cooldown, so dev cannot fetch frames at all right now. A
+    branch whose only test is "wait for the right stranger" is a branch nobody
+    has fired. As a module-level function both states can be fired directly.
+    """
+    if not why:
+        return why
+    return ("leftover:" + why) if v == "grid" else why
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     _head = False
@@ -230,9 +246,23 @@ class H(BaseHTTPRequestHandler):
             # (this header vs FETCHING-REASON on stderr) with no key to join them,
             # so I could never ask "did that stranger get nothing because the sky
             # had no frames, or because we never looked?". Same response, same row.
+            # The pop is deliberately OUTSIDE the branch below: last_reason()
+            # clears this thread, and moving it inside would leak a stale reason
+            # into the next request served on the same thread.
             why = R.last_reason()
             if why:
-                self.send_header("X-Radar-Why", why)
+                # 8/13 04:43: a response that DID draw a map still carried
+                # X-Radar-Why=list-nofile. luoshu saw it from outside on Reykjavik;
+                # from the log side it is 2 of the 5 grid rows in that cold window
+                # (the 2/2399 I first computed used a denominator of warm repeats,
+                # which can never miss a peek and so can never be in the numerator).
+                # The body side is guarded -- render_scene prints the clause only
+                # inside the not-drawn branch -- and this header was not, so the
+                # reader who matters most to us saw a map and a reason for its
+                # absence in one response. One label for two states is ambiguity;
+                # the leftover now says it is a leftover. Deleting the header would
+                # cost me the only column that shows this from the log side.
+                self.send_header("X-Radar-Why", _why_header(v, why))
         self.end_headers()
         if not self._head:
             self.wfile.write(b)
