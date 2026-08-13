@@ -65,14 +65,20 @@ class ReasonReachesTheReader(unittest.TestCase):
                 return l
         self.fail("no radar line in body")
 
+    def why_line(self, lang="en"):
+        """The reason lives on its OWN line (see WhyLineFitsEightyColumns)."""
+        for l in self.body(lang).split("\n"):
+            if l.startswith("radar-why: "):
+                return l
+        return ""
+
     def test_named_reason_reaches_the_body(self):
         RS.note_reason("sky-empty")
-        line = self.radar_line()
-        self.assertIn("upstream listed no frames", line)
+        self.assertIn("upstream listed no frames", self.why_line())
 
     def test_sentence_is_about_us_not_about_the_world(self):
         RS.note_reason("sky-empty")
-        line = self.radar_line().lower()
+        line = self.why_line().lower()
         # the forbidden shape is a claim that the world lacks radar
         for verdict in ("no radar here", "there is no radar",
                         "this sky has no radar", "not covered by radar"):
@@ -81,10 +87,12 @@ class ReasonReachesTheReader(unittest.TestCase):
     def test_unknown_reason_says_nothing(self):
         RS.note_reason("some-word-nobody-has-defined")
         self.assertEqual(self.radar_line(), self.plain_line())
+        self.assertEqual(self.why_line(), "", "an unexplained word must stay silent")
 
     def test_no_reason_says_nothing(self):
         RS.note_reason(None)
         self.assertEqual(self.radar_line(), self.plain_line())
+        self.assertEqual(self.why_line(), "")
 
     def plain_line(self):
         return ("radar: fetching -- no radar frames for this sky yet; "
@@ -104,7 +112,7 @@ class ReasonReachesTheReader(unittest.TestCase):
 
     def test_body_peeks_so_the_header_can_still_pop(self):
         RS.note_reason("sky-empty")
-        self.radar_line()
+        self.why_line()
         self.assertEqual(RS.last_reason(), "sky-empty",
                          "body consumed the reason; X-Radar-Why would go blank")
         self.assertIsNone(RS.last_reason())
@@ -117,3 +125,45 @@ class ReasonReachesTheReader(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WhyLineFitsEightyColumns(unittest.TestCase):
+    """Every reason line must fit an 80-column terminal.
+
+    Eirik measured the first version of this change: appending the clause to the
+    radar line pushed all 9 real (reason, language) combinations past 80 cells --
+    the ja base is 79 by itself, so anything appended had to wrap. A wrapped line
+    is not a line an agent can grep, and this text exists for the reader who got
+    no map. So the reason lives on its own line, and this guard holds it there.
+
+    The combinations are DERIVED from _FETCH_CLAUSE and the language branches,
+    never hand-enumerated: a hand-written list silently omits the fourth reason
+    on the day someone adds one. The ruler is east_asian_width, not len() --
+    len() under-counts every CJK cell by half (runemap paid for that lesson in
+    9d68324).
+    """
+    LIMIT = 79
+
+    @staticmethod
+    def cells(s):
+        import unicodedata
+        return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+                   for c in s)
+
+    def test_every_reason_line_fits(self):
+        wide = []
+        for why in RS._FETCH_CLAUSE:
+            for lang in ("en", "zh", "ja"):
+                line = "radar-why: " + RS.fetching_clause(why, lang)
+                n = self.cells(line)
+                if n > self.LIMIT:
+                    wide.append("%s/%s=%d" % (why, lang, n))
+        self.assertEqual(wide, [], "over %d cells: %s" % (self.LIMIT, wide))
+
+    def test_the_ruler_is_not_len(self):
+        # negative control: if cells() ever collapses to len(), this catches it
+        self.assertEqual(self.cells("上游"), 4)
+
+    def test_the_guard_can_go_red(self):
+        # a clause that WOULD overflow must be rejected by the same predicate
+        self.assertGreater(self.cells("radar-why: " + "x" * 80), self.LIMIT)

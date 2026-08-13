@@ -568,19 +568,19 @@ def peek_reason():
 #     only an operator could see it.
 _FETCH_CLAUSE = {
     "sky-empty": {
-        "en": "; upstream listed no frames for this sky when we asked",
-        "zh": "; \u6211\u4eec\u95ee\u4e86\u4e0a\u6e38, \u5b83\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
-        "ja": "; \u4e0a\u6d41\u306b\u554f\u3044\u5408\u308f\u305b\u307e\u3057\u305f\u304c\u3053\u306e\u7a7a\u306e\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "upstream listed no frames for this sky when we asked",
+        "zh": "\u6211\u4eec\u95ee\u4e86\u4e0a\u6e38, \u5b83\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
+        "ja": "\u4e0a\u6d41\u306b\u554f\u3044\u5408\u308f\u305b\u307e\u3057\u305f\u304c\u3053\u306e\u7a7a\u306e\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u305b\u3093\u3067\u3057\u305f",
     },
     "cooldown": {
-        "en": "; upstream refused our last request, so we are waiting before asking again",
-        "zh": "; \u4e0a\u6e38\u521a\u62d2\u7edd\u4e86\u6211\u4eec, \u7a0d\u540e\u518d\u95ee",
-        "ja": "; \u76f4\u524d\u306e\u554f\u3044\u5408\u308f\u305b\u304c\u62d2\u5426\u3055\u308c\u305f\u305f\u3081\u5f85\u6a5f\u4e2d",
+        "en": "upstream refused our last request; waiting before we ask again",
+        "zh": "\u4e0a\u6e38\u521a\u62d2\u7edd\u4e86\u6211\u4eec, \u7a0d\u540e\u518d\u95ee",
+        "ja": "\u76f4\u524d\u306e\u554f\u3044\u5408\u308f\u305b\u304c\u62d2\u5426\u3055\u308c\u305f\u305f\u3081\u5f85\u6a5f\u4e2d",
     },
     "render-failed": {
-        "en": "; we had frames but could not draw them",
-        "zh": "; \u5e27\u62ff\u5230\u4e86, \u4f46\u6211\u4eec\u6ca1\u753b\u51fa\u6765",
-        "ja": "; \u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u3057\u305f\u304c\u63cf\u753b\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+        "en": "we had frames but could not draw them",
+        "zh": "\u5e27\u62ff\u5230\u4e86, \u4f46\u6211\u4eec\u6ca1\u753b\u51fa\u6765",
+        "ja": "\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u3057\u305f\u304c\u63cf\u753b\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
     },
 }
 
@@ -1264,7 +1264,15 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
                  if lang == "ja" else
                  "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
         # peek, not pop: serve.py owns the clearing (see peek_reason).
-        L.append(_base + fetching_clause(peek_reason(), lang))
+        L.append(_base)
+        # Its OWN line, not appended: Eirik measured all 9 real (reason, lang)
+        # combinations past 80 columns when the clause rode along -- the ja base
+        # is already 79 cells, so anything appended must wrap. A wrapped line is
+        # not a line an agent can grep, and this text exists for the reader who
+        # got no map. Same token in every language for exactly that reason.
+        _why = fetching_clause(peek_reason(), lang)
+        if _why:
+            L.append("radar-why: " + _why)
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
