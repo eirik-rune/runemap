@@ -51,6 +51,10 @@ for _p in (_ROOT, os.path.join(_ROOT, "ops")):
         sys.path.insert(0, _p)
 
 NAME = "DMI"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of Denmark holds neighbours too.
+SERVES = ("DK",)
 ATTRIB = "Danish Meteorological Institute, CC BY 4.0"
 API = ("https://dmigw.govcloud.dk/v1/radardata/collections/composite/items"
        "?limit=1&sortorder=datetime,DESC")

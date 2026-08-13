@@ -49,6 +49,10 @@ for _p in (_ROOT, os.path.join(_ROOT, "ops")):
         sys.path.insert(0, _p)
 
 NAME = "SMHI"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of Sweden holds neighbours too.
+SERVES = ("SE",)
 ATTRIB = "SMHI opendata.smhi.se, CC BY 4.0"
 URL = ("https://opendata-download-radar.smhi.se/api/version/latest"
        "/area/sweden/product/comp/latest.tif")

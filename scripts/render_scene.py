@@ -4,7 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
-import json, math, os, sys, time, urllib.request, tempfile
+import importlib, json, math, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar, ascii_radar_centered
@@ -955,6 +955,28 @@ def _radar_render(code, lng, lat, imgs, small):
 # from the body, not from reading this file.
 SECOND_SOURCE = os.environ.get("RUNEMAP_SECOND_SOURCE", "").strip()
 
+# Chain name -> adapter module. One table, because anything that wants to know
+# what this fleet can serve has to resolve the same names production resolves.
+#
+# This used to be an if/elif ladder inside _second_source, which meant the only
+# way to ask "which sources exist" was to read the ladder -- so I answered from
+# memory instead, told bob the US was not wired, and was wrong: us-nexrad has
+# been configured and probed for days, but it lives inside radar_wms with
+# Canada, Finland and Germany, and I had been counting radar_*.py filenames.
+# A second copy of this mapping in a reporting tool would be the same bug with
+# an extra step; four places agreeing by coincidence is not a guard.
+SECOND_MODULES = {
+    "rainviewer": "radar_second",
+    "redemet": "radar_redemet",
+    "wms": "radar_wms",
+    "jma": "radar_jma",
+    "smhi": "radar_smhi",
+    "chmi": "radar_chmi",
+    "knmi": "radar_knmi",
+    "dmi": "radar_dmi",
+    "metno": "radar_metno",
+}
+
 
 def _second_source(code, lng, lat, small, cached_only=False):
     """Never raises into the reader's path: a broken fallback must degrade to
@@ -967,27 +989,11 @@ def _second_source(code, lng, lat, small, cached_only=False):
     # simply declines everywhere else.
     for which in [w.strip() for w in SECOND_SOURCE.split(",") if w.strip()]:
         try:
-            if which == "rainviewer":
-                import radar_second as _m
-            elif which == "redemet":
-                import radar_redemet as _m
-            elif which == "wms":
-                import radar_wms as _m
-            elif which == "jma":
-                import radar_jma as _m
-            elif which == "smhi":
-                import radar_smhi as _m
-            elif which == "chmi":
-                import radar_chmi as _m
-            elif which == "knmi":
-                import radar_knmi as _m
-            elif which == "dmi":
-                import radar_dmi as _m
-            elif which == "metno":
-                import radar_metno as _m
-            else:
+            modname = SECOND_MODULES.get(which)
+            if modname is None:
                 sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
                 continue
+            _m = importlib.import_module(modname)
             try:
                 got = _m.draw(code, lng, lat, small, cached_only=cached_only)
             except TypeError:

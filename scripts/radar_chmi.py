@@ -54,6 +54,10 @@ for _p in (_ROOT, os.path.join(_ROOT, "ops")):
         sys.path.insert(0, _p)
 
 NAME = "CHMI"
+# Who this source is added FOR, as opposed to what it can SEE.
+# covers() answers the second question and must not be read as the
+# first: a box that holds all of Czechia holds neighbours too.
+SERVES = ("CZ",)
 ATTRIB = "Czech Hydrometeorological Institute, CC BY 4.0"
 BASE = ("https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/hdf5/"
         "T_PABV23_C_OKPR_%s.hdf")
