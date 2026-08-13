@@ -33,6 +33,7 @@ restate:
                           unlike the Czech product where it had to be measured
     geo_product_corners   four lat/lons, used as the control on the projection
 """
+import errno
 import hashlib
 import json
 import math
@@ -83,16 +84,36 @@ def covers(lng, lat):
     return s <= lat <= n and w <= lng <= e
 
 
-def api_key():
-    """-> the key, or None. Env first, then a file; never a command argument."""
+def key_status():
+    """-> (key or None, reason or None). Env first, then a file.
+
+    "There is no key here" and "the key is right there and I am not allowed to
+    read it" used to return the same None, and the probe printed the same
+    sentence for both -- which sends the next hour to the wrong place. That is
+    exactly what happened on 8/13: the fleet was healthy, production was
+    serving Amsterdam, and running the probe as a user who cannot read a
+    root-owned 0640 file reported it as a missing key.
+
+    The reason NEVER carries the file's contents, only errno's word for why.
+    """
     k = os.environ.get("RUNEMAP_KNMI_KEY")
-    if k:
-        return k.strip()
+    if k and k.strip():
+        return k.strip(), None
     try:
         with open(KEY_FILE) as fh:
-            return fh.read().strip() or None
-    except Exception:
-        return None
+            k = fh.read().strip()
+        return (k, None) if k else (None, "empty")
+    except FileNotFoundError:
+        return None, "absent"
+    except PermissionError:
+        return None, "unreadable"
+    except OSError as exc:
+        return None, "unreadable(%s)" % (errno.errorcode.get(exc.errno, "?"),)
+
+
+def api_key():
+    """-> the key, or None. Never passed as a command argument."""
+    return key_status()[0]
 
 
 def have_h5py():
@@ -112,10 +133,17 @@ def unavailable():
     """
     if not have_h5py():
         return "h5py is not installed (pip install 'runemap[hdf5]')"
-    if not api_key():
-        return ("no KNMI key: set RUNEMAP_KNMI_KEY or put their published"
-                " anonymous key in %s" % (KEY_FILE,))
-    return None
+    key, why = key_status()
+    if key:
+        return None
+    if why in ("unreadable", "empty") or (why or "").startswith("unreadable("):
+        # Not a configuration gap -- a permissions one, and the cure is to run
+        # as whoever production runs as, not to go looking for a key.
+        return ("KNMI key at %s is %s by this user (production reads it as its "
+                "own user; check with the service, not the source)"
+                % (KEY_FILE, "empty" if why == "empty" else "not readable"))
+    return ("no KNMI key: set RUNEMAP_KNMI_KEY or put their published"
+            " anonymous key in %s" % (KEY_FILE,))
 
 
 def stamps(now=None):
