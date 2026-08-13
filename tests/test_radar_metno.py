@@ -33,6 +33,28 @@ def fixture():
         return fh.read()
 
 
+def dods(rows, cols, dbz_value=20.0, nodata=0, when=1786648800):
+    """Build a DODS ascii response of a given shape.
+
+    A format fixture, not a claim about the weather: the real captured response
+    in `fixtures_metno_ascii.txt` is 3x3, and the fast-path test needs one that
+    matches a full reader window.
+    """
+    def block(var, val):
+        out = ["%s.%s[1][%d][%d]" % (var, var, rows, cols)]
+        for j in range(rows):
+            out.append("[0][%d], %s" % (j, ", ".join([str(val)] * cols)))
+        out.append("")
+        out.append("%s.time[1]" % var)
+        out.append(str(when))
+        out.append("")
+        return "\n".join(out)
+    return ("Dataset {\n} x;\n" + "-" * 45 + "\n"
+            + block("equivalent_reflectivity_factor", dbz_value)
+            + "\n" + block("is_nodata", nodata))
+
+
+
 class TheProjectionIsCheckedAgainstTheFilesOwnCoordinates(unittest.TestCase):
     """The grid could be read upside down and still produce a scale-correct,
     freshly-stamped map of the wrong half of Norway. What settles it is that
@@ -204,12 +226,48 @@ class ItDeclinesWhereItCannotSee(unittest.TestCase):
         self.assertIsNone(M.draw("><", 2.35, 48.86, get=fail))
 
     def test_a_readers_wait_is_never_spent_on_the_network(self):
-        """Nothing is held on disk for this source, so `cached_only` has no
-        cheap answer to give and must decline instead of fetching."""
+        """`cached_only` means "answer from what you have, open no socket"."""
+        M.forget()
         def fail(url):
             self.fail("spent a reader's wait")
         self.assertIsNone(
             M.draw("><", 10.7522, 59.9139, get=fail, cached_only=True))
+
+    def test_but_a_warm_window_IS_an_answer_on_the_fast_path(self):
+        """Refusing outright even when warm would keep Norway on the slow path
+        forever -- a guard whose release condition is the thing it forbids.
+
+        So: one fetch, then the fast path must answer from it without asking
+        the network again."""
+        M.forget()
+        calls = []
+
+        def get(url):
+            calls.append(url)
+            # The shape the server would return for whatever box was asked.
+            import re as _re
+            import urllib.parse as _up
+            # UNQUOTED first: the real caller percent-encodes the brackets, so
+            # a regex for "[" matched nothing here and this fake server quietly
+            # answered 1x1 for every request -- which draw() then read as a
+            # 100%-blind sky. The stub has to speak the same dialect as the
+            # thing it stands in for.
+            sl = _re.findall(r"\[(\d+):(\d+):(\d+)\]", _up.unquote(url))
+            if len(sl) >= 3:
+                (r0, rs, r1), (c0, cs, c1) = sl[1], sl[2]
+                nr = (int(r1) - int(r0)) // int(rs) + 1
+                nc = (int(c1) - int(c0)) // int(cs) + 1
+            else:
+                nr = nc = 1
+            return dods(nr, nc)
+        first = M.draw("><", 10.7522, 59.9139, get=get)
+        self.assertIsNotNone(first)
+        n = len(calls)
+        second = M.draw("><", 10.7522, 59.9139,
+                        get=lambda u: self.fail("opened a socket when warm"),
+                        cached_only=True)
+        self.assertIsNotNone(second)
+        self.assertEqual(len(calls), n)
 
 
 if __name__ == "__main__":
