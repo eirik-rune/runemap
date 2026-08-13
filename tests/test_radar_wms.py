@@ -197,3 +197,39 @@ class TheRampCheckMustBeAbleToSayBothWords(unittest.TestCase):
         self.assertFalse(self.P.on_ramp((251, 0, 255), stops),
                          "the ramp check must not become a way to explain "
                          "away a colour nobody declared")
+
+
+class BothWindowsMustAcceptTheCallersScale(unittest.TestCase):
+    """Production sets RUNEMAP_SPAN_KM, so every real request renders through
+    ascii_radar_centered() and never through ascii_radar(). The classifier
+    argument was missing from that one signature only, which no test could see
+    and every Finnish reader could: SECOND-FAILED wms TypeError, and the
+    sentence instead of rain."""
+
+    def _png(self, rgb):
+        import io
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (64, 64), rgb + (255,)).save(b, "PNG")
+        return b.getvalue()
+
+    def _draw_finland(self):
+        raw = self._png((250, 81, 165))          # their top class, pink
+        return W.draw("><", 24.94, 60.17, small=True, get=lambda u: raw)
+
+    def test_the_centred_window_draws_with_a_palette(self):
+        import render_scene as RS
+        RS.set_span(200.0)
+        try:
+            got = self._draw_finland()
+        finally:
+            RS.set_span(None)
+        self.assertIsNotNone(got, "the window production actually uses refused "
+                                  "the service's own colour scale")
+        self.assertEqual(got[5], "FMI")
+        self.assertIn("█", got[0])          # top class, drawn as full block
+
+    def test_the_box_window_draws_with_a_palette_too(self):
+        got = self._draw_finland()
+        self.assertIsNotNone(got)
+        self.assertIn("█", got[0])

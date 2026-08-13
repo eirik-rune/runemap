@@ -49,7 +49,8 @@ OUTSIDE = "?"          # not " ": empty means "no rain", this means "no radar he
 
 
 def ascii_radar_centered(png_path, bbox, loc_lng, loc_lat, span_km=200.0,
-                         cols=48, rows=24, marker="H", ramp=RAMP, outside=OUTSIDE):
+                         cols=48, rows=24, marker="H", ramp=RAMP, outside=OUTSIDE,
+                         classifier=None):
     """Same grid, but the window is OURS, not the station's.
 
     ascii_radar() maps whatever box upstream happened to attach to its nearest
@@ -75,7 +76,13 @@ def ascii_radar_centered(png_path, bbox, loc_lng, loc_lat, span_km=200.0,
     lat0, lon0, lat1, lon1 = bbox
     im = np.asarray(Image.open(png_path).convert("RGBA"))
     h, w = im.shape[:2]
-    lv = classify(im)
+    # Both windows must accept a caller's colour scale. Production sets
+    # RUNEMAP_SPAN_KM, so every request lands here and never in ascii_radar()
+    # -- which is why "classifier" being absent from this signature was
+    # invisible to the tests and immediate for readers: measured 8/13, Helsinki
+    # logged SECOND-FAILED wms TypeError and got the sentence instead of rain,
+    # while the same call with no span drew fine.
+    lv = (classifier or classify)(im)
     kx = 111.0 * math.cos(math.radians(loc_lat))
     hlon = (span_km / 2.0) / kx
     hlat = (span_km / 2.0) / 111.0
