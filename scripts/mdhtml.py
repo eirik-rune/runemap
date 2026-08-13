@@ -30,6 +30,17 @@ RAMP = "·░▒▓█"
 CLASS = {"·": "r1", "░": "r2", "▒": "r3",
          "▓": "r4", "█": "r5", "?": "rq"}
 
+# 8/13, bob: "怎么格子没有对齐呢?" -- because `░ ▒ ▓` are not in the monospace
+# faces phones ship with, so the browser pulls each from whatever fallback has
+# them, at that font's advance width. The grid then goes ragged row by row and
+# the map stops being a map. The document keeps its five characters -- they are
+# what an agent reads -- but the PAGE draws every cell with the SAME glyph and
+# says which level it is in colour, which is what bob proposed in the first
+# place ("把那个雷达图用block搞一下"). One glyph cannot disagree with itself
+# about width.
+CELL_GLYPH = {"·": "\u2588", "░": "\u2588", "▒": "\u2588",
+              "▓": "\u2588", "█": "\u2588", "?": "\u2588"}
+
 # Bytes of HTML per byte of text. 25 KB for 1.8 KB was 14x.
 MAX_RATIO = 6.0
 
@@ -65,8 +76,8 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .curve h2{font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 .3rem}
 .curve{margin:0 0 1.1rem}
 .me{color:#111;background:#ffd54a;border-radius:2px;font-weight:700}
-.r1{color:#4aa3df}.r2{color:#3fb56b}.r3{color:#e0c341}.r4{color:#e08b3f}.r5{color:#d64545}
-.rq{color:var(--line)}
+.r1{color:#4aa3df;opacity:.45}.r2{color:#3fb56b}.r3{color:#e0c341}.r4{color:#e08b3f}.r5{color:#d64545}
+.rq{color:var(--line);opacity:.5}
 .legend{display:flex;gap:.7rem;flex-wrap:wrap;color:var(--dim);font-size:.75rem;margin:0 0 1rem}
 .legend i{font-style:normal;font-family:ui-monospace,monospace}
 .meta{color:var(--dim);font-size:.75rem;border-top:1px solid var(--line);padding-top:.6rem}
@@ -77,9 +88,7 @@ font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 <p class="sub">%(when)s</p>
 <p class="now">%(now)s</p>
 <p class="say">%(say)s</p>
-<div class="map"><pre>%(map)s</pre></div>
-<p class="legend">%(legend)s</p>
-%(curve)s<div class="meta">%(meta)s</div>
+%(body)s<div class="meta">%(meta)s</div>
 </main>
 """
 
@@ -98,8 +107,8 @@ def paint(lines, marker="><"):
             j = i
             while j < len(ln) and ln[j] == ch and ln[j:j + len(marker)] != marker:
                 j += 1
-            run = html.escape(ch * (j - i))
             cls = CLASS.get(ch)
+            run = html.escape(CELL_GLYPH.get(ch, ch) * (j - i))
             buf.append('<span class="%s">%s</span>' % (cls, run) if cls else run)
             i = j
         out.append("".join(buf))
@@ -109,6 +118,11 @@ def paint(lines, marker="><"):
 def render(text, marker="><"):
     place = when = now = say = ""
     meta, grid, curve = [], [], []
+    # 8/13, bob: the text puts the rain curve ABOVE the map and my first page
+    # put it below, because the template hard-coded the order. That is the page
+    # editing the document, which is the one thing it must not do. Which block
+    # was met first is recorded here and the page follows it.
+    order = []
     in_curve = False
     for s in text.split("\n"):
         s = s.rstrip()
@@ -127,6 +141,8 @@ def render(text, marker="><"):
             # block characters were not in RAMP -- the filter decided the shape
             # of the blind spot, and what fell in it was the product.
             in_curve = True
+            if "curve" not in order:
+                order.append("curve")
             rest = s.split(":", 1)[1].strip() if ":" in s else ""
             if rest:
                 curve.append(rest)
@@ -144,6 +160,8 @@ def render(text, marker="><"):
             continue
         if s and set(s) <= set(RAMP + "?><ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "):
             grid.append(s)
+            if "map" not in order:
+                order.append("map")
             continue
         if s.strip() and not say:
             # Any remaining prose is the forecast sentence. Matching on "Over
@@ -151,18 +169,21 @@ def render(text, marker="><"):
             # and that sentence is the most useful line on the page.
             say = s.strip()
     legend = " ".join(
-        '<span><i class="%s">%s</i> %s</span>' % (CLASS[c], c, n)
+        '<span><i class="%s">%s</i> %s</span>' % (CLASS[c], CELL_GLYPH[c], n)
         for c, n in zip(RAMP, ("drizzle", "light", "moderate", "heavy", "storm")))
+    blocks = {
+        "map": ('<div class="map"><pre>%s</pre></div>\n<p class="legend">%s</p>\n'
+                % (paint(grid, marker), legend)) if grid else "",
+        "curve": ('<div class="curve"><h2>next 2 hours</h2><pre>%s</pre></div>\n'
+                  % html.escape("\n".join(curve))) if curve else "",
+    }
     return PAGE % {
         "title": html.escape(place.split(",")[0] or "runemap"),
         "place": html.escape(place or "runemap"),
         "when": html.escape(when),
         "now": html.escape(now),
         "say": html.escape(say),
-        "map": paint(grid, marker),
-        "legend": legend,
-        "curve": ('<div class="curve"><h2>next 2 hours</h2><pre>%s</pre></div>\n'
-                  % html.escape("\n".join(curve))) if curve else "",
+        "body": "".join(blocks[k] for k in order),
         "meta": "".join("<div>%s</div>" % html.escape(m) for m in meta),
     }
 
