@@ -939,7 +939,7 @@ def build_fetching(lang, name):
                 "weather: fetching -- not ready yet, ask again in ~60s\n"
                 "radar: fetching -- looking for this sky; no frame yet\n"
                 "\n"
-                "data: Caiyun Weather caiyunapp.com | rendered by runemap "
+                "data: Caiyun Weather caiyunapp.com | runemap "
                 "(github.com/eirik-rune/runemap)\n") % name
     return ("# %s \u5929\u6c14\u5b9e\u51b5\n"
             "weather: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
@@ -1206,7 +1206,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
                  if lang == "ja" else
                  "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
     L.append("")
-    L.append("data: Caiyun Weather caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)" if lang == "en"
+    L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
              else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
     return "\n".join(L) + "\n"
