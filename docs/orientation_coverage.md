@@ -93,7 +93,38 @@ open corner.
 Fired both ways: the runner exits 1 and prints FLIPPED when handed the array
 upside down, and every verdict has a test built to earn it.
 
-## The Netherlands is the remaining open risk
+## The Netherlands is the remaining open risk, and it really does need rain
+
+Asked the same way as Sweden rather than assumed: **measured, 23:01 frame,
+2 operational radars (Den Helder, Herwijnen; De Bilt is flagged
+`radar_operational=0` in the file and excluded), 19.5% of the grid blind.**
+
+| orientation | blind-cell p10 | median | mean | seen within 50 km |
+|---|---|---|---|---|
+| as read | 338.9 km | 369.2 | 376.7 | 100.0% |
+| vertical flip | 312.4 km | 365.8 | 368.0 | 100.0% |
+| horizontal flip | 319.6 km | 368.7 | 370.6 | 100.0% |
+| 180° rotation | 327.8 km | 369.4 | 374.0 | 100.0% |
+
+**The mask has no power here — 26 km of spread, and every orientation keeps
+100% coverage over both radars.** That is Switzerland's situation, not
+Sweden's: KNMI's composite is a range-limited disc centred on a network in the
+middle of a small country, so flipping it maps it very nearly onto itself. The
+right verdict is INSUFFICIENT, and taking the 26 km as a direction would be the
+1% margin mistake with a new coat on.
+
+So the Netherlands is the one country that genuinely needs the gauge method and
+therefore an archived rainy hour. Both prerequisites were established on
+2026-08-13: the radar archive goes back to 2019 in the same dataset
+`radar_knmi` already reads, and the one unknown left is the **station dataset
+name, which must come from KNMI's published catalogue** — their open-data API
+serves files for a dataset you can already name and answers 404 to
+`/datasets`, confirmed against a positive control on the same key.
+
+Whatever walks that archive must budget for strangers: **that API key is shared
+by every unregistered user**, and walking timestamps with it earned a 429.
+
+
 
 The Netherlands reads a national grid and has no control independent of the
 file it reads. Neither is known to be wrong; the point is that **if either were
