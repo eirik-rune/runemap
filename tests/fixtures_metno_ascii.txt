@@ -1,0 +1,49 @@
+Dataset {
+    Grid {
+     ARRAY:
+        Float32 equivalent_reflectivity_factor[time = 1][Yc = 3][Xc = 3];
+     MAPS:
+        Int32 time[time = 1];
+        Float32 Yc[Yc = 3];
+        Float32 Xc[Xc = 3];
+    } equivalent_reflectivity_factor;
+    Grid {
+     ARRAY:
+        Byte is_nodata[time = 1][Yc = 3][Xc = 3];
+     MAPS:
+        Int32 time[time = 1];
+        Float32 Yc[Yc = 3];
+        Float32 Xc[Xc = 3];
+    } is_nodata;
+} remotesensing/reflectivity-nordic/latest/yrwms-nordic.mos.pcappi-0-dbz.noclass-clfilter-novpr-clcorr-block.nordiclcc-1000.20260813T192000Z.nc;
+---------------------------------------------
+equivalent_reflectivity_factor.equivalent_reflectivity_factor[1][3][3]
+[0][0], 16.0, 27.5, 24.5
+[0][1], 7.0, 16.0, 26.0
+[0][2], -1.5, 22.0, 8.5
+
+equivalent_reflectivity_factor.time[1]
+1786648800
+
+equivalent_reflectivity_factor.Yc[3]
+-325000.0, -333000.0, -341000.0
+
+equivalent_reflectivity_factor.Xc[3]
+-246000.0, -238000.0, -230000.0
+
+
+is_nodata.is_nodata[1][3][3]
+[0][0], 0, 0, 0
+[0][1], 0, 0, 0
+[0][2], 0, 0, 0
+
+is_nodata.time[1]
+1786648800
+
+is_nodata.Yc[3]
+-325000.0, -333000.0, -341000.0
+
+is_nodata.Xc[3]
+-246000.0, -238000.0, -230000.0
+
+
