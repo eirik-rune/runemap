@@ -96,6 +96,8 @@ def _next_is_curve(lines, i):
 # would be worse than the text it replaced.
 _CELL_TALL = 2
 _DROP = re.compile(r"^(legend|\u56fe\u4f8b|\u51e1\u4f8b)\s*:")
+# Terminal alignment padding, meaningless once HTML collapses it.
+_MULTISPACE = re.compile(r" {2,}")
 
 PAGE = """<!doctype html>
 <meta charset="utf-8">
@@ -142,6 +144,7 @@ font-size:.7rem;margin-top:.15rem}
 .r1{background:#b9dcf2}.r2{background:#3fb56b}.r3{background:#e0c341}
 .r4{background:#e08b3f}.r5{background:#d64545}
 .rq{background:var(--line)}
+.sep{color:var(--dim)}
 .legend i{width:.85rem;height:.85rem;border-radius:2px;display:inline-block;
 vertical-align:-.12rem}
 .legend{display:flex;gap:.7rem;flex-wrap:wrap;color:var(--dim);font-size:.75rem;margin:0 0 1rem}
@@ -452,7 +455,15 @@ def render(text, marker="><"):
         "when": html.escape(when),
         "head": head,
         "body": "".join(blocks[k] for k in order),
-        "meta": "".join("<div>%s</div>" % html.escape(m) for m in meta),
+        # The padding on these lines SEPARATES FIELDS, so it is data, not
+        # layout. "radar: obs            obs age: 8min ok" collapses in HTML to
+        # "radar: obs obs age: 8min ok" -- a stutter, where the first "obs" is
+        # what was drawn and the second belongs to "obs age". Keeping the
+        # spaces with white-space:pre would push the line off a phone sideways
+        # instead. So the run becomes a visible separator: the boundary
+        # survives, and it survives at any width.
+        "meta": "".join("<div>%s</div>" % _MULTISPACE.sub(
+            '<span class="sep"> · </span>', html.escape(m)) for m in meta),
     }
 
 
