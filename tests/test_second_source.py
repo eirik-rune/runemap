@@ -293,3 +293,32 @@ class NamingTheSourceIsNotTheWholeObligation(unittest.TestCase):
             for line in b.split("\n"):
                 if line.startswith("radar-data"):
                     self.assertLessEqual(cells(line), 79, line)
+
+
+class JapanIsInTheChainAndCreditsItself(unittest.TestCase):
+
+    def setUp(self):
+        self._was = RS.SECOND_SOURCE
+
+    def tearDown(self):
+        RS.SECOND_SOURCE = self._was
+
+    def test_the_chain_knows_the_name_jma(self):
+        RS.SECOND_SOURCE = "jma"
+        import radar_jma
+        orig = radar_jma.draw
+        want = (ART, 8.0, 1.0, None, 1.0, "JMA")
+        radar_jma.draw = lambda *a, **k: want
+        try:
+            self.assertEqual(RS._second_source("><", 139.69, 35.69, False), want)
+        finally:
+            radar_jma.draw = orig
+
+    def test_its_credit_comes_from_the_adapter_not_a_second_table(self):
+        import radar_jma
+        self.assertEqual(RS._second_attrib(radar_jma.NAME), radar_jma.ATTRIB)
+
+    def test_the_body_prints_source_and_change_notice(self):
+        b = body((ART, 8.0, 1.0, None, 1.0, "JMA"))
+        self.assertIn("radar-data: Japan Meteorological Agency jma.go.jp", b)
+        self.assertIn("radar-data-note: redrawn", b)

@@ -134,3 +134,50 @@ class FramesComeFromTheIndexNotFromGuessing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheMosaicServesMoreThanOneService(unittest.TestCase):
+    """Three constants in here belong to RainViewer, not to tiles in general,
+    and JMA found all three the hard way in one hour: the zoom ceiling (theirs
+    is 10, ours refused 8), the tile SIZE (theirs is 256, this module's default
+    is 512), and the URL shape. None of the three fails loudly -- the wrong
+    tile size pasted 256px tiles into 512px cells and produced regular blank
+    bands that render as weather."""
+
+    def _png(self, px, rgb=(0, 65, 255)):
+        import io
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (px, px), rgb + (255,)).save(b, "PNG")
+        return b.getvalue()
+
+    def test_a_service_may_raise_the_zoom_ceiling(self):
+        RV.plan(35.69, 139.69, 280.0, zoom=8, max_zoom=10)
+        with self.assertRaises(ValueError):
+            RV.plan(35.69, 139.69, 280.0, zoom=8)
+
+    def test_the_mosaic_has_no_gaps_at_a_foreign_tile_size(self):
+        import numpy as np
+        raw = self._png(256)
+        img, _bbox, got, want = RV.fetch("h", "/p", 35.69, 139.69, zoom=8,
+                                         max_zoom=10, tile_px=256,
+                                         get=lambda u: raw)
+        self.assertEqual(got, want)
+        a = np.array(img)
+        self.assertEqual(int((a[..., 3] > 50).sum()), a.shape[0] * a.shape[1],
+                         "blank bands: the tile size was somebody else's")
+
+    def test_the_default_tile_size_is_still_rainviewers(self):
+        img, _b, _g, _w = RV.fetch("h", "/p", 35.69, 139.69,
+                                   get=lambda u: self._png(512))
+        self.assertEqual(img.size[0] % 512, 0)
+
+    def test_a_caller_can_supply_its_own_url_shape(self):
+        seen = []
+
+        def get(u):
+            seen.append(u)
+            return self._png(256)
+        RV.fetch("h", "/p", 35.69, 139.69, zoom=8, max_zoom=10, tile_px=256,
+                 url_for=lambda x, y, z, n: "jma://%d/%d/%d" % (z, x, y), get=get)
+        self.assertTrue(all(u.startswith("jma://8/") for u in seen), seen[:2])
