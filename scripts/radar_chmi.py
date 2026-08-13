@@ -265,19 +265,34 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
         return None
     cand = stamps()
     path = ts = None
+    # Newest first, cache-or-fetch PER SLOT. Scanning the whole cache first let
+    # a single old entry win outright, so upstream was never asked how new it
+    # could be: readers got a frame up to 25 minutes old with a fresh one
+    # published, and the cache only refreshed once the stale entry aged out of
+    # the window. The same shape was found in MeteoSwiss (which declined the
+    # country outright, because its window exceeded its own staleness limit),
+    # in DMI and in KNMI. Here the window is 25 minutes against a 30-minute
+    # limit, so it stayed UNDER the limit and the symptom was silent -- which is
+    # exactly why scanning a family by symptom misses the instance most worth
+    # finding.
+    #
+    # Discovery here is already a per-slot fetch, so asking per slot costs
+    # nothing extra. DMI and KNMI got a staleness ceiling instead, because
+    # their discovery is one listing call (three for KNMI, on a key shared with
+    # every unregistered user) and looping it would spend other people's quota.
     for stamp in cand:
         p = _cache_path(stamp)
         if os.path.exists(p) and os.path.getsize(p) > 0:
             path, ts = p, frame_ts(stamp)
             break
-    if path is None:
         if cached_only:
-            return None      # see radar_wms.draw: never spend a reader's time
-        for stamp in cand:
-            p = _fetch(stamp, get)
-            if p is not None:
-                path, ts = p, frame_ts(stamp)
-                break
+            # Never spend a reader's time: keep walking the cache, open no
+            # socket. See radar_wms.draw.
+            continue
+        p = _fetch(stamp, get)
+        if p is not None:
+            path, ts = p, frame_ts(stamp)
+            break
     if path is None:
         sys.stderr.write("CHMI-NO-FRAME newest tried %s\n" % (cand[0],))
         return None
