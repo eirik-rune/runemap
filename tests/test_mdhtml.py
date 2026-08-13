@@ -635,5 +635,55 @@ class TheRulerMarksBoundariesNotBuckets(unittest.TestCase):
         self.assertEqual(len(got), 24)
 
 
+class ThePaddingOnMetaLinesSeparatesFieldsAndIsNotLayout(unittest.TestCase):
+    """"radar: obs            obs age: 8min ok" lines up two fields in a
+    terminal. HTML collapses runs of spaces, so the reader got
+    "radar: obs obs age: 8min ok" -- which reads as a stutter, while the first
+    "obs" is what was drawn and the second belongs to "obs age".
+
+    Seen only by looking at the rendered page on a phone-width viewport; every
+    numeric check I had ran clean, because nothing was missing -- the
+    separation was.
+    """
+
+    DOC = ("# x\n\nnow: CLEAR\nsay: fine\n"
+           "radar: obs            obs age: 8min ok\n"
+           "~4km/char, [><]=Trondheim, NO\n")
+
+    def text_of(self, page):
+        """As the READER sees it: tags stripped AND runs of whitespace
+        collapsed, because collapsing is what the browser does. Comparing
+        against the raw markup instead let the "do not run together" assertion
+        pass on the broken renderer -- the spaces were still in the source,
+        just not on the screen."""
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", page))
+
+    def test_the_two_fields_do_not_run_together(self):
+        page = MD.render(self.DOC)
+        self.assertNotIn("obs obs age", self.text_of(page))
+
+    def test_the_boundary_is_still_there_to_see(self):
+        page = MD.render(self.DOC)
+        self.assertIn("obs · obs age", self.text_of(page))
+
+    def test_single_spaces_inside_a_field_are_untouched(self):
+        """Only runs of two or more are padding; one space is a word gap."""
+        page = MD.render(self.DOC)
+        self.assertIn("obs age: 8min ok", self.text_of(page))
+
+    def test_it_does_not_reach_the_grid_or_the_curve(self):
+        """Those blocks are where a run of spaces means "no rain here", and
+        turning that into a dot would put weather on a clear sky."""
+        rows = ["[><]=x, NO"] + [" " * 48 for _ in range(24)]
+        rows[13] = " " * 24 + "><" + " " * 22
+        rows[6] = " " * 4 + "\u00b7\u2591\u2593\u2588\u2592" + " " * 39
+        page = MD.render("# x\n\n" + "\n".join(rows)
+                         + "\nlegend: \u00b7 light  \u2588 heavy\n")
+        self.assertNotIn("·", re.sub(r'<i[^>]*></i>', "", page).split("legend")[0][-400:])
+        widths = [sum(int(n) for n in re.findall(r"flex:(\d+)", r))
+                  for r in re.findall(r'<div class="row">(.*?)</div>', page)]
+        self.assertTrue(widths and all(w == 48 for w in widths), widths)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
