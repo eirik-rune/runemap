@@ -68,8 +68,16 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .now{font-size:1.05rem;margin:0 0 .3rem}
 .say{margin:0 0 1.1rem}
 .map{overflow-x:auto;border:1px solid var(--line);border-radius:10px;padding:.6rem .7rem;margin:0 0 .5rem}
-.map pre{margin:0;white-space:pre;
-font:12px/1.05 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em}
+/* letter-spacing put a white gutter between every cell once the cells became
+   solid blocks -- it was there to loosen the old dotted glyphs. And a 48-column
+   grid at a fixed size is 576px, so on a 390px phone the east half of the map
+   was simply off-screen behind a scrollbar: the reader could not see the rain
+   coming. The size is derived from the grid's own column count, which the page
+   writes into --cols, so a 24-column small map is not shrunk for nothing. 0.6em
+   is the advance width of a monospace cell. */
+.map pre{margin:0;white-space:pre;letter-spacing:0;line-height:1.02;
+font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:min(13px, calc((100vw - 3.6rem) / var(--cols) / 0.6))}
 .curve pre{margin:0;white-space:pre;overflow-x:auto;color:#4aa3df;
 font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .curve .axis{color:var(--dim);font-size:12px}
@@ -172,8 +180,10 @@ def render(text, marker="><"):
         '<span><i class="%s">%s</i> %s</span>' % (CLASS[c], CELL_GLYPH[c], n)
         for c, n in zip(RAMP, ("drizzle", "light", "moderate", "heavy", "storm")))
     blocks = {
-        "map": ('<div class="map"><pre>%s</pre></div>\n<p class="legend">%s</p>\n'
-                % (paint(grid, marker), legend)) if grid else "",
+        "map": ('<div class="map" style="--cols:%d"><pre>%s</pre></div>\n'
+                '<p class="legend">%s</p>\n'
+                % (max((len(r) for r in grid), default=48),
+                   paint(grid, marker), legend)) if grid else "",
         "curve": ('<div class="curve"><h2>next 2 hours</h2><pre>%s</pre></div>\n'
                   % html.escape("\n".join(curve))) if curve else "",
     }
