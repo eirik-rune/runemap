@@ -233,3 +233,47 @@ class BothWindowsMustAcceptTheCallersScale(unittest.TestCase):
         got = self._draw_finland()
         self.assertIsNotNone(got)
         self.assertIn("█", got[0])
+
+
+class OneFetchPerSkyPerCycleNotPerVisitor(unittest.TestCase):
+    """Before this cache every Helsinki reader paid 1.3-1.9s and a fresh
+    GetMap to FMI, while the answer I had written down for "do we push a cost
+    onto them" was "a prefetch behind a cache is lighter than one person with a
+    browser". That answer has to be true in the code."""
+
+    def setUp(self):
+        import shutil, tempfile
+        self.dir = tempfile.mkdtemp(prefix="wms-cache-")
+        self._was, W.CACHE = W.CACHE, self.dir
+        self._rm = shutil.rmtree
+
+    def tearDown(self):
+        W.CACHE = self._was
+        self._rm(self.dir, ignore_errors=True)
+
+    def _png(self):
+        import io
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (32, 32), (250, 81, 165, 255)).save(b, "PNG")
+        return b.getvalue()
+
+    def test_the_second_reader_does_not_reach_upstream(self):
+        raw, calls = self._png(), []
+
+        def get(u):
+            calls.append(u)
+            return raw
+        for _ in range(4):
+            self.assertIsNotNone(W.draw("><", 24.94, 60.17, small=True, get=get))
+        self.assertEqual(len(calls), 1, "one fetch per sky per cycle, not per visitor")
+
+    def test_a_new_cycle_fetches_again(self):
+        """The negative control: a cache that never expires is not a cache,
+        it is a frozen picture with a timestamp that keeps moving."""
+        self.assertNotEqual(W._bucket(0), W._bucket(W.REFRESH * 2))
+
+    def test_a_non_png_answer_is_never_cached(self):
+        """One bad minute must not be served for the rest of the cycle."""
+        self.assertIsNone(W.draw("><", 24.94, 60.17, get=lambda u: b"<xml/>"))
+        self.assertEqual(os.listdir(self.dir), [])
