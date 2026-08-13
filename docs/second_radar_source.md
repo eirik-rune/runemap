@@ -157,7 +157,11 @@ Two things followed:
   the default style is greyscale plus red: over Amsterdam, 2509 visible pixels
   are white / grey / dark grey / pink / red. Our ramp reads the first three as
   level 1, so every intensity below "red" would reach a reader as drizzle.
-  Nameable colours, unpublished ordering -- still a guess.
+  **The Japanese route now applies here** -- derive the order instead of the
+  rain rates -- but the attempt on 8/13 returned `INSUFFICIENT`: the
+  Netherlands was dry, one colour cleared the pixel floor over six frames and
+  three cities. That is a measurement waiting for weather, not a conclusion.
+  Re-run `ops/colour_order.py` against KNMI when it is raining there.
 - **Open-Meteo, NOAA GOES**: failed the product test, see above.
 
 ### Constants that must come from the source, not from the last source

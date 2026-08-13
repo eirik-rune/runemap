@@ -106,6 +106,7 @@ def adjacency(images, colours):
 
 
 MIN_PAIRS = 20000        # touching pixel pairs needed before judging at all
+MIN_CLASSES = 3          # below this, "the order is stable" cannot be wrong
 FRAGILE = 0.25           # depth gap below which "A is lighter than B" is noise
 
 
@@ -141,20 +142,28 @@ def stability(images, halves=2, min_px=200):
     n = max(1, len(images) // halves)
     orders = [order(sample(images[i:i + n], min_px=min_px))
               for i in range(0, len(images), n)][:halves]
-    return orders, all(o == orders[0] for o in orders) and len(orders) == halves
+    # A stability check over one or two classes is not a check: it can only
+    # print STABLE. Measured on KNMI over a dry Netherlands -- one colour
+    # survived the pixel floor and the tool cheerfully called the order stable.
+    if len(orders) < halves or min(len(o) for o in orders) < MIN_CLASSES:
+        return orders, None
+    return orders, all(o == orders[0] for o in orders)
 
 
-def verdict(by_depth, m):
+def verdict(by_depth, m, min_pairs=MIN_PAIRS):
     """Does every class border its proposed neighbours more than the rest?
 
     Checked per class rather than in total, so one dominant pair cannot carry
     a wrong order: for each colour, the strongest border it has must be one of
     the two the depth order puts next to it.
     """
-    if int(m.sum()) < MIN_PAIRS:
+    # min_pairs is a sample-size floor, not a strictness dial: a caller with a
+    # smaller scene (a synthetic one, say) may state a smaller floor, but the
+    # production default is never lowered to make a service pass.
+    if int(m.sum()) < min_pairs:
         return None, ("INSUFFICIENT: %d touching pixel pairs, under %d -- this "
                       "is 'I cannot tell yet', not 'the scale disagrees'"
-                      % (int(m.sum()), MIN_PAIRS))
+                      % (int(m.sum()), min_pairs))
     bad = []
     for i, c in enumerate(by_depth):
         row = m[i].copy()
