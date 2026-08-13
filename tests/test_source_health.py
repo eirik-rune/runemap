@@ -69,6 +69,27 @@ class EveryVerdictHasBeenFired(unittest.TestCase):
         self.assertEqual(H.check("probe", "fake_source", (0.0, 0.0), None,
                                  "Environment Canada")[0], "WRONG-SOURCE")
 
+    def test_a_missing_reader_is_not_reported_as_a_missing_map(self):
+        """Czechia needs h5py, an optional extra. Without it the adapter
+        declines -- and if that printed NO-MAP, the line would accuse an
+        upstream that is answering perfectly. Two different failures, two
+        different repairs, so two different words."""
+        m = fake(lambda *a, **k: None)
+        m.unavailable = lambda: "h5py is not installed"
+        state, msg = H.check("probe", "fake_source", (0.0, 0.0), None)
+        self.assertEqual(state, "NO-READER")
+        self.assertIn("h5py", msg)
+
+    def test_an_available_reader_that_declines_is_still_no_map(self):
+        """The guard must not swallow the real failure it sits in front of."""
+        m = fake(lambda *a, **k: None)
+        m.unavailable = lambda: None
+        self.assertEqual(H.check("probe", "fake_source", (0.0, 0.0), None)[0],
+                         "NO-MAP")
+
+    def test_an_adapter_without_the_hook_is_unchanged(self):
+        self.assertEqual(self._check(lambda *a, **k: None), "NO-MAP")
+
     def test_the_expected_source_matching_is_still_ok(self):
         fake(lambda *a, **k: ("art", 12.0, 1.0, None, time.time(), "FMI"))
         self.assertEqual(H.check("probe", "fake_source", (0.0, 0.0), None,
@@ -94,7 +115,7 @@ class ItShipsProbesForEveryShippedSource(unittest.TestCase):
         """A source added without a probe here is a source whose death is
         invisible, which is how all of today's failures behaved."""
         watched = {p[1] for p in H.PROBES}
-        for mod in ("radar_jma", "radar_wms", "radar_redemet"):
+        for mod in ("radar_jma", "radar_wms", "radar_redemet", "radar_chmi"):
             self.assertIn(mod, watched, mod)
 
     def test_every_wms_service_has_its_own_probe_not_just_the_module(self):
