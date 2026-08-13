@@ -651,6 +651,22 @@ def take_peek_miss():
     return v
 
 _RA_INFLIGHT = {}                 # key -> Event, one warm per sky at a time
+
+def _reason_after_wait(why, refused_at, started_at):
+    """Which fact does this reader deserve: the age of our copy, or upstream's answer?
+
+    `refused_at` is _RA_FAIL[key], written only where upstream answered with an
+    empty frame list. If that happened DURING this request (>= started_at), it is
+    newer than the cached file _from_cache() peeked at, and it is about the sky
+    rather than about our housekeeping -- so it wins. A refusal older than this
+    request does not win: the throttle already had its say at :903, and re-using
+    stale memory here would let one 30-second-old refusal silence a sky that has
+    since come back. Anything else returns `why` unchanged, so this can never
+    invent a reason where none was observed.
+    """
+    if refused_at is None or started_at is None:
+        return why
+    return "sky-empty" if refused_at >= started_at else why
 _RA_FAIL = {}                     # key -> ts of the last refusal (throttle only)
 _RA_FAIL_COOLDOWN = 30.0          # do not re-warm a known-failing sky faster
 _RA_BG_BUDGET = 45.0              # the background warm may outlive the response
@@ -969,6 +985,9 @@ def radar_resolve(code, lng, lat, token, small=False, wait=None):
     hit = _from_cache()
     if hit is not None:
         return hit
+    with _RA_LOCK:
+        refused = _RA_FAIL.get(key)
+    _why["v"] = _reason_after_wait(_why["v"], refused, _t0)
     note_reason(_why["v"] or "unknown")
     sys.stderr.write("FETCHING-REASON reason=%s key=%.1f,%.1f waited=%.2f budget=%.2f\n"
                      % (_why["v"] or "unknown", key[0], key[1],
