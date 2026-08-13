@@ -59,6 +59,18 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         self.assertEqual(len(heights), len("▁▂▄█▆▃▁"))
         self.assertEqual(heights, [12, 25, 50, 100, 75, 37, 12])
 
+    def test_the_curve_keeps_its_scale(self):
+        """Bars with no axis look fine until you ask "0 to what?" -- and the
+        first version of the axis filter removed the label line before the
+        labels were read out of it, so the scale vanished silently."""
+        scene = SCENE.replace("  \u2581\u2582\u2584\u2588\u2586\u2583\u2581",
+                              "  \u2581\u2582\u2584\u2588\u2586\u2583\u2581\n"
+                              "0   30   60   90 120min")
+        h = MD.render(scene)
+        axis = h.split('class="axis"')[1].split("</div>")[0]
+        for t in ("0", "30", "60", "90", "120min"):
+            self.assertIn(">%s<" % t, axis)
+
     def test_the_conditions_line_survives(self):
         self.assertIn("CLEAR_DAY", self.h)
 
