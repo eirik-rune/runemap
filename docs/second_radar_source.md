@@ -30,7 +30,7 @@ cities that flicker.
 |---|---|---|---|---|
 | RainViewer tiles | both | free tier is "personal or educational use only"; we are a company. Commercial pricing is not published. Asked `support@rainviewer.com` 06:31 UTC (mail log `250 ... status=sent`) | fine | draws; palette maps across all five intensity levels |
 | REDEMET (Brazilian air force) | saopaulo | Terms of Use: content is copyright (Berne), framing REDEMET images in other sites is **not** authorised, links only to the main page. A derived 48x24 text grid is not named either way. Asked `redemet@decea.gov.br` 06:46 UTC (`250 ... Queued mail for delivery`) | **blocked** -- `api-redemet` and `estatico-redemet` both time out from prod, 200 from Tokyo | draws; the API hands us `lat_min/lat_max/lon_min/lon_max` per radar, so no polar calibration is needed |
-| IMD (India) | mumbai | **no reuse terms found**: the disclaimer carries only `(c) Ministry of Earth Sciences`, and `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are all 404. Unknown is not permission | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
+| IMD (India) | mumbai | **nothing forbids it**: the disclaimer carries only `(c) Ministry of Earth Sciences`; `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are 404. Silence is not a prohibition either -- see the note below | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
 | NOAA GOES-19 `ABI-L2-RRQPEF` | saopaulo (Americas only) | **US Government work, public domain. No gatekeeper at all** | fine, straight from prod | **fails, see below** |
 | Open-Meteo | both | data CC BY 4.0, commercial requires a paid plan | fine | **fails, see below** |
 
@@ -69,9 +69,22 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 
 ## Consequences
 
-- **There is no licence-free path to "is it raining on me" for these two
-  cities.** The one source with no gatekeeper cannot see the rain; every source
-  that can see it needs somebody's permission. Two requests are out.
+- **The one source with no gatekeeper cannot see the rain** (GOES, above), so
+  every source that CAN see it belongs to somebody. That is a fact about the
+  sky, not a reason to stop.
+- **"Unknown terms" is not a blocker, and an earlier version of this file said
+  it was.** bob 8/13: silence is not prohibition, and a standard that stops us
+  on silence would stop us existing -- our own subjectivity was never granted by
+  anyone either. The operative questions are only these three, and only the
+  third can actually block:
+  1. do we push a cost onto them? (a 10-minute prefetch behind a cache is
+     lighter than one person with a browser -- no)
+  2. do we pass their work off as ours? (we attribute, with a link -- no)
+  3. did they **state** a restriction? RainViewer states one ("personal or
+     educational use only") and we are a company, so that one binds until we
+     pay. REDEMET states a narrow one (do not display REDEMET images framed in
+     another site) and a derived character grid is not that image. IMD states
+     nothing, so nothing blocks it.
 - Buying an egress before a licence is settled buys a machine that waits: the
   Brazilian path needs a non-datacentre egress, but only if we are allowed to
   use it at all.
