@@ -515,10 +515,32 @@ def _motion_peek(imgs, lng, lat):
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
 # Credit as each source asks to be credited, keyed by the name it reports.
-_SECOND_ATTRIB = {"RainViewer": "RainViewer rainviewer.com",
-                  "REDEMET/DECEA": "REDEMET/DECEA redemet.decea.mil.br",
-                  "NWS NEXRAD": "NWS NEXRAD via mesonet.agron.iastate.edu",
-                  "Environment Canada": "Environment and Climate Change Canada geo.weather.gc.ca"}
+def _second_attrib(name):
+    """Whose data drew this map, in the words that source declares for itself.
+
+    This used to be a dict here, restating what every adapter already carries.
+    Finland caught it: the row was added, the map drew, and the credit line
+    read a bare "FMI" because nobody had remembered to restate it in a second
+    place. A duplicated table does not fail when it falls behind -- it just
+    quietly starts under-crediting somebody whose data we are using, which is
+    the one thing this line exists to prevent. So it is derived, and the only
+    fallback is the source's own name.
+    """
+    try:
+        import radar_wms
+        for s in radar_wms.SERVICES:
+            if s["name"] == name:
+                return s["attrib"]
+    except Exception:
+        pass
+    for mod in ("radar_second", "radar_redemet"):
+        try:
+            m = __import__(mod)
+            if getattr(m, "NAME", None) == name:
+                return getattr(m, "ATTRIB", name)
+        except Exception:
+            continue
+    return name
 
 # A frame older than this may draw the echo a full cell (~10km) away from
 # where it now is: 10km/char over an observed 20-40km/h echo is 15-30 min.
@@ -1428,7 +1450,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     # an agent greps for the state. Present only when the fallback drew the map,
     # so its absence is also information: the primary upstream drew this one.
     if _src:
-        L.append("radar-data: " + _SECOND_ATTRIB.get(_src, _src))
+        L.append("radar-data: " + _second_attrib(_src))
     return "\n".join(L) + "\n"
 
 def main():

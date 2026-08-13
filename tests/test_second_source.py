@@ -174,3 +174,30 @@ class TheCooldownPathAsksToo(unittest.TestCase):
                           "a 'no map' return with no fallback above it: the "
                           "reader on this path gets a sentence while another "
                           "path gets rain")
+
+
+class TheCreditIsDerivedNotRestated(unittest.TestCase):
+    """Finland drew correctly and was credited as a bare "FMI", because the
+    credit line was a second hand-maintained copy of what each adapter already
+    declares. A duplicated table does not fail when it falls behind; it
+    under-credits somebody whose data we are using."""
+
+    def test_every_shipped_wms_service_credits_itself(self):
+        import radar_wms
+        for s in radar_wms.SERVICES:
+            self.assertEqual(RS._second_attrib(s["name"]), s["attrib"], s["key"])
+
+    def test_the_file_based_adapters_credit_themselves_too(self):
+        import radar_redemet, radar_second
+        for m in (radar_redemet, radar_second):
+            self.assertEqual(RS._second_attrib(m.NAME), m.ATTRIB, m.NAME)
+
+    def test_an_unknown_source_falls_back_to_its_own_name(self):
+        """Never blank, never someone else's: an unnamed source is still named."""
+        self.assertEqual(RS._second_attrib("SomeNewSource"), "SomeNewSource")
+
+    def test_the_body_prints_the_full_credit_for_a_wms_source(self):
+        import radar_wms
+        s = next(x for x in radar_wms.SERVICES if x["key"] == "fi-fmi")
+        b = body((ART, 12.0, 1.0, None, 1.0, s["name"]))
+        self.assertIn("radar-data: " + s["attrib"], b)
