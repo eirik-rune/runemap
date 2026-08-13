@@ -534,7 +534,7 @@ def _second_attrib(name):
     except Exception:
         pass
     for mod in ("radar_second", "radar_redemet", "radar_jma", "radar_smhi",
-                "radar_chmi", "radar_knmi"):
+                "radar_chmi", "radar_knmi", "radar_dmi"):
         try:
             m = __import__(mod)
             if getattr(m, "NAME", None) == name:
@@ -981,6 +981,8 @@ def _second_source(code, lng, lat, small, cached_only=False):
                 import radar_chmi as _m
             elif which == "knmi":
                 import radar_knmi as _m
+            elif which == "dmi":
+                import radar_dmi as _m
             else:
                 sys.stderr.write("SECOND-UNKNOWN %r\n" % (which,))
                 continue
