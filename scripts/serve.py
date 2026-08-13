@@ -18,6 +18,11 @@ import render_scene as R
 # including it would match every page ever served, so the slice starts at 1.
 from runemap.render import RAMP as _RAMP
 _RAIN_GLYPHS = tuple(c.encode("utf-8") for c in _RAMP[1:])
+import mdhtml as MD
+# Off unless a service turns it on. Production keeps serving the plain bytes
+# byte-for-byte while dev renders, so the flag -- not a code branch nobody
+# re-reads -- is what stands between strangers and an untested surface.
+_HTML_OK = os.environ.get("RUNEMAP_HTML", "").strip() not in ("", "0", "off")
 import net_budget
 
 import wall as _wall
@@ -217,11 +222,38 @@ class H(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="text/plain; charset=utf-8"):
         b = body.encode() if isinstance(body, str) else body
+        # 8/13 (bob): one canonical document. The plain bytes below are the
+        # whole product; HTML is a rendering of those same bytes and never a
+        # second source, so nothing above this line knows it exists. The
+        # X-Radar-Grid/Why decision is deliberately still taken on the PLAIN
+        # body: those headers answer "did that reader see rain", and if they
+        # were computed from the markup, every HTML row would read `nogrid`
+        # and the log column would start lying the day this shipped.
+        was_plain = ctype.startswith("text/plain")
+        htmlize = (was_plain and code == 200 and _HTML_OK
+                   and MD.wants_html(self.headers.get("Accept")))
+        plain = b
+        if htmlize:
+            try:
+                b = MD.render(plain.decode("utf-8", "replace")).encode()
+                ctype = "text/html; charset=utf-8"
+            except Exception as _me:
+                # A renderer fault must cost the reader nothing: they still get
+                # the document, in the format that is the contract anyway.
+                sys.stderr.write("HTML-RENDER-FAILED %r\n" % (_me,))
+                b, htmlize = plain, False
         self.send_response(code)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "public, max-age=300")
+        if was_plain:
+            # Two representations behind one URL and a public max-age: without
+            # this, any cache between us and the reader may hand a browser's
+            # HTML to the next agent that asks. That is precisely the failure
+            # bob named -- a machine getting the giant page by mistake -- and it
+            # would arrive through the cache, not through this code.
+            self.send_header("Vary", "Accept")
         # 8/12 17:54: the byte count is a single-sided ruler. Today it left 7 of 105
         # stranger requests undecidable (682-768B: a fetching state for a city with a
         # long name weighs as much as nothing at all), so I could not answer "did that
@@ -230,7 +262,7 @@ class H(BaseHTTPRequestHandler):
         # happened upstream -- so it cannot disagree with what the reader received.
         # Three values, because "no grid" and "not even a scene" are different things
         # and one label for two states is how a ruler starts lying (8/2).
-        if ctype.startswith("text/plain"):
+        if was_plain:
             # 8/12 18:50: three values were still one too few. In the first window
             # this header was live, nogrid=22 -- and 3 of them were a scanner
             # hitting /wp-admin/install.php. A 404 is not "a reader who got no
@@ -239,8 +271,8 @@ class H(BaseHTTPRequestHandler):
             # have nothing to do with radar. `code` was in this function all
             # along, so the information existed and I was dropping it.
             v = ("error" if code != 200 else
-                 "grid" if any(g in b for g in _RAIN_GLYPHS) else
-                 "landing" if b.startswith(b"echorune - text radar map") else "nogrid")
+                 "grid" if any(g in plain for g in _RAIN_GLYPHS) else
+                 "landing" if plain.startswith(b"echorune - text radar map") else "nogrid")
             self.send_header("X-Radar-Grid", v)
             # 8/12 19:02: "no map" and "why" used to live in two different files
             # (this header vs FETCHING-REASON on stderr) with no key to join them,
