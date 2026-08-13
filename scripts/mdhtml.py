@@ -233,7 +233,16 @@ def _curve_html(lines, heading=""):
             # "verified" the fix on Tokyo, whose curve happened to have no dry
             # tail. **A check run on a case that cannot exhibit the bug is not
             # a check.**
-            width = max(width, len(ln.rstrip()))
+            # MINUS ONE. The ruler marks bucket BOUNDARIES, not buckets:
+            # `runemap/sparkline.py` says so in its own docstring -- "ruler
+            # marks bucket boundaries 0..20 -> 21 chars". 20 intervals need 21
+            # fenceposts. Taking its length as a bucket count therefore always
+            # invented one extra empty bucket at the end, which is not a
+            # cosmetic extra: the chart answers "when does the rain arrive",
+            # so a 21st bucket squeezes every real one leftward and puts each
+            # bar at a time it does not mean. Measured live on Trondheim,
+            # 2026-08-13 19:20 -- source 20 buckets, page drew 21.
+            width = max(width, len(ln.rstrip()) - 1)
             continue
         if ln.strip():
             words.append(ln.strip())

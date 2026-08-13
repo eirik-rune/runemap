@@ -174,7 +174,12 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
                               "█▇▆▅▃               \n├────┼────┼────┼────┤")
         heights = [int(x) for x in
                    _re.findall(r"height:(\d+)%", MD.render(scene))]
-        self.assertEqual(len(heights), 21)
+        # 20, not 21. This assertion used to say 21 -- it froze my own
+        # fencepost error as the expected answer, and being green is exactly
+        # why the phantom bucket survived until a city with real rain showed
+        # up (Trondheim, 19:20 UTC). The ruler marks bucket BOUNDARIES:
+        # 20 intervals, 21 marks, as sparkline.py's docstring states.
+        self.assertEqual(len(heights), 20)
         self.assertEqual(heights[:5], [100, 87, 75, 62, 37])
         self.assertEqual(set(heights[5:]), {0})
 
@@ -578,6 +583,56 @@ class TheWindowKeepsItsWidthWhenTheEastIsDry(unittest.TestCase):
         page = MD.render(self.doc(self.rows_all_dry_in_the_east()))
         pad = float(re.search(r"padding-bottom:([\d.]+)%", page).group(1))
         self.assertAlmostEqual(100.0 * 24 * MD._CELL_TALL / 48.0, pad, places=0)
+
+
+class TheRulerMarksBoundariesNotBuckets(unittest.TestCase):
+    """20 intervals need 21 fenceposts.
+
+    `runemap/sparkline.py` says it in its own docstring -- "ruler marks bucket
+    boundaries 0..20 -> 21 chars" -- and this renderer used that length as a
+    bucket count, inventing one empty bucket at the end of every chart that
+    had a ruler. Caught live on Trondheim at 19:20 UTC on 2026-08-13, the
+    first city with real rain all evening: source 20 buckets, page drew 21.
+
+    Not cosmetic. The chart answers "when does the rain arrive", so position is
+    the content: a 21st bucket squeezes every real bar leftward and draws each
+    one at a time it does not mean.
+    """
+
+    RULER = "\u251c\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2524"
+
+    def doc(self, bars):
+        return ("# x\n\nnow: clear\nsay: later\n"
+                "rain curve (next 2h, 6min/bucket):\n"
+                "%s\n%s\n0   30   60   90 120min\n" % (bars, self.RULER))
+
+    def heights(self, page):
+        seg = re.search(r'<div class="bars">.*?</div>', page, re.S)
+        return re.findall(r"height:(\d+)%", seg.group(0)) if seg else []
+
+    def test_the_ruler_is_one_longer_than_the_chart_it_rules(self):
+        """The premise, pinned against the generator rather than assumed."""
+        self.assertEqual(len(self.RULER), 21)
+
+    def test_rain_at_the_end_draws_exactly_twenty_buckets(self):
+        """Trondheim's live shape: dry for 90 minutes, then rain."""
+        got = self.heights(MD.render(self.doc(" " * 15 + "\u2588" * 5)))
+        self.assertEqual(len(got), 20)
+        self.assertEqual([h != "0" for h in got], [False] * 15 + [True] * 5)
+
+    def test_a_trimmed_dry_tail_is_restored_to_twenty(self):
+        """The reason the ruler is consulted at all: if the document's own bar
+        line loses its trailing dry buckets, the ruler is the only surviving
+        statement of how wide the chart is. It must restore 20, not 21."""
+        got = self.heights(MD.render(self.doc("\u2588\u2588\u2588")))
+        self.assertEqual(len(got), 20)
+        self.assertEqual([h != "0" for h in got], [True] * 3 + [False] * 17)
+
+    def test_the_ruler_never_overrides_a_longer_bar_line(self):
+        """A document that draws more buckets than the ruler describes is not
+        silently truncated to it -- the data outranks the decoration."""
+        got = self.heights(MD.render(self.doc("\u2588" * 24)))
+        self.assertEqual(len(got), 24)
 
 
 if __name__ == "__main__":
