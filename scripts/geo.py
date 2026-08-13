@@ -3,18 +3,23 @@
   lookup("Chiang Mai")      -> place dict (name -> lat/lon)
   rlookup(18.79, 98.99)     -> nearest place + county/province
 No network, no rate limit. DB path via env GEO_DB."""
-import math, os, sqlite3, unicodedata
+import math, os, sqlite3, threading, unicodedata
 
 DB = os.environ.get("GEO_DB", "/home/ubuntu/geonames/geo.sqlite")
-_conn = None
+# One connection per THREAD, not per process. serve.py:6 is a
+# ThreadingHTTPServer, and a shared sqlite connection under concurrent
+# execute() raises SQLITE_MISUSE: measured 8/13, 11 errors in 4789 shared
+# lookups (0.23%) vs 0 in 4800 per-thread. geoip.py:7 already does this.
+_L = threading.local()
 
 
 def _db():
-    global _conn
-    if _conn is None:
-        _conn = sqlite3.connect(DB, check_same_thread=False)
-        _conn.row_factory = sqlite3.Row
-    return _conn
+    c = getattr(_L, "c", None)
+    if c is None:
+        c = sqlite3.connect(DB, check_same_thread=False)
+        c.row_factory = sqlite3.Row
+        _L.c = c
+    return c
 
 
 def norm(s):
