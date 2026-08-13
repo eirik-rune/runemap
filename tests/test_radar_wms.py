@@ -277,3 +277,21 @@ class OneFetchPerSkyPerCycleNotPerVisitor(unittest.TestCase):
         """One bad minute must not be served for the rest of the cycle."""
         self.assertIsNone(W.draw("><", 24.94, 60.17, get=lambda u: b"<xml/>"))
         self.assertEqual(os.listdir(self.dir), [])
+
+
+class AQueryInTheBaseUrlIsNotOverwritten(unittest.TestCase):
+    """KNMI selects its dataset in the URL (?dataset=RADAR). A blind
+    "?" + urlencode produced two question marks and a 422 -- how the
+    Netherlands failed the first thing it was ever asked."""
+
+    def test_a_base_with_a_query_gets_an_ampersand(self):
+        u = W._join("https://h/x?dataset=RADAR", {"service": "WMS"})
+        self.assertIn("?dataset=RADAR&service=WMS", u)
+        self.assertEqual(u.count("?"), 1)
+
+    def test_a_plain_base_still_gets_a_question_mark(self):
+        self.assertIn("?service=WMS", W._join("https://h/x", {"service": "WMS"}))
+
+    def test_every_shipped_service_builds_one_question_mark(self):
+        for s in W.SERVICES:
+            self.assertEqual(W.url_for(s, (1.0, 2.0, 3.0, 4.0)).count("?"), 1, s["key"])
