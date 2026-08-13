@@ -222,9 +222,17 @@ class AStaleCachedFrameMustNotBeatAFresherOne(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.old_cache = M.CACHE
         M.CACHE = self.dir
+        # Which slot is asked for first has nothing to do with HDF5, but draw()
+        # returns early when h5py is missing -- so without this the test passes
+        # locally and fails on CI, which is exactly what it did. Pin the reader
+        # rather than skip: skipping would have hidden the behaviour on the one
+        # machine that runs the suite on every push.
+        self.old_have = M.have_h5py
+        M.have_h5py = lambda: True
 
     def tearDown(self):
         M.CACHE = self.old_cache
+        M.have_h5py = self.old_have
 
     def test_the_newest_slot_is_tried_before_older_cached_ones(self):
         st = M.stamps()
