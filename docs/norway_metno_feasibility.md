@@ -113,6 +113,26 @@ keeps meeting.
   Norwegian radar sites, exactly as Denmark's does.
 
   Not "mostly covered". Two different questions, and only one is answered.
+
+  **Where the forgery-proof control lives.** The file names its own
+  contributors, so the site list need not be typed from memory:
+
+      mosaic_info:nodes = "norsg,noand,nober,nobml,nohas,nohgb,nohur,nohfj,
+                           norsa,norst,nosmn,fianj,...,sevil"
+      mosaic_info:missing_nodes = "nosta,selek"
+
+  `missing_nodes` is the interesting half: two radars did NOT contribute to
+  this frame, so their coverage should be a hole in `is_nodata` that the other
+  radars do not fill. A product cannot forge where it is blind, and it
+  certainly cannot forge a hole that moves when a different radar drops out.
+
+  The gap is coordinates: these are ODIM node codes and the file does not carry
+  their lat/lon, so somewhere publishing Nordic radar positions has to be found
+  first (DMI shipped per-radar volume files, which is what made Denmark's check
+  easy). Until then the check would have to fall back on "the seen area must
+  lie in the Nordic latitude band, and the flipped read must not" -- weaker
+  than Denmark's, and it should be labelled as weaker rather than counted as
+  the same thing.
 * **Coverage box** and the dBZ floor: the shared `scripts/dbz.py` table applies,
   including the 7 dBZ floor, and must not be re-derived here.
 
