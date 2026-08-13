@@ -68,6 +68,23 @@ that fell somewhere else. Both countries publish station observations openly,
 and `ops/ch_orient.py` is already written to take the frame and the gauge
 readings from its caller, so the judgement itself is reusable as-is.
 
+**Sweden, started 2026-08-13 and stopped at an honest verdict.** SMHI's gauge
+feed is open and needs no key:
+
+    .../metobs/api/version/1.0/parameter/7/station-set/all/period/latest-hour/data.json
+
+It returned **140 stations, of which 2 were wet** — and `ch_orient.judge()`
+answers INSUFFICIENT for that sample no matter what the radar column contains.
+Checked rather than assumed: feeding it a radar column that agrees perfectly, one
+that is perfectly flipped, and one that is pure noise all return INSUFFICIENT,
+because the gauge side alone fails the wet-station minimum. **That is the
+verdict, not a gap in the tooling** — Sweden was simply dry.
+
+So Sweden needs an archived rainy hour, exactly as Switzerland did (four hours
+out of the 14-day radar archive). SMHI's per-station history is under the
+`latest-months` / `corrected-archive` periods; the matching radar archive is the
+remaining unknown, since `radar_smhi` fetches only the current frame today.
+
 Two things learned tonight apply when that is done:
 
 * **The control must have margin, not just direction.** Switzerland's blind
