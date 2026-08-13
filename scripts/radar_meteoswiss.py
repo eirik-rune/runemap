@@ -262,22 +262,31 @@ def draw(code, lng, lat, small=False, get=None, cached_only=False):
     if why:
         sys.stderr.write("CHRZC-NO-READER %s\n" % (why,))
         return None
+    # Newest first, and cache-or-download PER SLOT rather than scanning the
+    # whole cache first.
+    #
+    # The first version scanned every cached slot before trying any download,
+    # so a single stale cached frame beat a fresher downloadable one: with
+    # frames published up to 22:35 the probe chose one from 22:05, then
+    # correctly rejected it as too old and declined the country entirely.
+    # "Prefer the cache" is right; "prefer ANY cached frame over a newer one"
+    # is not, and the two look identical until the cache holds exactly one old
+    # entry.
     path = ts = None
     for cand in stamps():
         p = _cache_path(cand)
         if os.path.exists(p) and os.path.getsize(p) > 0:
             path, ts = p, cand
             break
-    if path is None:
         if cached_only:
             # This reader already holds a map; buying them a fresher one at the
-            # price of an upstream round trip is a trade nobody asked for.
-            return None
-        for cand in stamps():
-            p = download(cand, get)
-            if p is not None:
-                path, ts = p, cand
-                break
+            # price of an upstream round trip is a trade nobody asked for. Keep
+            # walking back through the cache, but open no socket.
+            continue
+        p = download(cand, get)
+        if p is not None:
+            path, ts = p, cand
+            break
     if path is None:
         return None
     age = time.time() - ts
