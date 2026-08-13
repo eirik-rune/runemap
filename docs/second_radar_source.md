@@ -153,16 +153,25 @@ Two things followed:
 
 ### Measured, deliberately not shipped
 
-- **Netherlands (KNMI).** Licence is clean (Fees "no conditions apply",
-  AccessConstraints "None") and the map draws, but GetStyles answers 500 and
-  the default style is greyscale plus red: over Amsterdam, 2509 visible pixels
-  are white / grey / dark grey / pink / red. Our ramp reads the first three as
-  level 1, so every intensity below "red" would reach a reader as drizzle.
-  **The Japanese route now applies here** -- derive the order instead of the
-  rain rates -- but the attempt on 8/13 returned `INSUFFICIENT`: the
-  Netherlands was dry, one colour cleared the pixel floor over six frames and
-  three cities. That is a measurement waiting for weather, not a conclusion.
-  Re-run `ops/colour_order.py` against KNMI when it is raining there.
+- **Netherlands (KNMI): the blocker dissolved, and what is left is weather.**
+  The reason it was refused was "no published mapping from colour to rain
+  rate". That was true about their *legend* and wrong about their *service*:
+  the layer is `queryable="1"` and GetFeatureInfo answers
+
+      image1.image_data  0.000365  mm/hr
+
+  with the unit declared by the server. The mapping does not have to exist,
+  because the value is published. They also serve `/nearest` variants of every
+  style (`precip-blue/nearest`, `radarReflectivity/nearest`), which are the same
+  data drawn without interpolation -- and only a discrete style can carry an
+  exact colour table at all. `ops/value_probe.py` samples one and builds the
+  table by asking rather than deriving.
+  **Still not shipped, and two things must happen first, both needing rain over
+  the Netherlands**: the probe returns INSUFFICIENT on a dry day (measured
+  8/13: one colour, `#ffffff`, 0.000365 mm/hr), and -- separately -- **a style
+  name we invented also returns HTTP 200 with a fully transparent PNG**, so on
+  a dry day "the style was honoured" and "the style was ignored" are the same
+  picture. That control has to be run under weather too.
 - **Open-Meteo, NOAA GOES**: failed the product test, see above.
 
 ### Constants that must come from the source, not from the last source
