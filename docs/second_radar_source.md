@@ -33,6 +33,14 @@ cities that flicker.
 | IMD (India) | mumbai | **nothing forbids it**: the disclaimer carries only `(c) Ministry of Earth Sciences`; `copyright.php` / `website_policy.php` / `policy.php` / `terms.php` are 404. Silence is not a prohibition either -- see the note below | fine | per-station PPI GIFs in polar coordinates -- station coordinates and range calibration would have to be built |
 | NOAA GOES-19 `ABI-L2-RRQPEF` | saopaulo (Americas only) | **US Government work, public domain. No gatekeeper at all** | fine, straight from prod | **fails, see below** |
 | Open-Meteo | both | data CC BY 4.0, commercial requires a paid plan | fine | **fails, see below** |
+| DWD (Germany) | germany | commercial use allowed: `Fees=none`, `AccessConstraints=dwd.de/copyright` -> CC BY 4.0 with a source note, and their template requires that note even for a change of data format. **Shipping** | fine | draws; needs their dBZ palette and a no-data share guard |
+| FMI (Finland) | finland | `Fees NONE`, `AccessConstraints NONE` in their own capabilities. **Shipping** | fine | draws at 6 km/char; needs their palette, the scale ends in pink |
+| KNMI (Netherlands) | netherlands | `Fees "no conditions apply"`, `AccessConstraints None` | fine | draws, but publishes no machine-readable colour map and its default style is greyscale plus red -- intensity would be a guess |
+| MET Norway radar API | norway | their THREDDS WMS page states it is for demonstrations only, not operational use | fine | `5level_reflectivity` exists, but the images carry no georeference and have the map baked in |
+
+This table is the part that rots: it was written when everything was blocked,
+and by the end of the same day three rows had moved. If a row here disagrees
+with `scripts/radar_wms.py`, the code is the fact and this is a stale sentence.
 
 ## The two that failed the product test, with the ruler checked first
 
@@ -112,18 +120,38 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 | Canada | ECCC GeoMet | `Environment and Climate Change Canada geo.weather.gc.ca` | 0.7s |
 | Finland | FMI | `Finnish Meteorological Institute en.ilmatieteenlaitos.fi` | 6 km/char; 1.8s cold, 0.20-0.35s cached |
 | Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
+| Germany | DWD WN analysis | `Datenbasis: Deutscher Wetterdienst, Raster veraendert` | dBZ palette from their SLD; declines a window >25% no-data |
 | Mumbai | **nothing** | -- | RainViewer states non-commercial; we are a company |
 
 Every one of these is a fallback: the primary upstream wins whenever it has
 frames, and the absence of a `radar-data:` line is how a reader can tell which
 one drew.
 
+### Germany, and how the colour was settled
+
+It shipped once the question changed from "what is this magenta" -- which
+neither DWD's style document nor its legend answers -- to **does it move**. Two
+frames 105 minutes apart are pixel-identical in every magenta pixel, at four
+cities, while the echo around them changed; over Munich 7071 of 7071 visible
+pixels were static. Rain moves, furniture does not, so it is declared no-data
+alongside their grey. Their real 75-85 dBZ pink sits 51 counts of green away
+and stays rain -- pinned by a test, because that near-miss is the whole danger.
+
+Two things followed:
+
+- **`max_nodata_share`.** Their composite fades out past the border instead of
+  stopping. Berlin 0.3% no-data, Strasbourg 4.2%, Zurich 22%, Prague 33%,
+  Copenhagen 37%, Vienna 67%. Above 25% we decline, because a window two thirds
+  blind renders as a clear sky.
+- **Attribution is not just a name.** Eirik read the licence pages after this
+  shipped: DWD's template (vorlagen_quellenangabe.html, section 7 DWD-Gesetz)
+  requires a source note even for a change of data FORMAT, and CC BY 4.0
+  separately requires indicating changes. A PNG turned into a character grid is
+  exactly that, so every drawn map now also carries
+  `radar-data-note: redrawn from the source frames as a text grid`.
+
 ### Measured, deliberately not shipped
 
-- **Germany (DWD).** 43% of the visible pixels over Hamburg are a magenta
-  (251,0,255) in neither its style document nor its legend, and an explicit
-  `&time=` for the latest observed step returns the same colours, so it is not
-  a forecast frame. A colour we cannot name must not be drawn as rain.
 - **Netherlands (KNMI).** Licence is clean (Fees "no conditions apply",
   AccessConstraints "None") and the map draws, but GetStyles answers 500 and
   the default style is greyscale plus red: over Amsterdam, 2509 visible pixels

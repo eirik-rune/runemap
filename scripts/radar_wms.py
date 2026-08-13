@@ -162,7 +162,15 @@ SERVICES = [
     {
         "key": "de-dwd-wn",
         "name": "DWD",
-        "attrib": "Deutscher Wetterdienst dwd.de",
+        # Their form, not ours. DWD's own template page (vorlagen_
+        # quellenangabe.html, under section 7 of the DWD-Gesetz) is explicit
+        # that a source note is required even for extracts or a change of data
+        # format, and that further modification calls for at least a mention of
+        # DWD -- and CC BY 4.0 separately requires indicating changes. A PNG
+        # turned into a 48x24 character grid is exactly that modification, so
+        # naming them is necessary and not sufficient. Found by Eirik reading
+        # the licence pages after this shipped.
+        "attrib": "Datenbasis: Deutscher Wetterdienst, Raster veraendert",
         "url": "https://maps.dwd.de/geoserver/dwd/wms",
         # The WN composite is analysis only. The RV layer next to it carries
         # analysis AND forecast in one product, which is a different promise

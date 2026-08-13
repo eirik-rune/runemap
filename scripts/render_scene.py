@@ -1492,6 +1492,16 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     # so its absence is also information: the primary upstream drew this one.
     if _src:
         L.append("radar-data: " + _second_attrib(_src))
+        # Naming the source is not the whole obligation. CC BY 4.0 -- which
+        # covers FMI and DWD's open data alike -- asks that changes be
+        # indicated, and DWD's own template page says a source note is required
+        # even for a change of data format. What we hand a reader is not their
+        # picture: it is a 48x24 character grid derived from it. That sentence
+        # does not fit on the credit line without pushing the longest
+        # attribution past 79 cells, so it gets its own token; a machine keys
+        # on the token, and "radar-data-note" cannot be confused with either
+        # "radar:" (the state) or "radar-data:" (whose data).
+        L.append("radar-data-note: redrawn from the source frames as a text grid")
     return "\n".join(L) + "\n"
 
 def main():
