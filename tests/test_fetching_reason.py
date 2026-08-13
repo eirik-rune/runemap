@@ -47,11 +47,23 @@ class FetchingReason(unittest.TestCase):
         self.assertEqual(len(lines), 1, "expected exactly one line, got %r" % lines)
         return dict(t.split("=", 1) for t in lines[0].split()[1:])["reason"]
 
-    def test_list_miss(self):
+    def test_list_read_with_no_carrier_word_says_nopeek(self):
+        # A bare stub never calls _cached_peek, so no carrier word is left behind and
+        # the reason must name THAT, not a cache miss. render_scene.py:829 names this
+        # path in advance. Was "list-miss" until 81006e02 split the word; the rename
+        # never reached this file, so the assert nailed a word the code cannot emit.
         RS._peek = lambda url: None
         st, _, lines = self._run()
         self.assertEqual(st, RS.STATE_FETCHING)
-        self.assertEqual(self._reason(lines), "list-miss")
+        self.assertEqual(self._reason(lines), "list-nopeek")
+
+    def test_a_carrier_word_survives_to_the_reason(self):
+        # The point of 81006e02 was that four empty reads are four different facts.
+        # If anyone re-collapses them, this goes red: the carrier word must arrive.
+        RS._peek = lambda url: (RS.note_peek_miss("nofile"), None)[1]
+        st, _, lines = self._run()
+        self.assertEqual(st, RS.STATE_FETCHING)
+        self.assertEqual(self._reason(lines), "list-nofile")
 
     def test_list_unparseable(self):
         RS._peek = lambda url: "{"
