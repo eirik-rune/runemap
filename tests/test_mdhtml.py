@@ -5,7 +5,9 @@ promises made to bob on 8/13 are measured rather than asserted: the bytes an
 agent gets are unchanged, the page a browser gets is a small multiple of them,
 and nothing is added that the text did not already say.
 """
+import html
 import os
+import re
 import sys
 import unittest
 
@@ -60,13 +62,40 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         self.assertIn('class="me"', self.h)
 
     def test_no_line_of_the_source_is_dropped_without_being_named(self):
-        """A line that matches nothing at all would vanish in silence."""
+        """A line that matches nothing at all would vanish in silence.
+
+        The first version of this test matched each line's first word, and
+        passed on the legend line for the wrong reason: `legend` also occurs in
+        this page's own CSS class name. A check that can be satisfied by
+        markup it is not looking at is not a check. So it matches on content
+        that only the source line carries, and the one line deliberately
+        dropped is named here rather than allowed to fall through."""
+        drop = ("legend:",)     # rendered as a coloured legend instead
+        # Compare against the page's TEXT, not its markup: grid rows are cut
+        # into coloured spans, so a raw fragment would never match there and
+        # the map -- the part most worth protecting -- would be exempt from
+        # this check for a reason that has nothing to do with the map.
+        hay = " ".join(re.sub(r"<[^>]+>", "", self.h).split())
         for ln in SCENE.split("\n"):
             s = ln.strip()
-            if not s or s.startswith("#"):
+            if not s or s.startswith("#") or s.startswith(drop):
                 continue
-            head = s.split()[0].strip(":,")
-            self.assertIn(head.replace("&", "&amp;"), self.h, ln)
+            # `now:` and `rain curve (next 2h):` are labels the page turns into
+            # styling and a heading. What they label still has to be there.
+            if s.startswith("rain curve"):
+                s = s.split(":", 1)[1].strip()
+            words = s.split()
+            if words[0] == "now:":
+                words = words[1:]
+            frag = html.escape(" ".join(words[:3]))
+            self.assertIn(frag, hay, ln)
+
+    def test_the_sources_own_legend_line_is_replaced_not_duplicated(self):
+        """It stays in the document -- it is what an agent reads -- but a page
+        that prints a coloured legend and then the text of the same legend is
+        arguing with itself. Found by looking at the render, not by reasoning."""
+        self.assertIn("legend:", SCENE)
+        self.assertEqual(self.h.count("drizzle"), 1)
 
 
 class ItStaysSmall(unittest.TestCase):

@@ -33,7 +33,12 @@ CLASS = {"·": "r1", "░": "r2", "▒": "r3",
 # Bytes of HTML per byte of text. 25 KB for 1.8 KB was 14x.
 MAX_RATIO = 6.0
 
-_META = re.compile(r"^(radar|data|~|\[|obs|=|legend)")
+_META = re.compile(r"^(radar|data|~|\[|obs|=)")
+# The scene's own `legend:` line stays in the document -- it is what an agent
+# reads -- but printing it again under a coloured legend that says the same
+# thing is the page arguing with itself. Looking at the render is what showed
+# it; the parser was happily filing it as provenance.
+_DROP = re.compile(r"^(legend|\u56fe\u4f8b|\u51e1\u4f8b)\s*:")
 
 PAGE = """<!doctype html>
 <meta charset="utf-8">
@@ -54,8 +59,9 @@ h1{font-size:1.15rem;line-height:1.3;margin:0 0 .1rem;letter-spacing:-.01em}
 .map{overflow-x:auto;border:1px solid var(--line);border-radius:10px;padding:.6rem .7rem;margin:0 0 .5rem}
 .map pre{margin:0;white-space:pre;
 font:12px/1.05 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em}
-.curve pre{margin:0;white-space:pre;overflow-x:auto;
-font:13px/1.15 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.curve pre{margin:0;white-space:pre;overflow-x:auto;color:#4aa3df;
+font:15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.curve .axis{color:var(--dim);font-size:12px}
 .curve h2{font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 .3rem}
 .curve{margin:0 0 1.1rem}
 .me{color:#111;background:#ffd54a;border-radius:2px;font-weight:700}
@@ -130,6 +136,8 @@ def render(text, marker="><"):
                 curve.append(s)
                 continue
             in_curve = False
+            continue
+        if _DROP.match(s):
             continue
         if _META.match(s):
             meta.append(s.strip())
