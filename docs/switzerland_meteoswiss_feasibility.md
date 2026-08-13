@@ -260,6 +260,40 @@ looks the same however it is drawn. The end-to-end look has to wait for weather.
 | datum shift | applied, and tested to be worth ~200 m rather than a no-op |
 | grid geometry | LV95 E 2255000→2965000, N 1480000→840000, row 0 north |
 | radar site positions | **resolved** — WMO OSCAR, keyed by the file's own ids, names cross-checked |
-| payload orientation | **open, and the mask cannot fix it** — composite is centred on its own radars |
-| end-to-end look | **not possible yet** — the whole domain was dry tonight |
-| adapter | not written |
+| payload orientation | **verified** — against rain gauges, corr +0.934 vs +0.059 flipped (`ops/ch_orient.py`) |
+| end-to-end look | done via gauges over four archived rainy hours |
+| adapter | `scripts/radar_meteoswiss.py`, wired as country twelve |
+
+
+## The orientation question, settled — by a different instrument
+
+The blind mask could not do it (above). What could: **MeteoSwiss's own rain
+gauges.** Their SMN automatic stations publish hourly precipitation
+(`rre150h0`) with coordinates, in different files, measured by equipment that
+is not a radar. If the array is read correctly, gauge totals must agree with
+the radar rate at each station's own cell; upside down, they agree with rain
+that fell somewhere else.
+
+Four independent rainy hours from the archive, ~27 stations each:
+
+| hour (UTC) | n | as read | flipped |
+|---|---|---|---|
+| 2026-08-04 18:00 | 27 | **+0.968** | +0.197 |
+| 2026-07-31 23:00 | 26 | **+0.873** | −0.127 |
+| 2026-08-05 20:00 | 28 | **+0.914** | +0.029 |
+| 2026-08-04 21:00 | 27 | **+0.982** | +0.136 |
+| mean | | **+0.934** | +0.059 |
+
+The per-station detail is starker than the correlation: the two heaviest gauge
+readings of the 18:00 hour, 15.5 mm and 9.5 mm, sit on radar cells reading
+14.7 and 13.3 mm/h as read, and **0.005 and 0.000** flipped.
+
+That is a verdict with room to be wrong in — unlike the 1% the mask offered.
+`ops/ch_orient.py` is the judgement made repeatable, with OK / FLIPPED /
+INSUFFICIENT all fired in tests, including the case that hid this all evening:
+**a dry hour must return INSUFFICIENT, not a guess.**
+
+Finding it required going back into the 14-day archive for weather, rather than
+waiting for it. Two rules from this repo did the work: the control must be an
+instrument the product cannot forge, and it must be measured for *margin*, not
+only for direction.

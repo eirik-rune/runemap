@@ -975,10 +975,6 @@ SECOND_MODULES = {
     "knmi": "radar_knmi",
     "dmi": "radar_dmi",
     "metno": "radar_metno",
-    # Registered so the name resolves, deliberately NOT in the production
-    # chain: MeteoSwiss's payload orientation is still unverified (see
-    # docs/switzerland_meteoswiss_feasibility.md). Being in this table costs a
-    # reader nothing -- only RUNEMAP_SECOND_SOURCE decides who is asked.
     "meteoswiss": "radar_meteoswiss",
 }
 
