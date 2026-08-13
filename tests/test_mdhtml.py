@@ -35,6 +35,78 @@ data: Caiyun Weather caiyunapp.com | runemap
 """
 
 
+ZH = """# Tokyo, Tokyo, JP 天气一屏
+# 更新于 2026-08-14 02:23 UTC+9  (经度 139.69171, 纬度 35.6895)
+当前: 小雨  24C  湿度 84%  风速 9km/h  雨强 0.14mm/h
+48分钟后雨渐停，不过一小时后还有雨
+
+雨量曲线(未来2h, 6min/格):
+▄▃▄▃▃▅▄▂▁ ▃▃▂▃ ▂▃▅██
+├────┼────┼────┼────┤
+0   30   60   90 120min
+
+radar: obs            obs age: 8min ok
+每字符≈4km, [><]=Tokyo, Tokyo, JP
+            ░░░░░░▒▒▒░▒▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▒▒░░░░░
+       ░░    ░░░░░░░░░▒▒▒▒▒▒▒▒▓▓▓▓▓▒▒▓▒▒░░░░░░░░
+
+图例: · 毛毛雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 暴雨
+
+数据: 彩云天气 caiyunapp.com | runemap 渲染
+"""
+
+JA = ZH.replace("天气一屏", "天気一覧").replace("更新于", "更新").replace(
+    "当前:", "現在:").replace("雨量曲线(未来2h, 6min/格)", "雨量曲線(今後2h, 6min/枠)").replace(
+    "图例:", "凡例:").replace("毛毛雨", "霧雨").replace("数据:", "データ:")
+
+
+class TheParserReadsShapeNotEnglish(unittest.TestCase):
+    """bob saw a title, a timestamp and nothing else -- three times running --
+    while every check here passed. His page is the Chinese one. The parser
+    keyed on `now:`, `rain curve`, `~4km/char` and `legend:`, so on /zh (当前:,
+    雨量曲线, 每字符≈4km, 图例:) and /ja nothing matched and the document fell
+    through to "prose".
+
+    **A parser that understands one language does not fail on the others, it
+    empties them** -- and the language I tested in was the one I wrote the keys
+    in. So these fixtures exist, and every claim below is about structure."""
+
+    def each(self):
+        return (("zh", ZH), ("ja", JA), ("en", SCENE))
+
+    def test_the_conditions_line_is_there_in_every_language(self):
+        for lang, scene in (("zh", ZH), ("ja", JA)):
+            h = MD.render(scene)
+            self.assertIn("24C", h, lang)
+            self.assertIn("湿度" if lang == "zh" else "湿度", h, lang)
+
+    def test_the_forecast_sentence_is_there_in_every_language(self):
+        self.assertIn("48分钟后雨渐停", MD.render(ZH))
+
+    def test_the_map_keeps_all_its_rows_in_every_language(self):
+        for lang, scene in self.each():
+            h = MD.render(scene)
+            rows = h.count('class="row"')
+            self.assertGreater(rows, 1, lang)
+
+    def test_the_legend_labels_are_the_documents_own(self):
+        h = MD.render(ZH)
+        self.assertIn("毛毛雨", h)
+        self.assertNotIn("drizzle", h)
+        j = MD.render(JA)
+        self.assertIn("霧雨", j)
+        self.assertNotIn("drizzle", j)
+
+    def test_the_curve_heading_is_the_documents_own(self):
+        self.assertIn("雨量曲线(未来2h, 6min/格)", MD.render(ZH))
+        self.assertIn("雨量曲線(今後2h, 6min/枠)", MD.render(JA))
+        self.assertNotIn("next 2 hours", MD.render(ZH))
+
+    def test_the_curve_is_drawn_not_dropped(self):
+        for lang, scene in (("zh", ZH), ("ja", JA)):
+            self.assertIn('class="bars"', MD.render(scene), lang)
+
+
 class ItCarriesTheWholeDocument(unittest.TestCase):
     """The first prototype silently dropped the forecast sentence and the rain
     curve: it matched on 'Over the next', and the wording that day was 'After
