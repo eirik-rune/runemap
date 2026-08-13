@@ -533,14 +533,20 @@ def _second_attrib(name):
                 return s["attrib"]
     except Exception:
         pass
-    for mod in ("radar_second", "radar_redemet", "radar_jma", "radar_smhi",
-                "radar_chmi", "radar_knmi", "radar_dmi", "radar_metno"):
+    # Derived from SECOND_MODULES, never a second hand-kept list. A source was
+    # once added to the chain and not to a tuple exactly like this one, so it
+    # served readers for twenty minutes crediting nobody -- and the fallback
+    # below returns the bare NAME, which looks like an attribution and is not
+    # the licence line CC BY asks for. Silent, and on the licence.
+    for mod in SECOND_MODULES.values():
         try:
-            m = __import__(mod)
+            m = importlib.import_module(mod)
             if getattr(m, "NAME", None) == name:
                 return getattr(m, "ATTRIB", name)
         except Exception:
             continue
+    # Reaching here means a source drew a map and no module claims its name.
+    sys.stderr.write("SECOND-ATTRIB-UNCLAIMED %r\n" % (name,))
     return name
 
 # A frame older than this may draw the echo a full cell (~10km) away from
