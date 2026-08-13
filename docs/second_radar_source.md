@@ -153,25 +153,47 @@ Two things followed:
 
 ### Measured, deliberately not shipped
 
-- **Netherlands (KNMI): the blocker dissolved, and what is left is weather.**
-  The reason it was refused was "no published mapping from colour to rain
-  rate". That was true about their *legend* and wrong about their *service*:
-  the layer is `queryable="1"` and GetFeatureInfo answers
+- **Netherlands (KNMI): three claims corrected, one route left open.**
+  The original refusal was "no published mapping from colour to rain rate".
+  That is true of their legend and false of their service: the layer is
+  `queryable="1"` and GetFeatureInfo answers `image1.image_data ... mm/hr`,
+  unit declared by the server. So the value is published even though the
+  mapping is not.
 
-      image1.image_data  0.000365  mm/hr
+  Three things I wrote down on 8/13 and then measured out of existence:
 
-  with the unit declared by the server. The mapping does not have to exist,
-  because the value is published. They also serve `/nearest` variants of every
-  style (`precip-blue/nearest`, `radarReflectivity/nearest`), which are the same
-  data drawn without interpolation -- and only a discrete style can carry an
-  exact colour table at all. `ops/value_probe.py` samples one and builds the
-  table by asking rather than deriving.
-  **Still not shipped, and two things must happen first, both needing rain over
-  the Netherlands**: the probe returns INSUFFICIENT on a dry day (measured
-  8/13: one colour, `#ffffff`, 0.000365 mm/hr), and -- separately -- **a style
-  name we invented also returns HTTP 200 with a fully transparent PNG**, so on
-  a dry day "the style was honoured" and "the style was ignored" are the same
-  picture. That control has to be run under weather too.
+  1. *"`/nearest` means the picture is drawn without interpolation, so a colour
+     table can be exact."* No. In ADAGUC the suffix is the resampling method,
+     not the colour scale: `precip-blue/nearest` and `precip-blue/bilinear`
+     return **the identical 73 shades**. What is discrete is the *style* --
+     `radar/nearest` renders 6 colours (white / grey / dark grey / pink / red)
+     and is also what the server falls back to for a style name we invent.
+  2. *"A style name we invented returns 200 with an empty PNG."* That was
+     measured over a dry country, so it answered "what does a bogus style do
+     when there is nothing to draw". With weather under it, a bogus style
+     returns a **different, non-empty image** -- the default style's rendering.
+  3. *"GetFeatureInfo tells us what a pixel means."* It tells us what a *cell*
+     means, at the resolution of the request. Asked in a 384px window over
+     10.85 degrees, a red pixel came back 3.6 mm/hr; the same point in a window
+     of 0.02 degrees came back **27.3 mm/hr**. Colour and value are only
+     measurements of the same thing when one image pixel is one grid cell, and
+     even at ~0.9 km/px (the RAD_NL25 grid is 1 km) the bands still overlap:
+     the sentinel `0.000365 mm/hr` -- their "no echo" value -- turns up under
+     **every** colour, which means a share of the queries land on a cell that
+     is not the one that was drawn. Pinning `time=` on both requests sharpened
+     the means into the right order (white < grey < dark grey < pink < red,
+     red reaching 27 mm/hr) but did not remove the overlap.
+
+  So `ops/value_probe.py` returns REFUSED for KNMI and that verdict stands.
+  Dropping the sentinel would make the bands look better and would be exactly
+  the "loosen it until it agrees" step this file exists to refuse.
+
+  **The route that is still open is the Japanese one.** `radar/nearest` gives
+  six discrete classes, which is `ops/colour_order.py`'s home ground -- depth
+  and adjacency, a derivation that can fail. Run it against
+  `styles=radar/nearest` when it is raining over the Netherlands. The value
+  probe's contribution is that it found the discrete style and produced an
+  independent expectation of the order to check the derivation against.
 - **Open-Meteo, NOAA GOES**: failed the product test, see above.
 
 ### Constants that must come from the source, not from the last source
