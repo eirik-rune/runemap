@@ -173,8 +173,50 @@ sides come from the same file, so they agree whatever the payload does. The
 control that cannot be forged is the blind mask against the radar sites --
 Denmark's `dmi_orient.py`.
 
-**Attempted tonight, and it does not work here.** Two coordinate-free versions
-were tried and both are too weak to record as a check:
+**Attempted tonight with the real site positions, and it does not work here.**
+This is a measured negative, not a missing ingredient.
+
+The five sites were resolved properly in the end. `how/nodes` gives WMO ids, and
+**WMO OSCAR/Surface is keyed by exactly those ids**, so there is no name-guessing
+join of the sort that returned confident nonsense for Norway:
+
+| WMO | OSCAR name | lat | lon | elev |
+|---|---|---|---|---|
+| 06661 | ALBIS | 47.28417 | 8.51194 | 928 m |
+| 06699 | LA DOLE | 46.42500 | 6.09917 | 1680 m |
+| 06768 | MONTE LEMA | 46.04083 | 8.83333 | 1625 m |
+| 06726 | PLAINE MORTE | 46.37056 | 7.48667 | 2937 m |
+| 06776 | WEISSFLUHGIPFEL | 46.83500 | 9.79444 | 2840 m |
+
+All five report territory Switzerland, all sit at plausible mountain-top
+elevations, and the three the BALTRAD registry knows **agree by name** — the
+free cross-check the Norway join failed.
+
+And with those positions in hand the check still has no power:
+
+    mean distance from a seen cell to the nearest radar
+      as read          140.6 km        left-right flip  146.5 km
+      up-down flip     142.0 km        180 rotate       146.0 km
+
+As-read is the minimum in all four orientations, which is the right direction,
+but by **1%** on the axis that matters. **A judgement whose two branches differ
+by one percent has no more jurisdiction than one that only ever prints a single
+word.** It would fire on noise.
+
+The reason is structural and worth stating, because it will recur: the radar
+cluster's centre is **E 2653919, N 1161002** and the grid's centre is
+**E 2610000, N 1160000** — one kilometre apart on the north-south axis.
+MeteoSwiss build the composite centred on their own network, so an upside-down
+read maps the blind mask almost exactly onto itself. **The symmetry that makes
+it a good product makes it useless as an orientation control.** Denmark's works
+precisely because its radars sit asymmetrically in its domain.
+
+Having a forgery-proof control's ingredients is not the same as the control
+having power, and that has to be measured rather than assumed. It was assumed
+in an earlier draft of this very file.
+
+Two coordinate-free versions were tried first and are recorded for completeness;
+both are weaker still:
 
 * Centroid of the seen mask vs the centre of Switzerland: **35 km** as read,
   **38 km** flipped. A ratio of 1.1 is not a judgement, it is a coin landing on
@@ -190,11 +232,13 @@ were tried and both are too weak to record as a check:
 
 So the mask alone cannot orient this array, and a check built on it would print
 a verdict it had not earned -- the failure mode this repo keeps naming. It
-needs the five site positions, and those are **not yet in hand**: BALTRAD's
-ODIM registry lists only three of the five Swiss nodes (`chalb` Albis, `chdol`
-La Dôle, `chlem` Monte Lema; `06726` and `06776` are absent, the registry
-predates them) and carries no coordinates at all. Typing five well-known
-positions from memory is exactly what the Norway join punished tonight.
+cannot be rescued by better site data, because the site data is now correct and
+complete. What would settle it is a comparison against an **independent
+rendering** during rain — MeteoSwiss publish radar images for human eyes, which
+is how Norway's chain was finally checked end to end (#108). That needs weather,
+and tonight the whole domain was dry. Until then the payload layout is
+**unverified**, and an adapter must say so rather than let the corner check
+imply otherwise.
 
 **A second thing that could not be checked tonight:** every Swiss city read
 `0.000 mm/h` on the live frame, and so did Milan, Munich and Lyon. It was dry
@@ -215,6 +259,7 @@ looks the same however it is drawn. The end-to-end look has to wait for weather.
 | projection | **done** — `ops/somerc.py`, 7 cm vs swisstopo, corners to 6 m |
 | datum shift | applied, and tested to be worth ~200 m rather than a no-op |
 | grid geometry | LV95 E 2255000→2965000, N 1480000→840000, row 0 north |
-| payload orientation | **open** — mask too symmetric (1.1×); needs the 5 site positions |
+| radar site positions | **resolved** — WMO OSCAR, keyed by the file's own ids, names cross-checked |
+| payload orientation | **open, and the mask cannot fix it** — composite is centred on its own radars |
 | end-to-end look | **not possible yet** — the whole domain was dry tonight |
 | adapter | not written |
