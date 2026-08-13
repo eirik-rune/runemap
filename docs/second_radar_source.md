@@ -103,3 +103,55 @@ Reproduce: `ops/pair_radar_vs_satellite.py`.
 - Serial 3x3 tile fetching measured 7.4-8.1s against a 3s reader budget; z7 with
   a thread pool is 0.82-1.25s for 4-6 tiles at 8-12 km per column. Prefetching
   is not an optimisation here, it is the precondition (issue #42).
+
+## What is actually serving readers (2026-08-13, verified from production)
+
+| sky | source | credit line | measured |
+|---|---|---|---|
+| USA | NWS NEXRAD via IEM | `NWS NEXRAD via mesonet.agron.iastate.edu` | 0.7-1.2s, 5.8 km/col |
+| Canada | ECCC GeoMet | `Environment and Climate Change Canada geo.weather.gc.ca` | 0.7s |
+| Finland | FMI | `Finnish Meteorological Institute en.ilmatieteenlaitos.fi` | 6 km/char; 1.8s cold, 0.20-0.35s cached |
+| Brazil | REDEMET, 18 of 29 radars mirrored | `REDEMET/DECEA redemet.decea.mil.br` | served off local disk |
+| Mumbai | **nothing** | -- | RainViewer states non-commercial; we are a company |
+
+Every one of these is a fallback: the primary upstream wins whenever it has
+frames, and the absence of a `radar-data:` line is how a reader can tell which
+one drew.
+
+### Measured, deliberately not shipped
+
+- **Germany (DWD).** 43% of the visible pixels over Hamburg are a magenta
+  (251,0,255) in neither its style document nor its legend, and an explicit
+  `&time=` for the latest observed step returns the same colours, so it is not
+  a forecast frame. A colour we cannot name must not be drawn as rain.
+- **Netherlands (KNMI).** Licence is clean (Fees "no conditions apply",
+  AccessConstraints "None") and the map draws, but GetStyles answers 500 and
+  the default style is greyscale plus red: over Amsterdam, 2509 visible pixels
+  are white / grey / dark grey / pink / red. Our ramp reads the first three as
+  level 1, so every intensity below "red" would reach a reader as drizzle.
+  Nameable colours, unpublished ordering -- still a guess.
+- **Open-Meteo, NOAA GOES**: failed the product test, see above.
+
+### Constants that must come from the source, not from the last source
+
+- **REDEMET frame ceiling is 45 min, not 30.** Measured across all 18 mirrored
+  radars in one pull: at fetch time the frames were already 13.4 / 19.6 / 23.2
+  min old (min / median / max). Plus the 10-minute mirror period, an ordinary
+  frame is 23-33 min old when a reader asks. The old 30 was copied from
+  RainViewer, which has almost no latency of its own, and it refused most of
+  the cycle with nothing wrong anywhere.
+- **WMS has no frame id**, so its cache is keyed by refresh cycle
+  (`RUNEMAP_WMS_REFRESH`, 300s) -- one fetch per sky per cycle rather than one
+  per visitor, which is what makes the "we do not push a cost onto them"
+  answer true in code and not only on this page.
+
+### Two failures worth not repeating
+
+- A palette that only worked in the window production never uses. Production
+  sets `RUNEMAP_SPAN_KM`, so every request renders through
+  `ascii_radar_centered()`; `classifier` had been added to the other function
+  only. Finland drew nothing for an hour while the tests stayed green.
+- The credit line was a second, hand-maintained copy of what each adapter
+  already declares, so Finland shipped credited as a bare "FMI". A duplicated
+  table does not fail when it falls behind -- it under-credits somebody whose
+  data we are using.
