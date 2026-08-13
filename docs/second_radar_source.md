@@ -674,3 +674,69 @@ modules, each with a comment saying it was the fleet's table; four copies that
 agree are a coincidence, not a construction. And the change was invisible to 369
 passing tests, because no test had ever handed a classifier a sub-floor value --
 `tests/test_dbz.py` fires it in both directions now.
+
+
+## Denmark -- the refusal was wrong, and the primary source was inside the API all along
+
+Denmark was refused on 2026-08-13 with the reason "terms I cannot read": DMI's
+documentation host 404'd on every page I tried, and secondary material quoting
+their terms said users "may not make changes to the actual data" -- aimed
+straight at what we do. I wrote that the permissive reading was not mine to
+pick. That part was right. **What was wrong was concluding the terms were
+unreadable.**
+
+The authoritative pointer was inside the service. `GET
+https://dmigw.govcloud.dk/v1/radardata/collections` returns, among its links:
+
+    {"href": "https://www.dmi.dk/friedata/dokumentation/terms-of-use",
+     "title": "License for the data in this service"}
+
+and that page says, in DMI's own words:
+
+> DMI's Open Data are distributed under the Creative Commons License CC BY 4.0.
+> In short, you are free to: Share -- copy and redistribute the material in any
+> medium or format for any purpose, even commercially. **Adapt -- remix,
+> transform, and build upon the material for any purpose, even commercially.**
+> ... Attribution -- You must give appropriate credit, provide a link to the
+> license, and indicate if changes were made.
+
+The EU open data portal agrees independently: "INSPIRE - Radar data from DMI",
+publisher Danmarks Meteorologiske Institut, licence `CC_BY_4_0`, distribution
+access URL `https://dmigw.govcloud.dk/v1/radardata/` -- which is the API below.
+
+**I refused on a third-party paraphrase because I judged the primary source
+unreachable, while the service itself was carrying a link to it.** The
+paraphrase said the opposite of the licence. Both countries shipped today were
+found the same way -- Czechia's terms in the national catalogue, the
+Netherlands' in theirs -- so the rule is now explicit: *before recording a
+refusal on terms, ask the service where its terms are, and ask the national or
+EU catalogue what licence it registers.*
+
+### What is there, measured 2026-08-13
+
+`https://dmigw.govcloud.dk/v1/radardata/collections/composite/items` -- STAC-ish
+GeoJSON, **no API key required**, `datetime` range query, download hrefs. Latest
+frame was 5 minutes old when checked. Collections: `composite`, `pseudoCappi`,
+`volume`.
+
+One frame (`dk.com.202608131320.500_max.h5`, 43 KB) states:
+
+    /what   product DBZH, gain 0.5, offset -32.0, undetect 0, nodata 255
+            source DMI-RADARGROUP        (Czechia's pair, not Sweden's)
+    /where  1984 x 1728 at 500 m, four corners, and
+            +proj=stere +ellps=WGS84 +lat_0=56 +lon_0=10.5666 +lat_ts=56
+    /how    zr-a 200.0, zr-b 1.6
+
+**Not built yet, and deliberately so.** That projection is *oblique*
+stereographic -- `lat_0=56`, not 90 -- so `ops/stereo.py`, which is the polar
+aspect KNMI uses, does not apply. It is a third projection family, and a
+projection read with the wrong formulas does not fail: it draws a plausible map
+of somewhere else. The four stated corners give the same independent control
+that caught the Dutch sign error, so the work is well-defined; it is simply not
+work to rush.
+
+One more thing to carry into that build: consecutive items alternate
+`scanType: doppler` and `scanType: fullRange`. Two different scans under one
+collection is exactly the shape that needs checking before use, not after --
+see the JMA row, where `validtime == basetime` separates an observation from a
+forecast in a file that otherwise looks uniform.
