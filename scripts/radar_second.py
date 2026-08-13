@@ -107,7 +107,7 @@ def stitched(lng, lat, ts, path, span_km=280.0):
     return p, bbox, got, want
 
 
-def draw(code, lng, lat, small=False):
+def draw(code, lng, lat, small=False, cached_only=False):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None.
 
     None means "we have nothing either", and the caller then says so in the
@@ -117,6 +117,10 @@ def draw(code, lng, lat, small=False):
     ts, path = newest_frame()
     if ts is None:
         return None
+    if cached_only:
+        c = _cache_path(lng, lat, ts)
+        if not (os.path.exists(c) and os.path.getsize(c) > 0):
+            return None      # see radar_wms.draw
     p, bbox, got, want = stitched(lng, lat, ts, path)
     if not p:
         sys.stderr.write("SECOND-NO-TILES %.2f,%.2f\n" % (lng, lat))

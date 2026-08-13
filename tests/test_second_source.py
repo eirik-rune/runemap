@@ -322,3 +322,90 @@ class JapanIsInTheChainAndCreditsItself(unittest.TestCase):
         b = body((ART, 8.0, 1.0, None, 1.0, "JMA"))
         self.assertIn("radar-data: Japan Meteorological Agency jma.go.jp", b)
         self.assertIn("radar-data-note: redrawn", b)
+
+
+class TheUpgradeMustNotCostTheReaderTheirTime(unittest.TestCase):
+    """Shipped without this and measured it on production: mean probe latency
+    0.96s -> 1.66s, p99 6.7s, 9.3% of probes over the 3s product line against
+    4.1% the day before. The reader already holds a map; buying them a fresher
+    one with an upstream round trip is a trade nobody asked for -- and
+    radar_resolve's own docstring says this thread opens no socket."""
+
+    def setUp(self):
+        self._was = RS._second_source
+        self._warm = RS._warm_second
+        RS._WARMING.clear()
+
+    def tearDown(self):
+        RS._second_source = self._was
+        RS._warm_second = self._warm
+
+    def _hit(self, age_min):
+        import time
+        ts = time.time() - age_min * 60
+        return (RS.STATE_OK, (ART, 12.0, ts, None, ts))
+
+    def test_the_upgrade_asks_for_cache_only(self):
+        seen = {}
+
+        def spy(c, x, y, s, cached_only=False):
+            seen["flag"] = cached_only
+            return None          # None, not the flag: a stub that returns a
+            # bool makes the caller log a TypeError, and a fake error line in
+            # the logs is how real ones get ignored.
+        RS._second_source = spy
+        RS._warm_second = lambda *a, **k: None
+        RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertIs(seen.get("flag"), True)
+
+    def test_a_cache_miss_warms_for_the_next_reader(self):
+        warmed = []
+        RS._second_source = lambda *a, **k: None
+        RS._warm_second = lambda *a, **k: warmed.append(1)
+        got = RS._fresher_of(self._hit(46), "><", 13.4, 52.5, False)
+        self.assertEqual(len(got[1]), 5, "the reader kept their own map")
+        self.assertEqual(warmed, [1])
+
+    def test_a_fresh_primary_neither_asks_nor_warms(self):
+        warmed = []
+        RS._second_source = lambda *a, **k: self.fail("asked on the fast path")
+        RS._warm_second = lambda *a, **k: warmed.append(1)
+        RS._fresher_of(self._hit(3), "><", 13.4, 52.5, False)
+        self.assertEqual(warmed, [])
+
+    def test_the_warm_does_not_stampede(self):
+        calls = []
+        RS._second_source = lambda *a, **k: calls.append(1)
+        RS._warm_second(">< ", 13.4, 52.5, False)
+        RS._warm_second(">< ", 13.4, 52.5, False)
+        RS._warm_second(">< ", 13.4, 52.5, False)
+        for t in __import__("threading").enumerate():
+            if t.name == "second-warm":
+                t.join(5)
+        self.assertEqual(len(calls), 1, "every reader of a stale sky started "
+                                        "their own fetch")
+
+
+class AdaptersHonourTheNoNetworkFlag(unittest.TestCase):
+
+    def test_every_adapter_accepts_it(self):
+        import inspect
+        import radar_jma, radar_redemet, radar_second, radar_wms
+        for m in (radar_jma, radar_redemet, radar_second, radar_wms):
+            sig = inspect.signature(m.draw)
+            self.assertIn("cached_only", sig.parameters, m.__name__)
+
+    def test_a_cold_wms_declines_instead_of_fetching(self):
+        import shutil
+        import tempfile
+        import radar_wms
+        d = tempfile.mkdtemp(prefix="cold-")
+        was, radar_wms.CACHE = radar_wms.CACHE, d
+        try:
+            def boom(u):
+                raise AssertionError("touched the network on a reader thread")
+            self.assertIsNone(radar_wms.draw("><", -87.62, 41.88,
+                                             get=boom, cached_only=True))
+        finally:
+            radar_wms.CACHE = was
+            shutil.rmtree(d, ignore_errors=True)
