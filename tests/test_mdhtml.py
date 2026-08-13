@@ -87,7 +87,11 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
             words = s.split()
             if words[0] == "now:":
                 words = words[1:]
+            # Grid rows are drawn with one glyph per cell (see CELL_GLYPH):
+            # the substitution is deliberate and stated, so the needle is
+            # translated the same way rather than the map being exempted.
             frag = html.escape(" ".join(words[:3]))
+            frag = "".join(MD.CELL_GLYPH.get(c, c) for c in frag)
             self.assertIn(frag, hay, ln)
 
     def test_the_sources_own_legend_line_is_replaced_not_duplicated(self):
@@ -96,6 +100,50 @@ class ItCarriesTheWholeDocument(unittest.TestCase):
         arguing with itself. Found by looking at the render, not by reasoning."""
         self.assertIn("legend:", SCENE)
         self.assertEqual(self.h.count("drizzle"), 1)
+
+
+class ItDrawsTheGridWithOneGlyph(unittest.TestCase):
+    """`░ ▒ ▓` are absent from the monospace faces phones ship with, so each is
+    pulled from a different fallback at that font's advance width and the grid
+    goes ragged -- bob saw it before I did. One glyph cannot disagree with
+    itself about width; the level is carried by colour instead."""
+
+    def test_every_rain_cell_uses_the_same_character(self):
+        h = MD.render(SCENE)
+        body = h.split('class="map"')[1].split("</pre>")[0]
+        for ch in "·░▒▓":
+            self.assertNotIn(ch, body, ch)
+        self.assertIn("\u2588", body)
+
+    def test_the_five_levels_are_still_distinguishable(self):
+        painted = MD.paint(["·░▒▓█"])
+        for cls in ("r1", "r2", "r3", "r4", "r5"):
+            self.assertIn('class="%s"' % cls, painted)
+
+    def test_the_legend_shows_the_shape_the_map_draws(self):
+        """A legend teaching a character the map no longer uses is worse than
+        no legend: it tells the reader to look for something absent."""
+        h = MD.render(SCENE)
+        legend = h.split('class="legend"')[1].split("</p>")[0]
+        for ch in "·░▒▓":
+            self.assertNotIn(ch, legend, ch)
+
+
+class ItKeepsTheDocumentsOrder(unittest.TestCase):
+    """bob, 8/13: the text has the rain curve above the map and the first page
+    had it below, because the template hard-coded the order. A rendering that
+    reorders is editing."""
+
+    def test_the_curve_comes_before_the_map_when_the_text_does(self):
+        h = MD.render(SCENE)
+        self.assertLess(h.index('class="curve"'), h.index('class="map"'))
+
+    def test_and_after_it_when_the_text_does(self):
+        lines = SCENE.split("\n")
+        cut = lines.index("rain curve (next 2h): peaks in 30 min")
+        moved = lines[:cut] + lines[cut + 3:] + lines[cut:cut + 3]
+        h = MD.render("\n".join(moved))
+        self.assertGreater(h.index('class="curve"'), h.index('class="map"'))
 
 
 class ItStaysSmall(unittest.TestCase):
