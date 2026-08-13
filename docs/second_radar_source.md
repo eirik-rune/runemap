@@ -275,3 +275,20 @@ Coverage is three rectangles, not one: latitude and longitude have to constrain
 each other or the box that reaches Yonaguni (122.9E) also holds Seoul, and the
 two-box version reached far enough north-west to hold Vladivostok. The test
 caught that, not my reading of it.
+
+## Swept and what each one turned into (2026-08-13)
+
+`ops/wms_sweep.py` asks a list of candidate national services three questions
+in the order that fails fastest: is it a WMS, does it declare a radar layer,
+and what does it say about fees and access. It decides nothing -- everything
+below still needed the colour mapping, the coverage rectangle, and a GetMap
+that answers.
+
+| candidate | capabilities | verdict |
+|---|---|---|
+| Belgium, RMI `opendata.meteo.be/service/radar/wms` | **200**, one layer `belgian_rainfall_composite`, `Fees=none`, `AccessConstraints=none`, a 5-minute `time` dimension (so a real observation stamp, unlike NEXRAD and ECCC where we can only honestly report our own fetch time) | **advertised but not served**: GetMap, GetLegendGraphic and GetStyles all answer 403 while GetCapabilities answers 200 from the same address, the same user agent, the same second. Positive control in the same run: the identical code path got a PNG from FMI. So this is not our egress and not our client -- they publish a layer they will not hand us. Next step is their portal's terms, not another request shape |
+| Switzerland, swisstopo | 200, 2029 layers | **no live radar**. The 24 "radar-ish" names are geology and climate normals; the only MeteoSwiss precipitation layers are `klimanormwerte-niederschlag_1961_1990` and `_aktuelle_periode`. The first run of the sweep reported "GetMap ok" here -- for `ch.swisstopo.geologie-reflexionsseismik`, matched on "refl". The tool names the layer it probed now |
+| Estonia, Maa-amet | 200, 108 layers, `Fees=tasuta / none` | no radar layer; that server is base mapping |
+| Norway, met.no | 503 | separately refused already: their own page says the WMS is for demonstration, not operational use |
+| Poland IMGW, Czech CHMI, Slovenia ARSO | 404 / DNS / 499 | the endpoint I had was wrong, not the service. Unfinished, not refused |
+| UK Met Office, Australia BOM | 403 on capabilities | both front their open data with a registered API key. Not refused on principle -- unasked |
