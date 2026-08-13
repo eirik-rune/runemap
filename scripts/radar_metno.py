@@ -12,10 +12,26 @@ Measurements and the georeferencing proof are in
 * NLOD / CC BY 4.0, and met.no asks for a User-Agent that identifies the
   client and gives a contact address.
 
-**Their PNG endpoint is not used and must not be.** It has coastlines,
-national borders, city labels, a graticule and a legend painted onto it, in
-colours a classifier reads as echo -- the same reason Czechia's PNG was turned
-down. This module reads numbers.
+**Their PNG endpoint is not used and must not be.** The first version of this
+paragraph said the decorations were drawn "in colours a classifier reads as
+echo". bob doubted it -- "would anyone really design it that way?" -- and he
+was right: I had looked at the image but never measured the claim. The base
+map is grey and grey-green, the echo is yellow through red; nobody would
+confuse them. Measured instead, on a real frame:
+
+* **The legend's own colours appear nowhere in the map.** Of 350,330 pixels in
+  the map area, the number exactly equal to one of the 18 legend swatches is
+  ZERO, and the map area holds 895 distinct colours. The echo is composited
+  with transparency over the base, so one dBZ value over land and the same
+  value over sea are two different pixels: colour -> dBZ is not a lookup, it
+  is solving a blend with an unknown background and an unknown alpha. The
+  blend is visible in the counts -- pure yellow (230,230,40) 4246 pixels,
+  (192,192,85) 2974, which is that yellow at roughly 0.6 alpha over grey.
+* **The furniture does not impersonate the echo, it erases it.** 3191 dark
+  pixels (city names, borders, graticule) sit in the map area and 11% of them
+  fall inside an echo region, destroying the value underneath.
+
+This module reads numbers.
 
 **Nothing is downloaded whole.** A frame is 11.6 MB; a reader needs 48 x 24
 samples. OPeNDAP subsets server-side, so one strided request returns about a
