@@ -127,3 +127,54 @@ class ItShipsProbesForEveryShippedSource(unittest.TestCase):
         named = {p[4] for p in H.PROBES}
         for svc in W.SERVICES:
             self.assertIn(svc["name"], named, svc["key"])
+
+
+class ItMeasuresTheConfigurationProductionRuns(unittest.TestCase):
+    """8/13: this probe reported NO-READER for the Netherlands -- "no KNMI key"
+    -- while production held the key. The service is told where the key is by a
+    drop-in; cron told the probe nothing, so it looked in a path that does not
+    exist. **The probe was measuring a configuration nobody runs, and the alarm
+    it raised was about itself.**
+
+    Worse, it had passed for five hours before that only because a cached frame
+    let the adapter answer without a key at all: it was passing for a reason
+    other than the one it claimed."""
+
+    def setUp(self):
+        self.saved = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.saved)
+
+    def test_it_takes_the_units_settings(self):
+        os.environ.pop("RUNEMAP_KNMI_KEY_FILE", None)
+        took = H.adopt_unit_env(run=lambda:
+                                "Environment=RUNEMAP_KNMI_KEY_FILE=/etc/runemap/knmi_key "
+                                "RUNEMAP_SECOND_SOURCE=knmi\n")
+        self.assertIn("RUNEMAP_KNMI_KEY_FILE", took)
+        self.assertEqual(os.environ["RUNEMAP_KNMI_KEY_FILE"],
+                         "/etc/runemap/knmi_key")
+
+    def test_an_answer_already_given_is_not_overruled(self):
+        """A person asking a question on the command line outranks the unit."""
+        os.environ["RUNEMAP_SECOND_SOURCE"] = "dmi"
+        took = H.adopt_unit_env(run=lambda:
+                                "Environment=RUNEMAP_SECOND_SOURCE=knmi\n")
+        self.assertEqual(os.environ["RUNEMAP_SECOND_SOURCE"], "dmi")
+        self.assertNotIn("RUNEMAP_SECOND_SOURCE", took)
+
+    def test_it_says_so_when_it_cannot_ask(self):
+        """"I could not find out" and "there was nothing to find" must not
+        print the same thing: the first means every verdict below it is about
+        settings production may not use."""
+        self.assertIsNone(H.adopt_unit_env(run=lambda: ""))
+
+        def boom():
+            raise OSError("systemctl: not found")
+        self.assertIsNone(H.adopt_unit_env(run=boom))
+
+    def test_no_settings_to_take_is_not_a_failure(self):
+        """A unit with no Environment= line is a real, working state, and it
+        must be distinguishable from not being able to ask."""
+        self.assertEqual(H.adopt_unit_env(run=lambda: "Environment=\n"), [])
