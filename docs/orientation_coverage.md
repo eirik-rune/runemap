@@ -81,9 +81,25 @@ because the gauge side alone fails the wet-station minimum. **That is the
 verdict, not a gap in the tooling** — Sweden was simply dry.
 
 So Sweden needs an archived rainy hour, exactly as Switzerland did (four hours
-out of the 14-day radar archive). SMHI's per-station history is under the
-`latest-months` / `corrected-archive` periods; the matching radar archive is the
-remaining unknown, since `radar_smhi` fetches only the current frame today.
+out of the 14-day radar archive).
+
+**Both archives exist and are deep — checked, so tomorrow does not start by
+re-deriving this.** The Netherlands was dry too tonight (24-25 C, humidity
+31-42%, precip 0.00 in all four cities), so it needs the same treatment.
+
+| | radar archive | gauges |
+|---|---|---|
+| SE | `opendata-download-radar.smhi.se`, area `sweden`, product `comp` — **years 2008 → 2026**, newest file `radar_2608132230` | metobs parameter 7; `latest-hour` works keyless, history under `latest-months` / `corrected-archive` |
+| NL | KNMI dataplatform, same dataset `radar_knmi` already reads — oldest file kept is `RAD_NL25_PCP_NA_201910281110.h5`, i.e. **back to 2019** | KNMI station observations (dataset to be identified) |
+
+One caution carried forward for the KNMI side: that API key is **shared by every
+unregistered user**, and walking timestamps with it earned a 429 earlier tonight.
+The listing above cost exactly one request (`maxKeys=1&sorting=asc`). Whatever
+does the archive walk must budget for strangers, not just for itself.
+
+`radar_smhi` and `radar_knmi` both fetch only the current frame today, so the
+archive reader is new code either way — but it is a fetch, not a new idea, and
+`ops/ch_orient.py` is the judgement already.
 
 Two things learned tonight apply when that is done:
 
