@@ -41,6 +41,7 @@ outside its own country returns an empty image, and an empty image is also what
 a dry sky looks like: we would not be able to tell "not covered" from "not
 raining", so we do not ask.
 """
+import hashlib
 import io
 import math
 import os
@@ -216,6 +217,28 @@ def _strip_nodata(raw, svc):
     return out.getvalue()
 
 
+REFRESH = float(os.environ.get("RUNEMAP_WMS_REFRESH", "300"))
+CACHE = os.environ.get("RUNEMAP_CACHE") or os.path.join(
+    __import__("tempfile").gettempdir(), "runemap")
+
+
+def _bucket(now=None):
+    """Which of their refresh cycles we are in.
+
+    A WMS GetMap carries no timestamp, so there is no frame id to key a cache
+    on. Both shipped services refresh about every five minutes, so the cycle
+    number is the closest thing to a frame identity that exists -- and it is
+    honest in the direction that matters: within one bucket every reader sees
+    the same picture, and the age we print is already an underestimate.
+    """
+    return int((time.time() if now is None else now) // REFRESH)
+
+
+def _cache_path(svc, lat, lng, bucket):
+    key = "%s|%.1f,%.1f|%d" % (svc["key"], round(lat, 1), round(lng, 1), bucket)
+    return os.path.join(CACHE, "wms-" + hashlib.sha1(key.encode()).hexdigest() + ".png")
+
+
 def draw(code, lng, lat, small=False, get=None):
     """-> (art, km_per_col, ts, motion, base_ts, source) or None.
 
@@ -228,23 +251,44 @@ def draw(code, lng, lat, small=False, get=None):
     if svc is None:
         return None
     bbox = bbox_for(lat, lng)
-    url = url_for(svc, bbox)
-    try:
-        raw = (get or (lambda u: urllib.request.urlopen(u, timeout=TIMEOUT).read()))(url)
-    except Exception as e:
-        sys.stderr.write("WMS-FAILED %s %r\n" % (svc["key"], e))
-        return None
-    if not raw or not raw.startswith(b"\x89PNG"):
-        # A WMS reports its errors as XML with a 200. Bytes that are not a PNG
-        # are the only reliable tell, and they must not reach the renderer.
-        sys.stderr.write("WMS-NOT-PNG %s %d bytes %r\n"
-                         % (svc["key"], len(raw or b""), (raw or b"")[:80]))
-        return None
-    import tempfile
-    raw = _strip_nodata(raw, svc)
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
-        fh.write(raw)
-        p = fh.name
+    # One fetch per sky per refresh cycle, not one per visitor. Measured before
+    # this cache: every Helsinki reader paid 1.3-1.9s and a fresh GetMap to
+    # FMI, while the answer I gave for "do we push a cost onto them" was "a
+    # prefetch behind a cache is lighter than one person with a browser". That
+    # answer has to be true in the code, not in the document.
+    cached = _cache_path(svc, lat, lng, _bucket())
+    p, keep = None, False
+    if os.path.exists(cached) and os.path.getsize(cached) > 0:
+        p, keep = cached, True
+    if p is None:
+        url = url_for(svc, bbox)
+        try:
+            raw = (get or (lambda u: urllib.request.urlopen(u, timeout=TIMEOUT).read()))(url)
+        except Exception as e:
+            sys.stderr.write("WMS-FAILED %s %r\n" % (svc["key"], e))
+            return None
+        if not raw or not raw.startswith(b"\x89PNG"):
+            # A WMS reports its errors as XML with a 200. Bytes that are not a
+            # PNG are the only reliable tell, and they must not reach the
+            # renderer -- nor the cache, or one bad minute would be served for
+            # the rest of the cycle.
+            sys.stderr.write("WMS-NOT-PNG %s %d bytes %r\n"
+                             % (svc["key"], len(raw or b""), (raw or b"")[:80]))
+            return None
+        import tempfile
+        raw = _strip_nodata(raw, svc)
+        try:
+            os.makedirs(CACHE, exist_ok=True)
+            tmp = cached + ".%d" % os.getpid()
+            with open(tmp, "wb") as fh:
+                fh.write(raw)
+            os.replace(tmp, cached)     # never let a half-written frame be read
+            p, keep = cached, True
+        except Exception as e:
+            sys.stderr.write("WMS-CACHE-FAILED %r\n" % (e,))
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
+                fh.write(raw)
+                p = fh.name
     try:
         from render_scene import ascii_radar
         pal = svc.get("palette")
@@ -253,6 +297,7 @@ def draw(code, lng, lat, small=False, get=None):
             rows=(12 if small else 24), marker=code,
             classifier=((lambda a: classify_palette(a, pal)) if pal else None))
     finally:
-        os.unlink(p)
+        if not keep:
+            os.unlink(p)
     now = time.time()
     return art, kmcol, now, None, now, svc["name"]
