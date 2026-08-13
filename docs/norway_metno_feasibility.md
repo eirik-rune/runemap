@@ -133,6 +133,45 @@ keeps meeting.
   lie in the Nordic latitude band, and the flipped read must not" -- weaker
   than Denmark's, and it should be labelled as weaker rather than counted as
   the same thing.
+
+  **Searched, 2026-08-13.** "Blocked" had only been measured against met.no, so
+  it was worth one real look elsewhere before recording it as a limit.
+
+  BALTRAD's `config/odim_source.xml` (the ODIM registry these codes come from)
+  resolves every node to a place name and a WMO number, `nosta` included:
+
+      <nosta plc="Stad"  rad="NO38" wmo="01206">
+      <nohur plc="Hurum" rad="NO39" wmo="01498">
+
+  So the names are solved. The coordinates are not, and the way that attempt
+  failed is worth more than the attempt.
+
+  Joining those WMO numbers to NOAA's `isd-history.csv` returned three hits out
+  of twelve -- and **two of the three are wrong**:
+
+  | node | ODIM place | ISD said | ISD position | truth |
+  |---|---|---|---|---|
+  | nohas | Hasvik | HASVIK-SLUSKFJELLET | 70.600, 22.450 | agrees |
+  | nohur | Hurum | MAGNOR | 59.967, 12.217 | ~120 km off, on the Swedish border |
+  | norst | Røst | ROTVAER | 68.367, 15.950 | ~180 km off |
+
+  The WMO numbers in the ODIM registry do not index ISD reliably -- reassigned,
+  or a different numbering entirely. Nothing errored. The join returned
+  well-formed coordinates in the right country at a believable latitude, and had
+  they been fed to the orientation check, the check would have run, printed a
+  verdict, and been wrong -- while looking exactly like Denmark's, which works.
+
+  The tell was free and I nearly did not use it: the registry carries a place
+  name beside the number, and *the names disagree*. So if this route is ever
+  taken up again, **the join must assert that the ODIM place name matches the
+  station name, and refuse the row when it does not** -- 1 of 12 survives that,
+  which is the honest yield, and 1 site cannot orient anything.
+
+  Still blocked, but blocked for a sharper reason than "I could not find a
+  list": the list exists, and the coordinate join available for it is a ruler
+  that hands back confident wrong answers. The next thing to try is met.no's own
+  Frost API station catalogue -- the operator's own numbers rather than a
+  third party's -- which needs a client registration.
 * **Coverage box** and the dBZ floor: the shared `scripts/dbz.py` table applies,
   including the 7 dBZ floor, and must not be re-derived here.
 
