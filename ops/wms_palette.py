@@ -45,7 +45,7 @@ def styles(svc):
     """-> [(hex, opacity, quantity, label)] from the server's own SLD."""
     q = {"service": "WMS", "version": "1.1.1", "request": "GetStyles",
          "layers": svc["layers"]}
-    raw = _get(svc["url"] + "?" + urllib.parse.urlencode(q)).decode("utf-8", "replace")
+    raw = _get(W._join(svc["url"], q)).decode("utf-8", "replace")
     return re.findall(r'ColorMapEntry\s+color="([^"]+)"(?:\s+opacity="([^"]*)")?'
                       r'\s+quantity="([^"]*)"\s+label="([^"]*)"', raw)
 
@@ -60,7 +60,7 @@ def legend(svc):
     import numpy as np
     q = {"service": "WMS", "version": "1.3.0", "request": "GetLegendGraphic",
          "layer": svc["layers"], "format": "image/png"}
-    a = np.array(Image.open(io.BytesIO(_get(svc["url"] + "?" + urllib.parse.urlencode(q))))
+    a = np.array(Image.open(io.BytesIO(_get(W._join(svc["url"], q))))
                  .convert("RGBA"))
     out = []
     for y in range(a.shape[0]):
@@ -130,7 +130,15 @@ def main():
     if svc is None:
         sys.exit("no service %r; have: %s"
                  % (key, ", ".join(s["key"] for s in W.SERVICES)))
-    rows = styles(svc)
+    try:
+        rows = styles(svc)
+    except Exception as e:
+        # Not every server implements GetStyles (KNMI answers 422). That is
+        # "I cannot verify", which must reach the operator as a sentence, not
+        # as a traceback -- a tool that dies on one service and prints SAFE for
+        # another is only reporting on the servers it happens to like.
+        print("-- GetStyles unsupported: %r" % (e,))
+        rows = []
     print("== %s  (%s)" % (svc["name"], svc["layers"]))
     print("-- GetStyles: %d colour map rows" % len(rows))
     for c, o, q, l in rows:

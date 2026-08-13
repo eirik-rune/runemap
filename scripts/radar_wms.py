@@ -166,6 +166,20 @@ SERVICES = [
 ]
 
 
+# The Netherlands is measured and NOT shipped, for a different reason than
+# Germany. KNMI's endpoint is fine (Fees "no conditions apply",
+# AccessConstraints "None", and it selects its dataset in the URL, which is why
+# _join() exists), but it answers GetStyles with a 500 and its default style is
+# greyscale plus red: measured over Amsterdam, 2509 visible pixels are
+# white/grey/dark-grey/pink/red. Our default ramp reads white, light grey and
+# dark grey all as level 1, so every intensity below "red" would arrive at a
+# reader flattened into drizzle. The colours are nameable; what is missing is
+# any published mapping from colour to rain rate, and inventing that ordering
+# from the look of a legend is the guess this file exists to refuse. The named
+# styles they do offer (radar/nearest, precip-rainbow, precip-with-range) are
+# the place to start if someone wants to finish this.
+
+
 def service_for(lng, lat):
     for s in SERVICES:
         a, b, c, d = s["coverage"]
@@ -188,7 +202,18 @@ def url_for(svc, bbox, px=768):
          "layers": svc["layers"], "styles": "", "format": "image/png",
          "transparent": "true", svc["crs_param"]: "EPSG:4326",
          "bbox": order, "width": str(px), "height": str(px)}
-    return svc["url"] + "?" + urllib.parse.urlencode(q)
+    return _join(svc["url"], q)
+
+
+def _join(base, q):
+    """Append a query, respecting one the base URL already carries.
+
+    KNMI's endpoint selects its dataset in the URL (?dataset=RADAR), and a
+    blind "?" + urlencode produced a second question mark -- a request the
+    server answers 422 to. Not hypothetical: it is how the Netherlands failed
+    the first time it was asked anything.
+    """
+    return base + ("&" if "?" in base else "?") + urllib.parse.urlencode(q)
 
 
 def _strip_nodata(raw, svc):
