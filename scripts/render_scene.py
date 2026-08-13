@@ -536,6 +536,98 @@ def last_reason():
     v = getattr(_REASON, "v", None)
     _REASON.v = None
     return v
+
+
+def peek_reason():
+    """Read this thread's reason WITHOUT clearing it.
+
+    last_reason() pops, and serve.py:233 is the popper -- it runs after the body
+    is built, to set X-Radar-Why. If the body popped too, whichever ran first
+    would silently blank the other, and a header that goes missing for no stated
+    cause is worse than no header. So: the body peeks, the header pops. One
+    owner of the clearing, two readers.
+
+    Until now the value only ever reached a response header. A header answers an
+    operator; the person who typed `curl echorune.net`, got a screen with no map
+    and no reason, reads the body. Measured 8/12: of 105 first-visit product
+    requests from strangers, 9 got no map, and all 9 landed on the zero-parameter
+    entry -- exactly the reader this service exists for.
+    """
+    return getattr(_REASON, "v", None)
+
+
+# Reader-facing clauses for the not-drawn state. Three rules, each bought:
+#  1. Every sentence is about US, never about the world. bob 8/3 14:35: "no
+#     radar means you did not get the radar. Nobody is going to believe there
+#     is no radar just because you say so."
+#  2. Silence is the default -- only reasons that change what the reader does
+#     next get a clause. bob 8/2 08:56 stopped me hedging every line: "that is
+#     not honesty, that is stupid."
+#  3. The wording of this state is bob's call (issue #24), so these strings are
+#     a proposal. The plumbing is the point: until now the reason existed and
+#     only an operator could see it.
+_FETCH_CLAUSE = {
+    "list-nofile": {
+        "en": "we have not looked at this sky yet; a fetch has just started",
+        "zh": "\u8fd9\u7247\u5929\u6211\u4eec\u8fd8\u6ca1\u770b\u8fc7, \u521a\u5f00\u59cb\u53d6",
+        "ja": "\u3053\u306e\u7a7a\u306f\u672a\u53d6\u5f97\u3067\u3059\u3002\u4eca\u53d6\u5f97\u3092\u958b\u59cb\u3057\u307e\u3057\u305f",
+    },
+    "list-toostale": {
+        "en": "our copy of this sky was too old to draw; fetching a new one",
+        "zh": "\u624b\u4e0a\u8fd9\u4efd\u592a\u65e7\u4e86, \u6b63\u5728\u91cd\u65b0\u53d6",
+        "ja": "\u624b\u5143\u306e\u30c7\u30fc\u30bf\u304c\u53e4\u3059\u304e\u307e\u3059\u3002\u518d\u53d6\u5f97\u4e2d",
+    },
+    "list-unreadable": {
+        "en": "we had a copy of this sky but could not read it",
+        "zh": "\u6211\u4eec\u5b58\u8fc7\u8fd9\u7247\u5929, \u4f46\u8bfb\u4e0d\u51fa\u6765",
+        "ja": "\u4fdd\u5b58\u6e08\u307f\u3067\u3059\u304c\u8aad\u307f\u53d6\u308c\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
+    "list-unusable": {
+        "en": "what we had stored for this sky was not a usable frame",
+        "zh": "\u5b58\u7740\u7684\u4e1c\u897f\u4e0d\u662f\u4e00\u5e27\u53ef\u7528\u7684\u56fe",
+        "ja": "\u4fdd\u5b58\u3055\u308c\u3066\u3044\u305f\u306e\u306f\u4f7f\u3048\u308b\u30d5\u30ec\u30fc\u30e0\u3067\u306f\u3042\u308a\u307e\u305b\u3093",
+    },
+    "list-unparseable": {
+        "en": "upstream answered, but we could not parse its frame list",
+        "zh": "\u4e0a\u6e38\u56de\u4e86\u8bdd, \u4f46\u5e27\u5217\u8868\u6211\u4eec\u89e3\u4e0d\u5f00",
+        "ja": "\u4e0a\u6d41\u306e\u5fdc\u7b54\u306e\u30d5\u30ec\u30fc\u30e0\u4e00\u89a7\u3092\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
+    "sky-empty": {
+        "en": "upstream listed no frames for this sky when we asked",
+        "zh": "\u6211\u4eec\u95ee\u4e86\u4e0a\u6e38, \u5b83\u6ca1\u7ed9\u51fa\u8fd9\u7247\u5929\u7684\u5e27",
+        "ja": "\u4e0a\u6d41\u306b\u554f\u3044\u5408\u308f\u305b\u307e\u3057\u305f\u304c\u3053\u306e\u7a7a\u306e\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
+    "cooldown": {
+        "en": "upstream refused our last request; waiting before we ask again",
+        "zh": "\u4e0a\u6e38\u521a\u62d2\u7edd\u4e86\u6211\u4eec, \u7a0d\u540e\u518d\u95ee",
+        "ja": "\u76f4\u524d\u306e\u554f\u3044\u5408\u308f\u305b\u304c\u62d2\u5426\u3055\u308c\u305f\u305f\u3081\u5f85\u6a5f\u4e2d",
+    },
+    "render-failed": {
+        "en": "we had frames but could not draw them",
+        "zh": "\u5e27\u62ff\u5230\u4e86, \u4f46\u6211\u4eec\u6ca1\u753b\u51fa\u6765",
+        "ja": "\u30d5\u30ec\u30fc\u30e0\u306f\u3042\u308a\u307e\u3057\u305f\u304c\u63cf\u753b\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f",
+    },
+}
+
+
+# Deliberately silent, so that "not covered yet" and "we decided to say nothing"
+# stop looking alike (issue #41):
+#   list-nopeek -- only reachable when the bare _peek stub is installed, i.e. in
+#                  tests. A sentence for it could never be read by a person.
+#   unknown     -- nobody claimed a reason. Inventing prose for a word that means
+#                  "we do not know why" is exactly the failure this file fixes.
+_FETCH_SILENT = ("list-nopeek", "unknown")
+
+
+def fetching_clause(why, lang):
+    """Clause for the not-drawn line, or "" when we should stay quiet.
+
+    An unexplained reason returns "" on purpose: a word we have never seen is
+    not something we can explain to a stranger, and inventing a sentence for it
+    would be this very bug, one layer up.
+    """
+    return (_FETCH_CLAUSE.get(why) or {}).get(
+        lang if lang in ("en", "ja") else "zh", "")
 _PEEK = threading.local()
 
 
@@ -1200,11 +1292,21 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # It cannot be wrong about the world, which is why radar_err no longer
         # changes it and why nothing has to be earned before we may say it.
         st = radar_state or STATE_FETCHING
-        L.append("radar: fetching -- no radar frames for this sky yet; weather above is live"
+        _base = ("radar: fetching -- no radar frames for this sky yet; weather above is live"
                  if lang == "en" else
                  "radar: fetching -- この空のレーダーはまだ取得できていません; 上の天気は実況です"
                  if lang == "ja" else
                  "radar: fetching -- 还没拿到这片天的雷达数据; 以上天气为实时")
+        # peek, not pop: serve.py owns the clearing (see peek_reason).
+        L.append(_base)
+        # Its OWN line, not appended: Eirik measured all 9 real (reason, lang)
+        # combinations past 80 columns when the clause rode along -- the ja base
+        # is already 79 cells, so anything appended must wrap. A wrapped line is
+        # not a line an agent can grep, and this text exists for the reader who
+        # got no map. Same token in every language for exactly that reason.
+        _why = fetching_clause(peek_reason(), lang)
+        if _why:
+            L.append("radar-why: " + _why)
     L.append("")
     L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
