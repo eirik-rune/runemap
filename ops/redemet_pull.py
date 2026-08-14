@@ -51,6 +51,9 @@ req = urllib.request.Request(
     headers={"X-Api-Key": K})
 d = json.loads(urllib.request.urlopen(req, timeout=30).read())
 radars = d["data"]["radar"][0]
+# Counted before the loop, because "we could not fetch it" and "they never
+# published one" both end as mirrored=0 and must not print the same word.
+with_path = sum(1 for r in radars if r.get("path"))
 index = []
 for r in radars:
     p = r.get("path")
@@ -68,9 +71,11 @@ for r in radars:
                   "bbox": [float(r["lat_min"]), float(r["lon_min"]),
                            float(r["lat_max"]), float(r["lon_max"])]})
 json.dump({"at": int(time.time()), "product": "maxcappi",
-           "listed": len(radars), "mirrored": len(index), "radars": index},
+           "listed": len(radars), "with_path": with_path,
+           "mirrored": len(index), "radars": index},
           open(os.path.join(OUT, "index.json"), "w"))
-sys.stderr.write("MIRROR listed=%d mirrored=%d\n" % (len(radars), len(index)))
+sys.stderr.write("MIRROR listed=%d with_path=%d mirrored=%d\n"
+                 % (len(radars), with_path, len(index)))
 os.system("cd %s && tar cf - ." % OUT)
 '''
 
@@ -97,7 +102,7 @@ def _age_quantiles(idx):
                                     ages[int(len(ages) * 0.9)], ages[-1])
 
 
-def why_not_publishable(idx):
+def why_not_publishable(idx, previous=None):
     """-> a refusal string, or None if this round may replace the live index.
 
     An empty round must not overwrite a good one. 2026-08-14: every radar
@@ -114,9 +119,30 @@ def why_not_publishable(idx):
     Sao Paulo", which is false.
     """
     listed, mirrored = idx.get("listed"), idx.get("mirrored")
+    with_path = idx.get("with_path")        # absent in indexes written before
+                                            # 2026-08-14; None means unknown,
+                                            # which must not read as zero.
+    # What the refusal promises has to be true. The gate landed 37 seconds
+    # after an empty index went live on 2026-08-14, so from then on "keeping
+    # the previous index" was keeping an empty one -- a guard describing a
+    # protection it was not providing. It still refuses (publishing empty over
+    # empty gains nothing), but it says which case it is in.
+    kept = ""
+    if previous is not None and not previous.get("mirrored"):
+        kept = " -- NOTE the previous index is itself empty, so nothing is " \
+               "being protected; this is a hold, not a rescue"
+
+    if listed and with_path == 0:
+        # Upstream listed the stations but attached no frame to any of them:
+        # `path` present and null on every record. Nothing failed on our side,
+        # and sending anyone to look at the mirror would waste their time.
+        return ("REDEMET-UPSTREAM-NO-FRAMES listed=%d with_path=0 -- REDEMET "
+                "published no frame for this hour; not our fetch%s"
+                % (listed, kept))
     if listed and not mirrored:
-        return ("REDEMET-MIRROR-EMPTY listed=%d mirrored=0 -- keeping the "
-                "previous index rather than publishing an empty one" % (listed,))
+        return ("REDEMET-MIRROR-EMPTY listed=%d with_path=%s mirrored=0 -- "
+                "frames were published and we got none of them%s"
+                % (listed, "?" if with_path is None else with_path, kept))
     if not listed:
         # Upstream listing nothing is a different fact, and not ours to
         # correct -- but publishing it would still blank the country, so it
@@ -155,8 +181,23 @@ def main():
         # age past the adapter's own ceiling and it declines saying so, which
         # is a true statement about the data. Serving an empty index instead
         # says "no radar covers Sao Paulo", which is false.
-        refusal = why_not_publishable(idx)
+        try:
+            previous = json.load(open(os.path.join(DEST, "index.json")))
+        except Exception:                    # noqa: BLE001
+            previous = None                  # no previous is not an empty one
+        refusal = why_not_publishable(idx, previous)
         if refusal:
+            # Carry the mirror's own reasons. The Tokyo side writes one
+            # MIRROR-MISS per radar with the exception that stopped it, and
+            # until now that was captured into `err` and discarded unless the
+            # whole ssh failed -- so "mirrored 0 of 29" arrived with no way to
+            # ask why. Same gap as a NO-MAP with no reason: the answer existed
+            # and was thrown away one frame above the person who needed it.
+            miss = [l for l in err.splitlines() if "MIRROR-MISS" in l]
+            if miss:
+                refusal += "\n  " + "\n  ".join(miss[:6])
+                if len(miss) > 6:
+                    refusal += "\n  (+%d more)" % (len(miss) - 6)
             sys.exit(refusal)
         for f in os.listdir(stage):          # index.json last: it is the switch
             if f != "index.json":
@@ -173,8 +214,10 @@ def main():
     # its own tail. Recording the quantiles every ten minutes is what lets the
     # next version of that number come from a distribution instead of a
     # snapshot. Nothing reads this yet, and that is stated rather than implied.
-    print("REDEMET-MIRROR listed=%d mirrored=%d dest=%s %.1fs ages=%s | %s"
-          % (idx["listed"], idx["mirrored"], DEST, time.time() - t0,
+    print("REDEMET-MIRROR listed=%d with_path=%s mirrored=%d dest=%s %.1fs "
+          "ages=%s | %s"
+          % (idx["listed"], idx.get("with_path", "?"), idx["mirrored"],
+             DEST, time.time() - t0,
              _age_quantiles(idx),
              err.strip().splitlines()[-1] if err.strip() else "-"))
 

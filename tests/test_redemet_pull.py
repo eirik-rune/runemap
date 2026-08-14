@@ -35,6 +35,48 @@ class AnEmptyRoundIsRefused(unittest.TestCase):
         self.assertIsNone(
             P.why_not_publishable({"listed": 29, "mirrored": 3, "radars": [1]}))
 
+    def test_upstream_publishing_no_frames_is_not_our_fetch_failing(self):
+        """2026-08-14 07:00Z. All 29 records carried `path: null` -- and the
+        hours behind it decayed 18 -> 17 -> 3 -> 0, so REDEMET stopped
+        publishing rather than us stopping fetching. Both end as mirrored=0,
+        and the old gate called both MIRROR-EMPTY, which points the reader at
+        our mirror for a fault that is not there."""
+        why = P.why_not_publishable(
+            {"listed": 29, "with_path": 0, "mirrored": 0, "radars": []})
+        self.assertIn("REDEMET-UPSTREAM-NO-FRAMES", why)
+        self.assertNotIn("REDEMET-MIRROR-EMPTY", why)
+
+    def test_frames_published_but_none_fetched_still_blames_the_mirror(self):
+        """The other side of the same fork: when they did publish and we got
+        nothing, the mirror is exactly where to look."""
+        why = P.why_not_publishable(
+            {"listed": 29, "with_path": 18, "mirrored": 0, "radars": []})
+        self.assertIn("REDEMET-MIRROR-EMPTY", why)
+        self.assertNotIn("UPSTREAM-NO-FRAMES", why)
+
+    def test_an_older_index_without_the_field_is_not_read_as_zero(self):
+        """`with_path` absent means "written before this field existed", not
+        "no frames". Defaulting it to 0 would silently convert every legacy
+        fetch failure into an upstream outage."""
+        why = P.why_not_publishable({"listed": 29, "mirrored": 0, "radars": []})
+        self.assertIn("REDEMET-MIRROR-EMPTY", why)
+        self.assertNotIn("UPSTREAM-NO-FRAMES", why)
+
+    def test_the_gate_admits_when_it_is_protecting_nothing(self):
+        """It arrived 37 seconds after the empty index went live, so from then
+        on "keeping the previous index" meant keeping an empty one. A guard
+        must not describe a protection it is not providing."""
+        empty_prev = {"listed": 29, "mirrored": 0, "radars": []}
+        why = P.why_not_publishable(
+            {"listed": 29, "with_path": 0, "mirrored": 0, "radars": []},
+            previous=empty_prev)
+        self.assertIn("nothing is being protected", why)
+        good_prev = {"listed": 29, "mirrored": 18, "radars": [1]}
+        why2 = P.why_not_publishable(
+            {"listed": 29, "with_path": 0, "mirrored": 0, "radars": []},
+            previous=good_prev)
+        self.assertNotIn("nothing is being protected", why2)
+
     def test_upstream_listing_nothing_gets_its_own_words(self):
         """A different fact from our fetches failing, and it must not print the
         same refusal -- one sends you to REDEMET, the other to our mirror."""
