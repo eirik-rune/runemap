@@ -87,7 +87,23 @@ def spark(vals, vmax=None):
     return "".join(BARS[min(int(v / vmax * 7.999), 7)] if v > 0 else " " for v in vals)
 
 def weather(lng, lat, token, lang):
-    d = json.loads(_get("https://api.caiyunapp.com/v2.6/%s/%s,%s/weather?hourlysteps=24&lang=%s" % (token, lng, lat, lang)))
+    # unit=metric:v2 or the number is a lie. Under the DEFAULT `metric`,
+    # `precipitation.local.intensity` is Caiyun's radar precipitation INDEX on
+    # a 0~1 scale -- their documentation says so in as many words -- and we were
+    # printing it verbatim with an "mm/h" label. bob spotted it on the first
+    # screen: 0.33 read as a trace of drizzle when 0.33 of full scale is
+    # substantial rain. **The error inverted the meaning**, which is the class
+    # where the reader forms a false belief and cannot detect it.
+    #
+    # Verified field-by-field against the same coordinate before switching,
+    # because a units flag that quietly changes OTHER fields would trade one
+    # silent error for several: of every numeric field under `realtime`, only
+    # `precipitation.local.intensity` and `precipitation.nearest.intensity`
+    # differ (nearest 0.125 -> 0.6596). Temperature, humidity and wind are
+    # identical. Nothing in this repo thresholds on either value -- they are
+    # read only by the three display lines below and by render_live.py -- so
+    # the change is confined to the number that was wrong.
+    d = json.loads(_get("https://api.caiyunapp.com/v2.6/%s/%s,%s/weather?hourlysteps=24&lang=%s&unit=metric:v2" % (token, lng, lat, lang)))
     if d.get("status") != "ok":
         raise RuntimeError("weather api %s" % d.get("status"))
     return d["result"]
