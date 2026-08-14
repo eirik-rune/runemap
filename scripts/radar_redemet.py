@@ -48,7 +48,11 @@ def _index():
         with open(p) as fh:
             return json.load(fh)
     except FileNotFoundError:
-        return None                      # never mirrored: a fact about us
+        # A fact about us, not about REDEMET: the mirror timer has never
+        # written. Silent until 2026-08-14, when the health probe reported
+        # "no reason given" and there was nothing to look at.
+        sys.stderr.write("REDEMET-NO-INDEX %s never written by the mirror\n" % (p,))
+        return None
     except Exception as e:
         sys.stderr.write("REDEMET-INDEX-BAD %r\n" % (e,))
         return None
@@ -94,6 +98,14 @@ def draw(code, lng, lat, small=False, cached_only=False):
     idx = _index()
     r = pick(lng, lat, idx)
     if r is None:
+        # Two different facts, and they must not share a word: with no index
+        # this is our mirror having never run (already logged by _index), and
+        # with one it is a sky no Brazilian radar covers, which is not a fault
+        # at all. Reporting both as silence sent the last hour of this to
+        # "no reason given".
+        if idx is not None:
+            sys.stderr.write("REDEMET-NO-STATION none of %d mirrored radars "
+                             "covers %.2f,%.2f\n" % (len(idx or ()), lng, lat))
         return None
     ts = _ts(r)
     if ts is None:
