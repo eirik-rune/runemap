@@ -121,6 +121,65 @@ class EveryVerdictHasBeenFired(unittest.TestCase):
                                  "FMI")[0], "OK")
 
 
+class ANoMapCarriesTheAdapterOwnReason(unittest.TestCase):
+    """NO-MAP was one word for several diseases.
+
+    "Upstream has no frame", "the newest frame is too old" and "the window is
+    mostly blind" send you to three different places, and every adapter already
+    writes which one it was to stderr. The probe used to discard all of it.
+    """
+
+    def _msg(self, draw):
+        fake(draw)
+        return H.check("probe", "fake_source", (139.69, 35.69), None)[1]
+
+    def test_the_reason_the_adapter_printed_is_in_the_line(self):
+        def draw(*a, **k):
+            sys.stderr.write("WMS-NO-FRAME newest tried 20260813T2350Z\n")
+            return None
+        self.assertIn("WMS-NO-FRAME", self._msg(draw))
+
+    def test_the_last_reason_wins_when_the_adapter_is_chatty(self):
+        def draw(*a, **k):
+            sys.stderr.write("trying slot 1\nCHMI-FRAME-TOO-OLD age=2192s\n")
+            return None
+        self.assertIn("CHMI-FRAME-TOO-OLD", self._msg(draw))
+
+    def test_a_silent_adapter_is_named_as_silent_not_left_blank(self):
+        """'It gave no reason' and 'I did not look for one' must not print the
+        same thing -- the absence is itself worth reporting."""
+        self.assertIn("no reason given", self._msg(lambda *a, **k: None))
+
+    def test_the_adapter_output_is_re_emitted_not_swallowed(self):
+        """Capturing the reason must not steal the log line the adapter wrote:
+        the operator log is still its to write."""
+        import io as _io
+        import contextlib as _c
+
+        def draw(*a, **k):
+            sys.stderr.write("WMS-NO-FRAME something\n")
+            return None
+        fake(draw)
+        buf = _io.StringIO()
+        with _c.redirect_stderr(buf):
+            H.check("probe", "fake_source", (139.69, 35.69), None)
+        self.assertIn("WMS-NO-FRAME", buf.getvalue())
+
+    def test_an_adapter_that_raises_still_has_its_output_re_emitted(self):
+        import io as _io
+        import contextlib as _c
+
+        def draw(*a, **k):
+            sys.stderr.write("WMS-PARTIAL got 3 of 9 tiles\n")
+            raise ValueError("boom")
+        fake(draw)
+        buf = _io.StringIO()
+        with _c.redirect_stderr(buf):
+            verdict, _ = H.check("probe", "fake_source", (139.69, 35.69), None)
+        self.assertEqual(verdict, "ERROR")
+        self.assertIn("WMS-PARTIAL", buf.getvalue())
+
+
 class TheLimitComesFromTheSourceNotFromHere(unittest.TestCase):
     """A restated constant drifts, and the drift is silent -- this morning's
     REDEMET ceiling was exactly that."""
