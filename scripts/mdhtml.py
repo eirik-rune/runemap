@@ -155,7 +155,7 @@ vertical-align:-.12rem}
 <h1>%(place)s</h1>
 <p class="sub">%(when)s</p>
 %(head)s
-%(body)s<div class="meta">%(meta)s</div>
+%(body)s
 </main>
 """
 
@@ -277,6 +277,15 @@ def _curve_html(lines, heading=""):
             % (html.escape(heading or "next 2 hours"), note, cells, axis))
 
 
+def _meta(order, runs, line):
+    """Append a meta line, extending the current run or starting a new one."""
+    if not order or not order[-1].startswith("meta"):
+        key = "meta%d" % len(runs)
+        runs[key] = []
+        order.append(key)
+    runs[order[-1]].append(line)
+
+
 def render(text, marker="><"):
     """Parse by SHAPE, not by English words.
 
@@ -296,7 +305,14 @@ def render(text, marker="><"):
     reading a word of it.
     """
     place = when = now = say = ""
-    meta, grid, curve, pairs = [], [], [], []
+    # Meta lines are collected into RUNS, each taking its own slot in `order`,
+    # so a run that stood above the map in the text document is rendered above
+    # it here. Two buckets (before/after the map) was the first attempt and was
+    # not enough: it hoisted `radar: obs` above the rain curve, which the text
+    # prints first. Document order is the contract, and only a sequence can
+    # express it.
+    grid, curve, pairs = [], [], []
+    runs = {}
     order, in_grid, head_seen, curve_head = [], False, 0, ""
     lines = text.split("\n")
     for i, raw in enumerate(lines):
@@ -370,7 +386,7 @@ def render(text, marker="><"):
             # and the page lost the one fact a reader opens it for. The scale
             # line is recognised by the marker it names, which every language
             # writes the same way: [><]=Tokyo.
-            meta.append(s.strip())
+            _meta(order, runs, s.strip())
             if "]=" in s:
                 # The grid begins on the next line, blank rows included.
                 in_grid = True
@@ -400,7 +416,7 @@ def render(text, marker="><"):
         if not say:
             say = s
             continue
-        meta.append(s.strip())
+        _meta(order, runs, s.strip())
     if not pairs:
         pairs = list(zip(RAMP, ("drizzle", "light", "moderate",
                                 "heavy", "storm")))
@@ -409,6 +425,9 @@ def render(text, marker="><"):
     # weather. The marker's label is the document's own ([><]=Tokyo, Tokyo, JP),
     # so it stays in the reader's language, and the unknown entry appears only
     # when the grid actually contains unknown cells.
+    # Flattened back in document order, for the two readers that want the
+    # whole set rather than its placement.
+    meta = [x for k in order if k.startswith("meta") for x in runs[k]]
     extra = []
     here = next((m.split("]=", 1)[1] for m in meta if "]=" in m), "")
     if grid and here:
@@ -441,14 +460,19 @@ def render(text, marker="><"):
     # flex weights describe a ragged grid.
     _w = max((len(r) for r in grid), default=48)
     grid = [r.ljust(_w) for r in grid]
-    blocks = {
+    blocks = {k: ('<div class="meta">%s</div>'
+                  % "".join("<div>%s</div>" % _MULTISPACE.sub(
+                      '<span class="sep"> \u00b7 </span>', html.escape(m))
+                      for m in v))
+              for k, v in runs.items()}
+    blocks.update({
         "map": ('<div class="map"><div class="ar" style="padding-bottom:%.1f%%">'
                 '<div class="grid">%s</div></div></div>\n'
                 '<p class="legend">%s</p>\n'
                 % (100.0 * len(grid) * _CELL_TALL / max(1, _w),
                    paint(grid, marker), legend)) if grid else "",
         "curve": _curve_html(curve, curve_head) if curve else "",
-    }
+    })
     return PAGE % {
         "title": html.escape(place.split(",")[0] or "runemap"),
         "place": html.escape(place or "runemap"),
@@ -462,8 +486,6 @@ def render(text, marker="><"):
         # spaces with white-space:pre would push the line off a phone sideways
         # instead. So the run becomes a visible separator: the boundary
         # survives, and it survives at any width.
-        "meta": "".join("<div>%s</div>" % _MULTISPACE.sub(
-            '<span class="sep"> · </span>', html.escape(m)) for m in meta),
     }
 
 
