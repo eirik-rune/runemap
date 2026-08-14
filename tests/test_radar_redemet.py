@@ -6,6 +6,8 @@ directions: too tight and the reader gets a sentence while a perfectly good
 frame sits on disk, too loose and we draw yesterday's rain and call it now.
 """
 import json
+import contextlib
+import io
 import os
 import shutil
 import sys
@@ -105,6 +107,51 @@ class TheCeilingCoversOneWholeCycle(unittest.TestCase):
         stale one."""
         self._write(5 * 60, with_png=False)
         self.assertIsNone(self._draw())
+
+
+class EveryDeclineSaysWhy(unittest.TestCase):
+    """A decline that writes nothing reaches the operator as "no reason given",
+    which is where this came from: the health probe printed exactly that at
+    02:05 on 2026-08-14 and there was nothing left to look at.
+
+    The two silent paths were also two different facts -- our mirror never
+    having run, and a sky no Brazilian radar covers (which is not a fault) --
+    so they get different words, not one.
+    """
+
+    def setUp(self):
+        self.old_dir = R.DIR
+        self.buf = io.StringIO()
+
+    def tearDown(self):
+        R.DIR = self.old_dir
+
+    def _say(self, lng, lat):
+        with contextlib.redirect_stderr(self.buf):
+            R.draw("><", lng, lat)
+        return self.buf.getvalue()
+
+    def test_a_missing_index_names_the_mirror_not_the_upstream(self):
+        import tempfile
+        R.DIR = tempfile.mkdtemp()          # no index.json in it
+        said = self._say(-46.63, -23.55)
+        self.assertIn("REDEMET-NO-INDEX", said)
+
+    def test_a_sky_no_radar_covers_is_named_and_is_not_the_same_word(self):
+        import tempfile, json as _json, os as _os
+        d = tempfile.mkdtemp()
+        with open(_os.path.join(d, "index.json"), "w") as fh:
+            _json.dump([], fh)
+        R.DIR = d
+        said = self._say(0.0, 51.5)         # London: no Brazilian radar
+        self.assertIn("REDEMET-NO-STATION", said)
+        self.assertNotIn("REDEMET-NO-INDEX", said)
+
+    def test_no_decline_path_is_silent(self):
+        """The property, not the instances: whichever branch ran, it spoke."""
+        import tempfile
+        R.DIR = tempfile.mkdtemp()
+        self.assertTrue(self._say(-46.63, -23.55).strip())
 
 
 if __name__ == "__main__":
