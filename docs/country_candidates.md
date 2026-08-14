@@ -8,7 +8,7 @@ worth writing down mainly so the next one does not repeat it — and so that
 came back empty, the entry says whether a positive control passed, because an
 empty result and a broken ruler return the same silence.
 
-## Belgium — the closest, blocked on a licence fact
+## Belgium — RULED OUT 2026-08-14: GetMap is 403, only the catalogue is open
 
 Full write-up in `belgium_rmi_feasibility.md`. Plain WMS 1.3.0, 5-minute
 frames, `Fees: none`, the class `radar_wms` already serves. RMI grant CC BY 4.0
@@ -82,7 +82,9 @@ catalogue, not the API.
 
 1. **Ireland** — licence already settled, but it needs a polar-to-Cartesian
    compositor. The largest piece of real work available, and unblocked.
-2. **Belgium**, once RMI answer. It is one `SERVICES` entry and a palette.
+2. ~~Belgium~~ — **ruled out.** Not a licence question after all: `GetMap`
+   403s on every variant while `GetCapabilities` returns 200. They publish a
+   catalogue entry for a layer they do not serve.
 3. ~~Italy from Tokyo~~ — **done, and it is not our exit.** The remaining route
    would be a `Referer` we cannot truthfully send, so Italy is closed unless DPC
    publish elsewhere. Not a candidate.
