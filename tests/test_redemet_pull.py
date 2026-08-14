@@ -87,3 +87,41 @@ class AnEmptyRoundIsRefused(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheReasonOutlivesTheRound(unittest.TestCase):
+    """`index.json` is the switch and may only move on good data -- which is
+    precisely why it cannot carry the reason there is none. Through the
+    2026-08-14 REDEMET outage the live index stayed frozen at 02:40, from
+    before `with_path` existed, so the bell said "none of 0 mirrored radars"
+    every 30 minutes: true, and pointing at our mirror rather than at Brazil.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.d = tempfile.mkdtemp()
+
+    def test_a_refused_round_still_records_why(self):
+        import json
+        idx = {"listed": 29, "with_path": 0, "mirrored": 0, "radars": []}
+        P.write_status(idx, "REDEMET-UPSTREAM-NO-FRAMES ...", dest=self.d)
+        with open(os.path.join(self.d, "status.json")) as fh:
+            st = json.load(fh)
+        self.assertEqual(st["with_path"], 0)
+        self.assertIn("UPSTREAM-NO-FRAMES", st["refusal"])
+
+    def test_a_published_round_records_that_there_was_no_refusal(self):
+        """Absence of a refusal has to be stated, not implied by a missing
+        file -- otherwise 'published fine' and 'never ran' are the same."""
+        import json
+        P.write_status({"listed": 29, "with_path": 18, "mirrored": 18},
+                       None, dest=self.d)
+        with open(os.path.join(self.d, "status.json")) as fh:
+            st = json.load(fh)
+        self.assertIsNone(st["refusal"])
+        self.assertEqual(st["mirrored"], 18)
+
+    def test_an_unwritable_destination_does_not_stop_the_mirror(self):
+        """Bookkeeping must never block frames reaching readers."""
+        P.write_status({"listed": 1, "mirrored": 1}, None,
+                       dest=os.path.join(self.d, "no", "such", "dir"))
