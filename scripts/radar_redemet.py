@@ -42,6 +42,30 @@ DIR = os.environ.get("REDEMET_DIR",
                                                  "/var/cache/runemap"), "redemet"))
 
 
+def _mirror_status_note():
+    """-> ' -- <why the mirror last refused>', or a word saying we cannot tell.
+
+    Deliberately never returns an empty string on failure. "The mirror gave no
+    reason" and "the mirror is fine" must not read the same, which is the whole
+    family of bugs this file keeps meeting.
+    """
+    p = os.path.join(DIR, "status.json")
+    try:
+        with open(p) as fh:
+            st = json.load(fh)
+    except FileNotFoundError:
+        return " -- no mirror status yet (mirror older than this check, or " \
+               "never ran)"
+    except Exception as e:                       # noqa: BLE001
+        return " -- mirror status unreadable: %r" % (e,)
+    if st.get("refusal"):
+        age = (time.time() - float(st.get("at") or 0)) / 60.0
+        return " -- mirror %.0f min ago: %s" % (age, st["refusal"])
+    return " -- mirror last round published (with_path=%s mirrored=%s), so " \
+           "this is about coverage, not supply" % (st.get("with_path"),
+                                                   st.get("mirrored"))
+
+
 def _index():
     p = os.path.join(DIR, "index.json")
     try:
@@ -111,9 +135,16 @@ def draw(code, lng, lat, small=False, cached_only=False):
             # none of the 29 they listed" and "they listed none" are different
             # failures that a single number hides.
             rs = (idx or {}).get("radars") or ()
+            # The index is the switch and may only move on good data, so when
+            # it is frozen it cannot say why. The mirror records that beside it.
+            # Without this the bell said "none of 0 mirrored radars" every 30
+            # minutes through a REDEMET outage -- true, and pointing at the
+            # wrong system, which costs whoever reads it the first hour.
+            why = _mirror_status_note()
             sys.stderr.write("REDEMET-NO-STATION none of %d mirrored radars "
-                             "(upstream listed %s) covers %.2f,%.2f\n"
-                             % (len(rs), (idx or {}).get("listed", "?"), lng, lat))
+                             "(upstream listed %s) covers %.2f,%.2f%s\n"
+                             % (len(rs), (idx or {}).get("listed", "?"),
+                                lng, lat, why))
         return None
     ts = _ts(r)
     if ts is None:

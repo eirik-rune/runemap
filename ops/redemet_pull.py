@@ -152,6 +152,37 @@ def why_not_publishable(idx, previous=None):
     return None
 
 
+def write_status(idx, refusal, dest=None):
+    """Record every round's outcome beside the index, including refusals.
+
+    `index.json` is the switch: it may only change when there is good data, and
+    that is exactly why it cannot carry the reason there is none. On 2026-08-14
+    REDEMET stopped publishing frames for hours; the gate correctly held the
+    previous index, which had been written at 02:40 before `with_path` existed
+    -- so the live index could never learn *why* it was frozen, and the health
+    bell went on saying "none of 0 mirrored radars" every 30 minutes. That
+    points at our mirror. The mirror was fine.
+
+    Two different questions need two different files: `index.json` answers
+    "what may be drawn", this answers "why is that not moving". Writing the
+    reason into the switch would either corrupt the switch or lose the reason.
+    """
+    p = os.path.join(dest or DEST, "status.json")
+    body = {"at": int(time.time()),
+            "listed": idx.get("listed"), "with_path": idx.get("with_path"),
+            "mirrored": idx.get("mirrored"), "refusal": refusal}
+    tmp = p + ".tmp"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(body, fh)
+        os.replace(tmp, p)
+    except Exception as e:                       # noqa: BLE001
+        # Never let the bookkeeping break the mirror: a failed status write
+        # must not stop good frames reaching readers.
+        sys.stderr.write("REDEMET-STATUS-UNWRITABLE %r\n" % (e,))
+    return body
+
+
 def main():
     t0 = time.time()
     with tempfile.TemporaryDirectory() as tmp:
@@ -186,6 +217,10 @@ def main():
         except Exception:                    # noqa: BLE001
             previous = None                  # no previous is not an empty one
         refusal = why_not_publishable(idx, previous)
+        # Written on every round, refusal or not: the reason a
+        # round did not publish is exactly the thing that must
+        # outlive the round.
+        write_status(idx, refusal)
         if refusal:
             # Carry the mirror's own reasons. The Tokyo side writes one
             # MIRROR-MISS per radar with the exception that stopped it, and
