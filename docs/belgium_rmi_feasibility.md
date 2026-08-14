@@ -1,3 +1,30 @@
+# Belgium (RMI/KMI) — NOT AVAILABLE: the catalogue is open, the data is not
+
+**2026-08-14, corrected.** Everything below was written believing the only
+obstacle was the licence. It was wrong, and wrong in the direction that
+flattered the candidate: **`GetMap` returns 403 for every variant tried** — WMS 1.3.0
+and 1.1.1, with and without an explicit style, on both the `/service/radar/wms`
+and `/geoserver/radar/ows` paths — while `GetCapabilities` returns 200 in the
+same breath as a positive control. `GetStyles` and `GetLegendGraphic` 403 too.
+
+So RMI publish a catalogue entry describing a layer they do not serve to us.
+Belgium fails at **access**, not at licensing, and the licence analysis below is
+moot until that changes.
+
+**How this was nearly missed, and it is the important part.** I read
+`GetCapabilities`, read their terms out of the site's JS bundle, and reported to
+bob that I had "already pulled a frame tonight". **I had not.** Reading the
+service's description of an image is not the image, and the two felt identical
+from the inside because both were 200s from the same host. The correction cost
+one request. Believing it would have cost an adapter built against a source that
+never returns data.
+
+The rule this belongs to is already on the stone — *a positive control proves
+the ruler works at this moment* — and the positive control here is what settled
+it: same host, same second, capabilities 200 / map 403.
+
+---
+
 # Belgium (RMI/KMI) — technically the cheapest country left, blocked on one fact
 
 Written 2026-08-13. **Not adopted.** The engineering is nearly free; the licence
