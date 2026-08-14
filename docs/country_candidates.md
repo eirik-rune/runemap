@@ -23,7 +23,14 @@ guessed API paths.** `data.gov.ie` returns *Irish radar files*, publisher Met
 the licence question is answered before any engineering. The directory itself
 links the CC BY 4.0 deed too.
 
-    https://opendata2.met.ie/radar/latest/     no key, ~24 h retention
+**2026-08-14: do not use `latest/`.** It lags a full day — its frame range is
+identical to the *previous* day's dated directory, and the newest file in it was
+7.5 h old while `/radar/2026/08/14/` held frames 20 minutes old. It does not
+error or thin out; it serves well-formed HDF5 with plausible stamps, so an
+adapter built on it would have drawn stale rain as current. Full measurement in
+`ireland_meteireann_feasibility.md`. **Use `/radar/YYYY/MM/DD/`.**
+
+    https://opendata2.met.ie/radar/2026/08/14/  no key, rolling ~24 h window
     T_PAGZ40_C_EIDB_<stamp>.h5   Shannon   (NOD:iesha, 52.6928 N 8.9200 W)
     T_PAGZ41_C_EIDB_<stamp>.h5   Dublin
     5-minute frames; newest observed was 5 minutes old
