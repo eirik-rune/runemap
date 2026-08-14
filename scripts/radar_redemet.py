@@ -104,8 +104,16 @@ def draw(code, lng, lat, small=False, cached_only=False):
         # at all. Reporting both as silence sent the last hour of this to
         # "no reason given".
         if idx is not None:
+            # len(idx) counts the index's top-level KEYS, not its radars --
+            # it printed a confident "5" hours after this line was written and
+            # a whole wrong story got built on it. Count the thing being
+            # counted, and report the upstream list too, because "we mirrored
+            # none of the 29 they listed" and "they listed none" are different
+            # failures that a single number hides.
+            rs = (idx or {}).get("radars") or ()
             sys.stderr.write("REDEMET-NO-STATION none of %d mirrored radars "
-                             "covers %.2f,%.2f\n" % (len(idx or ()), lng, lat))
+                             "(upstream listed %s) covers %.2f,%.2f\n"
+                             % (len(rs), (idx or {}).get("listed", "?"), lng, lat))
         return None
     ts = _ts(r)
     if ts is None:
