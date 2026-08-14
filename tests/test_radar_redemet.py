@@ -147,6 +147,20 @@ class EveryDeclineSaysWhy(unittest.TestCase):
         self.assertIn("REDEMET-NO-STATION", said)
         self.assertNotIn("REDEMET-NO-INDEX", said)
 
+    def test_the_count_counts_radars_not_the_index_keys(self):
+        """It printed "none of 5 mirrored radars" against an index holding
+        ZERO radars and five top-level keys, and I built a wrong story on that
+        number within minutes. Count the thing being counted."""
+        import tempfile, json as _json, os as _os
+        d = tempfile.mkdtemp()
+        with open(_os.path.join(d, "index.json"), "w") as fh:
+            _json.dump({"at": 1, "product": "x", "listed": 29,
+                        "mirrored": 0, "radars": []}, fh)
+        R.DIR = d
+        said = self._say(-46.63, -23.55)
+        self.assertIn("none of 0 mirrored radars", said)
+        self.assertIn("listed 29", said.replace("upstream listed", "listed"))
+
     def test_no_decline_path_is_silent(self):
         """The property, not the instances: whichever branch ran, it spoke."""
         import tempfile
