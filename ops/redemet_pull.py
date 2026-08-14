@@ -97,6 +97,35 @@ def _age_quantiles(idx):
                                     ages[int(len(ages) * 0.9)], ages[-1])
 
 
+def why_not_publishable(idx):
+    """-> a refusal string, or None if this round may replace the live index.
+
+    An empty round must not overwrite a good one. 2026-08-14: every radar
+    fetch missed on the Tokyo side, so the mirror wrote a well-formed index
+    with radars: [] and exited 0. The tar was non-empty, so this published it,
+    and Brazil went dark for hours while 18 usable PNGs sat in DEST unused.
+    Neither existing guard could see it -- rc was 0 and the tar had bytes,
+    because "mirrored none of the 29 they listed" is a *successful* run that
+    got nothing.
+
+    Keeping the previous index is the honest failure: those frames age past
+    the adapter's own ceiling and it declines saying so, which is true about
+    the data. An empty index instead makes the adapter say "no radar covers
+    Sao Paulo", which is false.
+    """
+    listed, mirrored = idx.get("listed"), idx.get("mirrored")
+    if listed and not mirrored:
+        return ("REDEMET-MIRROR-EMPTY listed=%d mirrored=0 -- keeping the "
+                "previous index rather than publishing an empty one" % (listed,))
+    if not listed:
+        # Upstream listing nothing is a different fact, and not ours to
+        # correct -- but publishing it would still blank the country, so it
+        # is refused too, with its own words.
+        return ("REDEMET-MIRROR-NOTHING-LISTED upstream listed %r -- keeping "
+                "the previous index" % (listed,))
+    return None
+
+
 def main():
     t0 = time.time()
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,7 +143,21 @@ def main():
         os.makedirs(stage)
         subprocess.run(["tar", "xf", tar, "-C", stage], check=True)
         idx = json.load(open(os.path.join(stage, "index.json")))
-        os.makedirs(DEST, exist_ok=True)
+        # An empty round must not overwrite a good one. 2026-08-14: every
+        # radar fetch missed on the Tokyo side, so the mirror wrote a
+        # well-formed index with radars: [] and exited 0; the tar was
+        # non-empty, so this published it, and Brazil went dark for hours
+        # while 18 usable PNGs sat in DEST unused. rc != 0 and size == 0 both
+        # missed it, because "mirrored none of the 29 they listed" is a
+        # successful run that got nothing.
+        #
+        # Keeping the previous index is the honest failure: those frames then
+        # age past the adapter's own ceiling and it declines saying so, which
+        # is a true statement about the data. Serving an empty index instead
+        # says "no radar covers Sao Paulo", which is false.
+        refusal = why_not_publishable(idx)
+        if refusal:
+            sys.exit(refusal)
         for f in os.listdir(stage):          # index.json last: it is the switch
             if f != "index.json":
                 os.replace(os.path.join(stage, f), os.path.join(DEST, f))
