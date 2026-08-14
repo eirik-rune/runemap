@@ -38,6 +38,8 @@ out, so a single dead radar does not read as a dead service.
 import os
 import sys
 import time
+import contextlib
+import io
 import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -92,10 +94,23 @@ def check(label, modname, sky, fallback, want_source=None):
         return "ERROR", "%s: import failed: %r" % (label, e)
     lng, lat = sky
     t0 = time.time()
+    # Every adapter already writes its reason to stderr -- WMS-NO-FRAME,
+    # CHMI-FRAME-TOO-OLD, a nodata share over the limit -- and this probe used
+    # to throw all of it away and print one word. "Upstream has no frame",
+    # "the frame is too old" and "the window is mostly blind" send you to three
+    # different places, so they must not print the same thing. Captured and
+    # re-emitted, never swallowed: the log line the adapter wrote is still the
+    # adapter's to write.
+    said = io.StringIO()
     try:
-        got = mod.draw("><", lng, lat, small=True)
+        with contextlib.redirect_stderr(said):
+            got = mod.draw("><", lng, lat, small=True)
     except Exception:
+        sys.stderr.write(said.getvalue())
         return "ERROR", "%s: %s" % (label, traceback.format_exc().strip().splitlines()[-1])
+    finally:
+        pass
+    sys.stderr.write(said.getvalue())
     took = time.time() - t0
     if got is None:
         why = None
@@ -119,7 +134,11 @@ def check(label, modname, sky, fallback, want_source=None):
         # exactly what a dead upstream and a quiet sky both look like from the
         # reader's side, and only this probe can tell them apart, because it
         # asked somewhere the source SAYS it can see.
-        return "NO-MAP", "%s: declined inside its own coverage (%.2fs)" % (label, took)
+        lines = [x for x in said.getvalue().splitlines() if x.strip()]
+        because = (" -- %s" % lines[-1].strip()) if lines else (
+            " -- no reason given, which is itself the bug")
+        return "NO-MAP", ("%s: declined inside its own coverage (%.2fs)%s"
+                          % (label, took, because))
     age = time.time() - float(got[4])
     limit = _max_age(mod, fallback)
     if age > limit:
