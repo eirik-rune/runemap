@@ -366,9 +366,17 @@ class H(BaseHTTPRequestHandler):
                     q.setdefault("q", [spec])
                 else:
                     return self._send(404, "no such path: %s\n\n" % u.path[:60] + HOME)
+        # explicit suffix/param wins; otherwise follow the client's own preference.
+        # It applied to "/" only at first, so a Chinese phone asking for /london
+        # got English -- a difference the caller never asked for.
+        lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
+        lang = lang if lang in ("en", "zh", "ja") else "en"
+        # Resolved BEFORE the place lookup, because the lookup now needs it:
+        # a /zh caller must get the place's Chinese name, and that decision
+        # cannot be made after the label has already been built.
         place = None
         if q.get("q"):
-            place = G.lookup(q["q"][0])
+            place = G.lookup(q["q"][0], lang=lang)
             if not place:
                 return self._send(404, "place not found: %s\n\ntry  curl echorune.net/<city>/en   or  curl echorune.net/help\n" % q["q"][0][:60])
             lat, lon = place["lat"], place["lon"]
@@ -379,19 +387,14 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, "bad or missing coordinates\n\n" + HOME)
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 return self._send(400, "lat/lon out of range\n")
-        # explicit suffix/param wins; otherwise follow the client's own preference.
-        # It applied to "/" only at first, so a Chinese phone asking for /london
-        # got English -- a difference the caller never asked for.
-        lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
-        lang = lang if lang in ("en", "zh", "ja") else "en"
         label = q.get("label", [None])[0]
         if not label:
-            near = place or G.rlookup(lat, lon)
+            near = place or G.rlookup(lat, lon, lang=lang)
             label = near["label"] if near else ("%.4f,%.4f" % (lon, lat))
         try:
             tzh = float(q["tz"][0])
         except Exception:
-            near = place or G.rlookup(lat, lon)
+            near = place or G.rlookup(lat, lon, lang=lang)
             tzh = G.tz_offset(near.get("tz")) if near else None
             if tzh is None:
                 tzh = round(lon / 15.0)     # fallback: no settlement nearby
