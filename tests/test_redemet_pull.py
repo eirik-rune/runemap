@@ -125,3 +125,47 @@ class TheReasonOutlivesTheRound(unittest.TestCase):
         """Bookkeeping must never block frames reaching readers."""
         P.write_status({"listed": 1, "mirrored": 1}, None,
                        dest=os.path.join(self.d, "no", "such", "dir"))
+
+
+class TheAlarmMustSurviveTheWakeEventTruncation(unittest.TestCase):
+    """The doorbell truncates a wake event at 500 characters with no marker at
+    the cut, and the mirror note is appended at the END of the alarm line. A
+    full-prose note made one bad source 388 characters; two bad sources would
+    have lost the reason and the "sudo tail" hint that follows it -- the note
+    evaporating precisely when more than one thing is wrong."""
+
+    MAX_NOTE = 90
+
+    def _note(self, refusal):
+        import json
+        import tempfile
+        import time as _t
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "status.json"), "w") as fh:
+            json.dump({"at": int(_t.time()), "listed": 29, "with_path": 0,
+                       "mirrored": 0, "refusal": refusal}, fh)
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                        "scripts"))
+        import radar_redemet as R
+        old, R.DIR = R.DIR, d
+        try:
+            return R._mirror_status_note()
+        finally:
+            R.DIR = old
+
+    def test_the_note_is_short_enough_to_survive(self):
+        note = self._note(
+            "REDEMET-UPSTREAM-NO-FRAMES listed=29 with_path=0 -- REDEMET "
+            "published no frame for this hour; not our fetch -- NOTE the "
+            "previous index is itself empty, so nothing is being protected; "
+            "this is a hold, not a rescue")
+        self.assertLessEqual(len(note), self.MAX_NOTE, note)
+
+    def test_it_keeps_the_part_that_says_which_system(self):
+        """Short is worthless if it drops the only word that redirects the
+        reader from our mirror to Brazil."""
+        note = self._note(
+            "REDEMET-UPSTREAM-NO-FRAMES listed=29 with_path=0 -- REDEMET "
+            "published no frame for this hour; not our fetch")
+        self.assertIn("UPSTREAM-NO-FRAMES", note)
+        self.assertIn("with_path=0", note)

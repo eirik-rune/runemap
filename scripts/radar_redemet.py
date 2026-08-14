@@ -60,7 +60,18 @@ def _mirror_status_note():
         return " -- mirror status unreadable: %r" % (e,)
     if st.get("refusal"):
         age = (time.time() - float(st.get("at") or 0)) / 60.0
-        return " -- mirror %.0f min ago: %s" % (age, st["refusal"])
+        # Only the first clause -- the token and its numbers. The full prose
+        # stays in status.json and the mirror log.
+        #
+        # This is not tidiness. The wake event that carries this alarm is
+        # truncated at 500 characters with no marker at the cut, and the note
+        # sits at the END of the line, so the full sentence made one bad source
+        # 388 characters and two bad sources lose both the reason AND the
+        # "sudo tail" hint that follows it. The improvement would have
+        # evaporated exactly when more than one thing was wrong -- which is
+        # when it is worth having.
+        head = st["refusal"].split(" -- ")[0].strip()
+        return " -- mirror %.0fm: %s" % (age, head)
     return " -- mirror last round published (with_path=%s mirrored=%s), so " \
            "this is about coverage, not supply" % (st.get("with_path"),
                                                    st.get("mirrored"))
