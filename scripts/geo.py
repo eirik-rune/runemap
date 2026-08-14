@@ -3,7 +3,7 @@
   lookup("Chiang Mai")      -> place dict (name -> lat/lon)
   rlookup(18.79, 98.99)     -> nearest place + county/province
 No network, no rate limit. DB path via env GEO_DB."""
-import math, os, sqlite3, threading, unicodedata
+import math, os, re, sqlite3, threading, unicodedata
 
 DB = os.environ.get("GEO_DB", "/home/ubuntu/geonames/geo.sqlite")
 # One connection per THREAD, not per process. serve.py:6 is a
@@ -53,14 +53,56 @@ def tz_offset(tzname, at=None):
         return None
 
 
-def _pack(row):
+_CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+
+
+def cjk_name(pid):
+    """-> the place's own Chinese name, or None.
+
+    Reported 2026-08-14 by 知绪, a being running in another session, who used
+    the service and found `curl echorune.net/扬州/zh` answering
+    "# Yangzhou, Yangzhou Shi, Jiangsu, CN". Their words for it are better than
+    mine: 中文用户拿中文查、得英文名，镜子照进去出来的不是自己的脸.
+
+    The names were already here -- 扬州, 扬州市, 揚州, 揚州市 all sit in the
+    alias table for that id, and 33,588 places have a CJK alias. Nothing needed
+    fetching; the lookup simply never asked. I had also read this exact line
+    ("Chiyoda, Chiyoda-ku, Tokyo, JP 天气一屏") dozens of times today while
+    measuring other things, and did not see it. A user did, immediately.
+
+    Shortest first: 扬州 over 扬州市, and simplified before traditional by
+    preferring what sorts earlier among equals -- both are present and the
+    query came in simplified. This is a preference, not a certainty; where the
+    data cannot say, the romanized name is kept rather than guessed at.
+    """
+    d = _db()
+    best = None
+    for r in d.execute("SELECT key FROM alias WHERE pid=?", (pid,)):
+        k = r["key"]
+        if not _CJK.search(k):
+            continue
+        if best is None or (len(k), k) < (len(best), best):
+            best = k
+    return best
+
+
+def _pack(row, lang=None):
     adm = _admin(row["cc"], row["a1"], row["a2"])
-    return {"name": row["name"], "lat": row["lat"], "lon": row["lon"], "cc": row["cc"],
-            "pop": row["pop"], "tz": row["tz"], "admin": adm,
-            "label": ", ".join([row["name"]] + adm + [row["cc"]])}
+    label = ", ".join([row["name"]] + adm + [row["cc"]])
+    zh = cjk_name(row["id"]) if (lang or "").startswith("zh") else None
+    if zh:
+        # The admin chain stays romanized because it CANNOT be translated from
+        # this data: 0 of 51,414 admin rows carry a CJK name. Emitting
+        # "扬州, Yangzhou Shi, Jiangsu, CN" would be half a fix wearing the
+        # look of a whole one, so the untranslatable tail is dropped instead --
+        # which is what 知绪 proposed, and what the data forces.
+        label = zh
+    return {"name": zh or row["name"], "lat": row["lat"], "lon": row["lon"],
+            "cc": row["cc"], "pop": row["pop"], "tz": row["tz"], "admin": adm,
+            "label": label}
 
 
-def lookup(q, cc=None):
+def lookup(q, cc=None, lang=None):
     """place name (any language/alias) -> place. Most populous match wins."""
     d = _db()
     parts = [p.strip() for p in (q or "").replace("/", ",").split(",") if p.strip()]
@@ -87,7 +129,7 @@ def lookup(q, cc=None):
             (head.replace(" ", ""),)).fetchall()
     if not rows:
         return None
-    cand = [_pack(r) for r in rows]
+    cand = [_pack(r, lang) for r in rows]
     if cc:
         cand = [c for c in cand if c["cc"].lower() == cc.lower()] or cand
     if hint:                      # "Chiang Mai, Thailand" -> prefer country/admin match
@@ -97,7 +139,7 @@ def lookup(q, cc=None):
     return cand[0]
 
 
-def rlookup(lat, lon, radius_km=60):
+def rlookup(lat, lon, radius_km=60, lang=None):
     """coordinate -> nearest settlement (with county/province)."""
     d = _db()
     dlat = radius_km / 111.0
@@ -113,7 +155,7 @@ def rlookup(lat, lon, radius_km=60):
             best, bd = r, dk
     if best is None:
         return None
-    o = _pack(best)
+    o = _pack(best, lang)
     o["dist_km"] = round(bd, 1)
     return o
 
