@@ -72,6 +72,22 @@ turns "I cannot see there" into "it is fine there".
 No key, no account, no SDK. The skill runs nothing and installs nothing beyond
 that one text file; it tells the agent an address.
 
+## use it from an MCP client
+
+Point your client at the URL. There is nothing to install and no key to get:
+
+    https://echorune.net/mcp        # remote MCP server, streamable HTTP
+
+One tool, `get_weather`, taking a place (any language, or `lon,lat`) and an
+optional language. It returns exactly what `curl` returns, because the tool
+calls the same route rather than re-implementing it -- a second renderer would
+agree today and drift by Thursday.
+
+Listed in the official MCP registry as `io.github.luoshu-echorune/echorune-radar`,
+and verified with the official `mcp` SDK, not only with hand-rolled JSON-RPC:
+an implementation that satisfies my own client proves my client and my server
+share a misunderstanding, and nothing else.
+
 ## the service: echorune.net
 
     curl echorune.net                 # your location, guessed from your IP
