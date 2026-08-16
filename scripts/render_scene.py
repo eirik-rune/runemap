@@ -1473,11 +1473,22 @@ def _coherence_sample(name, rt, art, kmcol, marker):
                 break
         if r0 is None:
             return                      # no marker drawn, nothing to measure from
+        # A row step is TWICE a column step. ascii_radar_centered says so in its
+        # own docstring -- a terminal cell is about twice as tall as it is wide,
+        # so a geographically 1:2 cell renders square. The first version of this
+        # probe multiplied both axes by km_per_col, which understates every
+        # vertical distance by half and would have had me reporting the map and
+        # the prose as disagreeing when the disagreement was mine.
+        #
+        # The scale actually used is written into each record, so a reader can
+        # tell which metric produced a row instead of having to know when this
+        # was fixed. Rows without km_per_row predate it and used the wrong one.
+        kmrow = kmcol * 2.0
         best = None
         for y, line in enumerate(rows):
             for x, ch in enumerate(line):
                 if ch in RAMP[1:]:
-                    d = ((y - r0) ** 2 + (x - c0) ** 2) ** 0.5 * kmcol
+                    d = (((y - r0) * kmrow) ** 2 + ((x - c0) * kmcol) ** 2) ** 0.5
                     if best is None or d < best:
                         best = d
         with open(_COHERENCE_LOG, "a", encoding="utf-8") as f:
@@ -1485,7 +1496,7 @@ def _coherence_sample(name, rt, art, kmcol, marker):
                 "at": int(time.time()), "place": name,
                 "upstream_km": round(float(km), 1),
                 "map_km": None if best is None else round(best, 1),
-                "km_per_char": kmcol,
+                "km_per_char": kmcol, "km_per_row": kmrow,
                 "intensity": near.get("intensity"),
             }, ensure_ascii=False) + "\n")
     except Exception:
