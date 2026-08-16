@@ -7,7 +7,7 @@ Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
 import importlib, json, math, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from runemap.render import ascii_radar, ascii_radar_centered
+from runemap.render import ascii_radar, ascii_radar_centered, RAMP
 
 # One window for every asker, switched by env so the tree is safe to deploy.
 # RUNEMAP_SPAN_KM=0 (default, production today) keeps the upstream station's
@@ -1429,6 +1429,69 @@ def _tz_label(tzh):
     return "UTC%s%d" % (sign, h) if m == 0 else "UTC%s%d:%02d" % (sign, h, m)
 
 
+#: Where paired samples land. One line per rendered scene that has BOTH a
+#: structured nearest-precipitation distance and a drawn map.
+_COHERENCE_LOG = os.environ.get(
+    "RUNEMAP_COHERENCE_LOG",
+    os.path.join(os.environ.get("RUNEMAP_CACHE", "/tmp"), "coherence.jsonl"))
+
+#: Upstream's "no rain anywhere near" sentinel. Anything at or above this is
+#: not a distance, and treating it as one would fabricate a disagreement.
+_NO_RAIN_KM = 10000.0
+
+
+def _coherence_sample(name, rt, art, kmcol, marker):
+    """Record what the prose implies against what our own map shows.
+
+    2026-08-16. A single case (Chiang Mai: upstream said light rain 18 km NE,
+    our own map's nearest echo was 30 km SW on a frame labelled predict/stale)
+    raised a question this repository could not answer: how often do the two
+    halves of a reply disagree? Scanning twelve cities to find out returned a
+    sample of **zero** -- the prose only carries a distance when upstream sees
+    rain nearby, which is a sparse event that a one-off sweep will not catch.
+
+    So it is recorded as it happens instead of hunted. Nothing is judged here:
+    a disagreement can be an honest one (the frame may be an extrapolation
+    minutes old while the prose is current), and deciding that from inside the
+    hot path would be the same mistake as thresholding on a number nobody has
+    looked at yet. This writes pairs; the judging happens later, out of band,
+    on enough of them to mean something.
+
+    Never raises: instrumentation that can break serving is worse than no
+    instrumentation, and this one runs on every rendered scene.
+    """
+    try:
+        near = (rt.get("precipitation", {}).get("nearest") or {})
+        km = near.get("distance")
+        if km is None or km >= _NO_RAIN_KM:
+            return                      # upstream sees nothing near: not a sample
+        rows = art.split("\n")
+        r0 = c0 = None
+        for y, line in enumerate(rows):
+            if marker in line:
+                r0, c0 = y, line.index(marker)
+                break
+        if r0 is None:
+            return                      # no marker drawn, nothing to measure from
+        best = None
+        for y, line in enumerate(rows):
+            for x, ch in enumerate(line):
+                if ch in RAMP[1:]:
+                    d = ((y - r0) ** 2 + (x - c0) ** 2) ** 0.5 * kmcol
+                    if best is None or d < best:
+                        best = d
+        with open(_COHERENCE_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "at": int(time.time()), "place": name,
+                "upstream_km": round(float(km), 1),
+                "map_km": None if best is None else round(best, 1),
+                "km_per_char": kmcol,
+                "intensity": near.get("intensity"),
+            }, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
           radar_state=None):
     code = _mark(code)   # legend and grid must show the same glyph
@@ -1562,6 +1625,8 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # one more ambiguous symbol. A fourth state added later must not break
         # a reader that expects "age:" to be optional.
         L.append("radar: %-14s obs age: %dmin %s" % (_axis1, obs_age, _age_tok))
+        _coherence_sample(name, rt, art, kmcol, code)
+
         if lang == "ja":
             L.append("1文字≈%.0fkm, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
