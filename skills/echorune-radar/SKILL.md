@@ -9,6 +9,8 @@ curl echorune.net/139.7,35.7  # longitude first
 curl echorune.net/help        # everything else
 ```
 
+Example reply (map trimmed):
+
 ```
 # Zürich, Bezirk Zürich, Zurich, CH weather scene
 now: PARTLY_CLOUDY_DAY  22C  humidity 79%  wind 4km/h  precip 0.00mm/h
