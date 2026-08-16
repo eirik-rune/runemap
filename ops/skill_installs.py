@@ -64,7 +64,22 @@ def main():
 
     home = tempfile.mkdtemp(prefix="skillcheck-")
     env = dict(os.environ, HOME=home)
+
+    # Two commands, because they answer two different questions.
+    #
+    # The verbatim one is what we print in the README, /help and every listing.
+    # On a machine that already has an agent it installs silently. On a machine
+    # with NONE -- a CI runner, a fresh container, anything an agent's own
+    # automation runs in -- it opens an interactive picker, "Which agents do you
+    # want to install to?", and with no terminal attached it exits **rc=0 having
+    # installed nothing**. Success and silence are the same exit code, which is
+    # why this went unnoticed: the caller has no way to know.
+    #
+    # The explicit one names the agents, so it never asks. If the verbatim form
+    # cannot complete, that is reported as a fact about what strangers hit -- but
+    # the run only FAILS when the skill itself cannot be installed at all.
     cmd = ["npx", "-y", "skills", "add", REPO, "--skill", NAME]
+    cmd_headless = cmd + ["--agent", "*", "-y"]
     print("as a stranger would run it, in a throwaway directory:\n  %s\n"
           % " ".join(cmd))
     try:
@@ -85,10 +100,30 @@ def main():
               % out.strip().splitlines()[-1][:160])
         return 2
 
-    installed = []
-    for root, _dirs, files in os.walk(home):
-        if "SKILL.md" in files:
-            installed.append(os.path.join(root, "SKILL.md"))
+    def written():
+        found = []
+        for root, dirs, files in os.walk(home):
+            dirs[:] = [d for d in dirs if d != ".npm"]
+            if "SKILL.md" in files:
+                found.append(os.path.join(root, "SKILL.md"))
+        return found
+
+    installed = written()
+    needs_a_terminal = False
+    if not installed and "Which agents do you want to install to" in out:
+        needs_a_terminal = True
+        print("NOTE the advertised command stopped at an interactive agent "
+              "picker and installed\n     nothing (exit code 0). That is what a "
+              "stranger with no agent installed\n     gets. Retrying with the "
+              "agents named explicitly.\n")
+        try:
+            p = subprocess.run(cmd_headless, env=env, cwd=home,
+                               capture_output=True, text=True, timeout=420)
+            out = (p.stdout or "") + (p.stderr or "")
+            installed = written()
+        except subprocess.TimeoutExpired:
+            print("TIMEOUT the explicit form did not finish either")
+            return 2
 
     if not installed:
         print("FAILED the advertised install command produced no SKILL.md.")
@@ -160,6 +195,9 @@ def main():
               % (f[len(home):].lstrip("/"), len(got), has[0], has[1],
                  "  (identical to published)" if got.strip() == want.strip() else ""))
     shutil.rmtree(home, ignore_errors=True)
+    if needs_a_terminal:
+        print("\n   the skill installs, but only when the agents are named:")
+        print("     npx skills add %s --skill %s --agent '*' -y" % (REPO, NAME))
     if not intact:
         print("\nFAILED no installed copy carries both name and description -- "
               "an agent\nresolving this skill has nothing to match on.")

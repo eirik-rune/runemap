@@ -62,6 +62,12 @@ a URL:
 
     npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar
 
+On a machine with no agent installed -- CI, a container, an agent's own
+automation -- that command opens an interactive picker and, with no terminal
+attached, exits 0 having installed nothing. Name the agents and it never asks:
+
+    npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar --agent '*' -y
+
 That installs [`skills/echorune-radar/SKILL.md`](skills/echorune-radar/SKILL.md),
 which is also served live at `curl echorune.net/skill.md` -- one file, not a
 copy of one. It teaches an agent the request forms and, more importantly, how to

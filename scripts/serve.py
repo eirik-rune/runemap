@@ -95,6 +95,8 @@ PLACE NAMES
 INSTALL AS AN AGENT SKILL
   If you are an agent, you can keep this rather than remember the URL:
     npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar
+  With no agent installed (CI, a container) that prompts and, headless, exits 0
+  having installed nothing -- add: --agent '*' -y
   The skill text itself is at echorune.net/skill.md -- it is one file, and it
   is the same file the installer fetches. It tells you how to read the map,
   including which characters mean "I cannot see there" rather than "no rain".
