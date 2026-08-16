@@ -33,6 +33,12 @@ try:
 except Exception:
     GI = None
 
+#: One line per MCP request. Lives beside the cache so the pool members share
+#: it, same as the coherence log.
+_MCP_LOG = os.environ.get(
+    "RUNEMAP_MCP_LOG",
+    os.path.join(os.environ.get("RUNEMAP_CACHE", "/tmp"), "mcp_calls.jsonl"))
+
 TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
 
@@ -365,6 +371,34 @@ class H(BaseHTTPRequestHandler):
         with _ur.urlopen(url, timeout=SCENE_BUDGET + 5) as r:
             return r.read().decode("utf-8", "replace")
 
+    def _mcp_note(self, method, tool=None):
+        """Record which JSON-RPC method was asked for, so that being listed and
+        being used stay two different numbers.
+
+        Within an hour of the registry entry going live, five distinct outside
+        clients hit this endpoint. Every one of them sent `initialize` and then
+        `tools/list` and stopped -- directory crawlers and health probes, not
+        callers. In the access log those are indistinguishable from a real
+        client warming up, and counting them as demand is exactly the mistake
+        this repository keeps making: a number that flatters us and measures
+        nothing.
+
+        The method could be inferred from response size (161 vs 660 vs ~1900
+        bytes), and that is precisely the proxy-ruler habit to avoid -- it
+        measures a thing correlated with the answer instead of the answer, and
+        it would go quietly wrong the day a description changes length.
+
+        Never raises: instrumentation must not be able to break serving.
+        """
+        try:
+            with open(_MCP_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"at": int(time.time()), "method": method,
+                                    "tool": tool,
+                                    "ua": (self.headers.get("User-Agent") or "")[:120],
+                                    "ip": self.client_address[0]}) + "\n")
+        except Exception:
+            pass
+
     def do_POST(self):
         if urlparse(self.path).path.rstrip("/") != "/mcp":
             return self._send(404, "no such path: %s\n" % self.path)
@@ -377,6 +411,8 @@ class H(BaseHTTPRequestHandler):
                 ctype="application/json")
 
         rid, method = req.get("id"), req.get("method")
+        self._mcp_note(method, ((req.get("params") or {}).get("name")
+                                if method == "tools/call" else None))
         def ok(result):
             return self._send(200, json.dumps({"jsonrpc": "2.0", "id": rid,
                                                "result": result}),
