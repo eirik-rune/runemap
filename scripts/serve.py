@@ -354,6 +354,30 @@ class H(BaseHTTPRequestHandler):
                     # Say which file and why. A bare 500 here would look like
                     # the service being down rather than one missing file.
                     return self._send(503, "skill.md unavailable: %s\n" % e)
+        # /llms.txt and /robots.txt: how a machine finds out what is here.
+        # Both are *pointers*, never a second copy of the skill -- a duplicated
+        # description drifts from the real one and both read as reasonable.
+        # robots.txt was a 404 until 2026-08-16, which is not neutral: some
+        # agent frameworks read it before anything else and a 404 is one more
+        # thing they have to guess about.
+        if u.path == "/llms.txt":
+                return self._send(200,
+                    "# echorune\n\n"
+                    "> Weather and a radar map drawn as text characters for any place on\n"
+                    "> earth, in one HTTP request. Built for agents: no image to look at.\n\n"
+                    "## Docs\n\n"
+                    "- [Agent Skill](https://echorune.net/skill.md): the whole interface, one file\n"
+                    "- [Usage and options](https://echorune.net/help): every parameter, with examples\n"
+                    "- [Source](https://github.com/eirik-rune/runemap): including the checks that keep the above honest\n\n"
+                    "## Notes\n\n"
+                    "- Free, no key, no signup. Plain text by default.\n"
+                    "- `?` on the map means outside radar coverage, which is not the same as clear.\n")
+        if u.path == "/robots.txt":
+                return self._send(200,
+                    "User-agent: *\n"
+                    "Allow: /\n"
+                    "# Machine-readable summary of this site:\n"
+                    "# https://echorune.net/llms.txt\n")
         if u.path == "/" and not q:
                 ll = GI.locate(self._client_ip()) if GI else None
                 if not ll:
