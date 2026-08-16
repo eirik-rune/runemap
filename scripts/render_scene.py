@@ -1567,19 +1567,22 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
             L.append(art)
             if mo_line:
                 L.append(mo_line)
-            L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨")
+            _q = "  ? 観測範囲外（晴天ではない）" if "?" in art else ""
+            L.append("凡例: · 霧雨  ░ 小雨  ▒ 中雨  ▓ 大雨  █ 豪雨  空白=降水なし" + _q)
         elif lang == "en":
             L.append("~%.0fkm/char, [%s]=%s" % (kmcol, code, name) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
-            L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm")
+            _q = "  ? outside radar coverage (not clear)" if "?" in art else ""
+            L.append("legend: \u00b7 drizzle  \u2591 light  \u2592 moderate  \u2593 heavy  \u2588 storm  blank=no echo" + _q)
         else:
             L.append("每字符≈%.0fkm, [%s]=%s" % (kmcol, code, zh) + mo_sfx)
             L.append(art)
             if mo_line:
                 L.append(mo_line)
-            L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8")
+            _q = "  ? 雷达看不到（不等于晴）" if "?" in art else ""
+            L.append("\u56fe\u4f8b: \u00b7 \u6bdb\u6bdb\u96e8  \u2591 \u5c0f\u96e8  \u2592 \u4e2d\u96e8  \u2593 \u5927\u96e8  \u2588 \u66b4\u96e8  \u7a7a\u767d=\u65e0\u56de\u6ce2" + _q)
     else:
         # bob 7/30 19:26: a transient tile stall must degrade, not 502. And bob
         # 8/3 14:35: "no radar means you did not get the radar. Nobody is going
