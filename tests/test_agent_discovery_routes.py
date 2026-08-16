@@ -56,10 +56,11 @@ class AgentFacingFilesExist(unittest.TestCase):
                         "llms.txt is growing into a second skill document")
         self.assertNotIn("curl ", body)
 
-    def test_llms_txt_carries_the_one_distinction_that_changes_answers(self):
-        """'?' is not clear sky. Anything that summarises this service and
-        drops that line is summarising it wrongly."""
-        self.assertRegex(_route("/llms.txt"), r"(?i)outside radar coverage")
+    # The '?'-is-not-clear guarantee is not asserted here any more. It moved
+    # into the product's own legend on 2026-08-16, and the assertion moved with
+    # it -- see tests/test_skill_format.py, which checks render_scene.py and
+    # goes red if the wording is weakened. Repeating it here would be a second
+    # copy of a promise, which is how the two quietly stop agreeing.
 
     def test_robots_allows_crawling_and_names_the_summary(self):
         body = _route("/robots.txt")

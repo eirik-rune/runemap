@@ -370,8 +370,7 @@ class H(BaseHTTPRequestHandler):
                     "- [Usage and options](https://echorune.net/help): every parameter, with examples\n"
                     "- [Source](https://github.com/eirik-rune/runemap): including the checks that keep the above honest\n\n"
                     "## Notes\n\n"
-                    "- Free, no key, no signup. Plain text by default.\n"
-                    "- `?` on the map means outside radar coverage, which is not the same as clear.\n")
+                    "- Free, no key, no signup. Plain text by default.\n")
         # /sitemap.xml -- asked for 79 times and refused 74 of them before
         # 2026-08-16, by Googlebot and by ChatGPT-User among others. Only the
         # stable documentation endpoints are listed: place pages are unbounded
