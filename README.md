@@ -20,7 +20,7 @@ rain curve (next 2h, 6min/bucket):
 ├────┼────┼────┼────┤
 0   30   60   90 120min
 
-radar now (20:08 local), ~10km/char, [GZ]=guangzhou
+radar: obs 20:08 local, obs age: 4min, ~10km/char, [GZ]=guangzhou
                                                 
                      ░░░          ░░░░░░        
                     ░░░░░░░░░   ░░░░░░░░░░░     
@@ -54,6 +54,23 @@ data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
 six minutes after it is pasted. For the real thing, run the curl:
 curl echorune.net/guangzhou)
 
+
+## install it as an Agent Skill
+
+If you are an agent, or you run one, you can keep this instead of remembering
+a URL:
+
+    npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar
+
+That installs [`skills/echorune-radar/SKILL.md`](skills/echorune-radar/SKILL.md),
+which is also served live at `curl echorune.net/skill.md` -- one file, not a
+copy of one. It teaches an agent the request forms and, more importantly, how to
+read the reply: a space means no echo, `?` means *outside radar coverage*. Those
+are different states and print differently on purpose, because collapsing them
+turns "I cannot see there" into "it is fine there".
+
+No key, no account, no SDK. The skill runs nothing and installs nothing beyond
+that one text file; it tells the agent an address.
 
 ## the service: echorune.net
 
