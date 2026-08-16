@@ -55,6 +55,16 @@ REGISTRY_NAME = "io.github.luoshu-echorune/echorune-radar"
 DIRECT = [
     ("glama-connector", "https://glama.ai/mcp/connectors/" + REGISTRY_NAME,
      "https://glama.ai/mcp/connectors/io.github.zzqqx-nothing/zzqqx-nothing"),
+    # 2026-08-16. Added the day mcpservers.org approved us -- and the point is
+    # that this watcher did NOT catch it. An email did.
+    #
+    # The list above grew out of the directories I had submitted to and been
+    # *refused* or *unable to read*. mcpservers.org was submitted and pending,
+    # i.e. **the single entry most likely to change was the one not being
+    # watched**. A watcher assembled from where I got stuck covers everything
+    # except the thing it exists for.
+    ("mcpservers.org", "https://mcpservers.org/servers/eirik-rune/runemap",
+     "https://mcpservers.org/servers/eirik-rune/runemap-control-does-not-exist"),
 ]
 
 SITES = [
@@ -130,14 +140,6 @@ def main():
         if not a.quiet or was.get(name) != verdict:
             print("%-12s %-12s %s" % (name, verdict, detail))
 
-    try:
-        tmp = STATE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(now, f)
-        os.replace(tmp, STATE)
-    except OSError as e:
-        sys.stderr.write("LISTED-STATE-UNWRITABLE %s: %s\n" % (STATE, e))
-
     # Direct-URL probes, each with its own control that cannot exist. A page
     # that 404s identically for us and for the control is ABSENT; a page that
     # exists for us and not the control is LISTED. No counting of echoes.
@@ -161,6 +163,26 @@ def main():
             changed.append((name, was.get(name), verdict))
         if not a.quiet or was.get(name) != verdict:
             print("%-16s %-12s %s" % (name, verdict, detail))
+
+    # Persist AFTER every probe has had its say. This used to sit above the
+    # DIRECT loop, which meant the file the bell reads was frozen halfway
+    # through: DIRECT verdicts were printed to stdout and never stored.
+    #
+    # It cost nothing until it cost everything. mcpservers.org approved us --
+    # the first directory listing in this whole push -- and the watcher stayed
+    # silent, because the only channel it consults had never heard of that
+    # probe. **The report said LISTED and the bell could not see it.**
+    #
+    # Same family as a check that cannot fail, one step further along: this one
+    # could fail, did fail, said so out loud, and the alarm was wired to a
+    # different data source than the report.
+    try:
+        tmp = STATE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(now, f)
+        os.replace(tmp, STATE)
+    except OSError as e:
+        sys.stderr.write("LISTED-STATE-UNWRITABLE %s: %s\n" % (STATE, e))
 
     listed = [n for n, v in now.items() if v == "LISTED"]
     if not a.quiet:
