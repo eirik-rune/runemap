@@ -11,6 +11,22 @@ curl echorune.net/help           # every option, including map width
 curl echorune.net/status         # availability, sampled every minute
 ```
 
+Example — `curl echorune.net/zurich` (map trimmed to 4 of 24 rows):
+
+```
+# Zürich, Bezirk Zürich, Zurich, CH weather scene
+# updated 2026-08-16 09:07 UTC+2  (lon 8.55, lat 47.36667)
+now: PARTLY_CLOUDY_DAY  22C  humidity 79%  wind 4km/h  precip 0.00mm/h
+
+radar: obs            obs age: 0min ok
+~6km/char, [><]=Zürich, Bezirk Zürich, Zurich, CH
+                              ░▒▒▒█▓▓▒▓▓████░   
+                             ·░▒▒▒█▓▓█████▒     
+                   ····      ·  ▒ ·▓█████·      
+         ▒▒     ·······     ·▒▒░▓▓██▓▓▓█▓       
+legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm  blank=no echo
+```
+
 Plain text, no key, nothing to install. Needs outbound HTTPS; where there is no
 network, say so instead of guessing at the weather.
 
