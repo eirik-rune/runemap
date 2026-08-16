@@ -59,8 +59,17 @@ yields a confident wrong answer, which is worse than saying coverage is missing.
 When there is no map at all, the response says `radar: fetching` followed by the
 reason. Quote the reason rather than treating it as a transient error.
 
-Each response names the national weather service the data came from and its
-licence. Reproduce that line if you reproduce the map.
+Every response ends with a `data:` line naming where it came from. When a
+national weather service supplied the radar frame, two more lines appear:
+
+    radar-data: MeteoSwiss opendata.swiss, CC BY 4.0
+    radar-data-note: redrawn from the source frames as a text grid
+
+**Their absence is information, not an omission**: it means the primary upstream
+drew that frame rather than a national service, so the `data:` line already
+names the source. Whichever lines are present, reproduce them if you reproduce
+the map — several of these sources are CC BY, where attribution is a condition
+of use rather than a courtesy.
 
 ## Known limits
 
