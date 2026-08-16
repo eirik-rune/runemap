@@ -2,7 +2,7 @@
 """runemap HTTP service: GET /scene?lat=..&lon=..&lang=en|zh[&label=..&tz=..]
 Any coordinate on earth, rendered on demand. Radar PNGs cached (see scene_at).
 Bind 127.0.0.1 by default -- no public exposure."""
-import os, sys, time, traceback
+import json, os, sys, time, traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -318,6 +318,102 @@ class H(BaseHTTPRequestHandler):
         return ((self.headers.get("X-Real-IP") or "").strip()
                 or (xff.split(",")[0].strip() if xff else "")
                 or self.client_address[0])
+
+    # ---- MCP (Model Context Protocol), streamable HTTP ----------------
+    # Added 2026-08-16. The official registry lists mostly *remote* servers:
+    # a URL, nothing for the caller to install. That is the shape this service
+    # already has, so exposing it costs one endpoint rather than a new product.
+    #
+    # The tool does NOT re-render anything. It fetches the same path a browser
+    # or curl would, from this same process, so there is exactly one renderer
+    # and one router. A second implementation of "how do I turn a place into a
+    # scene" would agree today and drift by Thursday -- the failure this
+    # repository has hit more than any other.
+    _MCP_TOOL = {
+        "name": "get_weather",
+        "description": ("Live weather for any place on earth, including the radar "
+                        "echo drawn as text characters rather than an image: "
+                        "current conditions, a short forecast, a 2-hour rain "
+                        "sparkline, and a character radar map with the measured "
+                        "motion of the echo."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "place": {"type": "string",
+                          "description": "Place name (any language) or 'lon,lat' "
+                                         "with longitude first, e.g. tokyo, 清迈, "
+                                         "or 139.7,35.7"},
+                "lang": {"type": "string", "enum": ["en", "zh", "ja"],
+                         "description": "Language of the reply. Default en."},
+            },
+            "required": ["place"],
+        },
+    }
+
+    def _mcp_scene(self, place, lang):
+        """Ask ourselves, over the wire, for exactly what a reader would get."""
+        import urllib.parse as _up
+        import urllib.request as _ur
+        path = "/" + _up.quote(place.strip("/"), safe=",")
+        if lang and lang != "en":
+            path += "/" + lang
+        url = "http://127.0.0.1:%d%s" % (self.server.server_address[1], path)
+        with _ur.urlopen(url, timeout=SCENE_BUDGET + 5) as r:
+            return r.read().decode("utf-8", "replace")
+
+    def do_POST(self):
+        if urlparse(self.path).path.rstrip("/") != "/mcp":
+            return self._send(404, "no such path: %s\n" % self.path)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, OSError) as e:
+            return self._send(400, json.dumps({"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32700, "message": "parse error: %s" % e}}),
+                ctype="application/json")
+
+        rid, method = req.get("id"), req.get("method")
+        def ok(result):
+            return self._send(200, json.dumps({"jsonrpc": "2.0", "id": rid,
+                                               "result": result}),
+                              ctype="application/json")
+
+        if method == "initialize":
+            return ok({"protocolVersion": "2025-06-18",
+                       "capabilities": {"tools": {}},
+                       "serverInfo": {"name": "echorune-radar", "version": "1"}})
+        if method in ("notifications/initialized", "notifications/cancelled"):
+            # A notification has no id and must get no result body.
+            return self._send(202, "")
+        if method == "tools/list":
+            return ok({"tools": [self._MCP_TOOL]})
+        if method == "tools/call":
+            params = req.get("params") or {}
+            # The tool name was not checked in the first version, so a client
+            # asking for any name at all got weather back. Found by firing the
+            # checker: renaming the advertised tool left every branch green,
+            # which meant the branch was never testing what it claimed.
+            if params.get("name") != self._MCP_TOOL["name"]:
+                return ok({"isError": True, "content": [{"type": "text",
+                           "text": "no such tool: %r; this server offers %r"
+                                   % (params.get("name"), self._MCP_TOOL["name"])}]})
+            a = params.get("arguments") or {}
+            place = (a.get("place") or "").strip()
+            if not place:
+                # A tool error is reported inside the result, not as a
+                # transport error: the caller asked correctly, the arguments
+                # were wrong, and those are different failures.
+                return ok({"isError": True, "content": [{"type": "text",
+                           "text": "place is required, e.g. tokyo or 139.7,35.7"}]})
+            try:
+                text = self._mcp_scene(place, (a.get("lang") or "en").lower())
+            except Exception as e:
+                return ok({"isError": True, "content": [{"type": "text",
+                           "text": "could not render %r: %s" % (place, e)}]})
+            return ok({"content": [{"type": "text", "text": text}]})
+        return self._send(200, json.dumps({"jsonrpc": "2.0", "id": rid,
+            "error": {"code": -32601, "message": "method not found: %s" % method}}),
+            ctype="application/json")
 
     def do_GET(self):
         u = urlparse(self.path)
