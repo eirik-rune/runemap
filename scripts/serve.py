@@ -390,12 +390,26 @@ class H(BaseHTTPRequestHandler):
 
         Never raises: instrumentation must not be able to break serving.
         """
+        # self.client_address is nginx, always 127.0.0.1, because every request
+        # arrives through the proxy. The first version logged that, which made
+        # the report structurally incapable of ever seeing an outside caller: it
+        # would have printed "0 outside clients" forever, and I would have read
+        # that as nobody using it. Caught by calling the live endpoint from Tokyo
+        # -- outside our network by construction -- and watching it land as
+        # 127.0.0.1. A checker that cannot produce the interesting answer is not
+        # a checker.
+        #
+        # X-Forwarded-For is set by our own nginx (X-Real-IP too); the leftmost
+        # entry is the caller. It is client-controllable in general, so this is
+        # evidence about who called, not proof.
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
         try:
             with open(_MCP_LOG, "a", encoding="utf-8") as f:
                 f.write(json.dumps({"at": int(time.time()), "method": method,
                                     "tool": tool,
                                     "ua": (self.headers.get("User-Agent") or "")[:120],
-                                    "ip": self.client_address[0]}) + "\n")
+                                    "ip": fwd or self.client_address[0],
+                                    "via_proxy": bool(fwd)}) + "\n")
         except Exception:
             pass
 
