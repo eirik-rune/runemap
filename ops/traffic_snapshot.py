@@ -52,10 +52,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # to prevent, one level up.
 from who_is_using import (AGENTISH_UA, LOG_RE, classify,  # noqa: E402
                           read_lines)
+from source_health import adopt_unit_env  # noqa: E402
 
-SERIES = os.environ.get(
-    "RUNEMAP_TRAFFIC_SERIES",
-    os.path.join(os.environ.get("RUNEMAP_CACHE", "/tmp"), "traffic_daily.jsonl"))
+def series_path():
+    """Where the series lives -- resolved AFTER adopting the service's settings.
+
+    This was a module-level constant and it was wrong in the way that does not
+    announce itself. cron runs this with no environment, so RUNEMAP_CACHE fell
+    back to /tmp while the real series sat in /var/cache/runemap. I "verified"
+    the deployed copy by running it and reading rc=0 as "already recorded" --
+    and it was, in the /tmp file, which an earlier accidental run had populated
+    with five rows. **A correct exit code, from the wrong file.**
+
+    Same family as the probe that tested a configuration nobody runs: taking
+    the unit's own environment is the fix that already exists here, so it is
+    reused rather than reinvented. Two files both called "the series" would
+    each look reasonable alone, and then drift.
+    """
+    return os.environ.get(
+        "RUNEMAP_TRAFFIC_SERIES",
+        os.path.join(os.environ.get("RUNEMAP_CACHE", "/tmp"),
+                     "traffic_daily.jsonl"))
 
 MONTHS = {m: i + 1 for i, m in enumerate(
     "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
@@ -73,7 +90,7 @@ def day_of(stamp):
 def load():
     rows = {}
     try:
-        with open(SERIES, encoding="utf-8") as f:
+        with open(series_path(), encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     r = json.loads(line)
@@ -91,12 +108,25 @@ def main():
     ap.add_argument("--series", action="store_true")
     a = ap.parse_args()
 
+    # Take the running service's settings before resolving any path. Without
+    # this, cron (which has no environment) writes a second series into /tmp
+    # and both files look reasonable on their own.
+    took = adopt_unit_env()
+    if took is None:
+        print("NO-CONFIG could not read the unit's environment, so I cannot "
+              "tell where the real series lives. Refusing rather than starting "
+              "a second one somewhere else.")
+        return 2
+    if took:
+        print("-- adopted from the unit: %s" % " ".join(sorted(took)))
+    print("-- series: %s" % series_path())
+
     have = load()
 
     if a.series:
         if not have:
             print("NO-SERIES nothing recorded yet at %s -- that is 'I have not "
-                  "started counting', not 'no traffic'" % SERIES)
+                  "started counting', not 'no traffic'" % series_path())
             return 2
         print("%-12s %10s %10s %12s" % ("day", "served", "program", "outside-ips"))
         prev = None
@@ -168,10 +198,10 @@ def main():
            "recorded_at": datetime.datetime.now(datetime.timezone.utc)
                                    .strftime("%Y-%m-%dT%H:%M:%SZ")}
     try:
-        with open(SERIES, "a", encoding="utf-8") as f:
+        with open(series_path(), "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
     except OSError as e:
-        print("SERIES-UNWRITABLE %s: %s" % (SERIES, e))
+        print("SERIES-UNWRITABLE %s: %s" % (series_path(), e))
         return 2
     print("%s served=%d program-like=%d outside-ips=%d"
           % (day, row["served"], row["program_like"], row["outside_ips"]))
