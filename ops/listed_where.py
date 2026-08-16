@@ -41,8 +41,24 @@ NEEDLE = "echorune"
 #: site echoing the query back, and that is the floor a real hit must clear.
 CONTROL = "zzqqxnothingzz"
 
+#: The official MCP registry name, which is how the directories that ingest the
+#: registry address us. Not typed twice: it is the namespace we published.
+REGISTRY_NAME = "io.github.luoshu-echorune/echorune-radar"
+
+#: A direct URL beats a search page whenever one exists. Glama's search echoes
+#: the query back into the page (input value, results heading, embedded JSON),
+#: so counting hits there can only ever return NO-SIGNAL -- the ruler cannot
+#: tell absent from listed. The connector URL can: ours 404s and so does a
+#: namespace that cannot exist, with byte-identical bodies, which is a real
+#: ABSENT rather than a shrug. Directory pages are addressed by registry name
+#: because that is what the ingesting directories key on.
+DIRECT = [
+    ("glama-connector", "https://glama.ai/mcp/connectors/" + REGISTRY_NAME,
+     "https://glama.ai/mcp/connectors/io.github.zzqqx-nothing/zzqqx-nothing"),
+]
+
 SITES = [
-    ("glama", "https://glama.ai/mcp/servers?query=%s"),
+    ("glama-search", "https://glama.ai/mcp/servers?query=%s"),
     ("mcp.so", "https://mcp.so/search?q=%s"),
     ("smithery", "https://smithery.ai/?q=%s"),
     ("skills.sh", "https://skills.sh/api/search?q=%s"),
@@ -122,11 +138,35 @@ def main():
     except OSError as e:
         sys.stderr.write("LISTED-STATE-UNWRITABLE %s: %s\n" % (STATE, e))
 
+    # Direct-URL probes, each with its own control that cannot exist. A page
+    # that 404s identically for us and for the control is ABSENT; a page that
+    # exists for us and not the control is LISTED. No counting of echoes.
+    for name, mine_url, ctrl_url in DIRECT:
+        mine, why = fetch(mine_url)
+        ctrl, why2 = fetch(ctrl_url)
+        if mine is None and ctrl is None:
+            verdict, detail = "ABSENT", "both 404 (%s) -- control agrees" % why
+        elif mine is not None and ctrl is None:
+            verdict, detail = "LISTED", "our page exists, control 404s"
+        elif mine is None and ctrl is not None:
+            # The control resolving while we do not is the ruler misbehaving,
+            # not evidence about us.
+            verdict, detail = "NO-SIGNAL", "control resolved but we did not -- suspect the probe"
+            unreachable += 1
+        else:
+            verdict, detail = "NO-SIGNAL", "both resolved; this URL does not discriminate"
+            unreachable += 1
+        now[name] = verdict
+        if was.get(name) != verdict:
+            changed.append((name, was.get(name), verdict))
+        if not a.quiet or was.get(name) != verdict:
+            print("%-16s %-12s %s" % (name, verdict, detail))
+
     listed = [n for n, v in now.items() if v == "LISTED"]
     if not a.quiet:
         print("\n%d of %d directories list us%s. Being ingested is not being "
               "used -- ops/mcp_who_called.py answers that one."
-              % (len(listed), len(SITES),
+              % (len(listed), len(SITES)+len(DIRECT),
                  " (%s)" % ", ".join(listed) if listed else ""))
     for name, before, after in changed:
         if after == "LISTED" and before not in (None, "LISTED"):
