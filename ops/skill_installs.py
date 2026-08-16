@@ -28,6 +28,15 @@ only check that cannot be fooled by this class of bug is the real installer, run
 the way a stranger runs it, so that is what this does: a throwaway HOME, the
 published URL, no local files.
 
+A second lesson, learned by this file breaking the thing it checks: the
+installer writes into the **current working directory**, not into $HOME. The
+first version set HOME to a temp dir and left cwd in the repository, so it
+installed the skill on top of our own source tree -- replacing the tracked
+SKILL.md, adding .agents/, agent/, .claude/ and skills-lock.json -- and then
+reported FAILED, because it went looking for the files under $HOME where
+nothing had been written. A check that damages the subject and misreports the
+result is worse than no check. It now runs entirely inside the temp directory.
+
 Exit 0 installed, 1 the advertised command failed, 2 could not be determined
 (no npx, no network).
 """
@@ -56,9 +65,14 @@ def main():
     home = tempfile.mkdtemp(prefix="skillcheck-")
     env = dict(os.environ, HOME=home)
     cmd = ["npx", "-y", "skills", "add", REPO, "--skill", NAME]
-    print("as a stranger would run it, in a throwaway HOME:\n  %s\n" % " ".join(cmd))
+    print("as a stranger would run it, in a throwaway directory:\n  %s\n"
+          % " ".join(cmd))
     try:
-        p = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=420)
+        # cwd matters more than HOME here: this installer writes into the
+        # working directory. Getting that wrong once was enough -- it installed
+        # over the repository's own SKILL.md.
+        p = subprocess.run(cmd, env=env, cwd=home, capture_output=True,
+                           text=True, timeout=420)
     except subprocess.TimeoutExpired:
         print("TIMEOUT the installer did not finish in 7 minutes")
         return 2
@@ -88,18 +102,28 @@ def main():
 
     # Installed is not the same as intact: an installer that writes an empty or
     # rewritten file would still satisfy the check above.
+    #
+    # It writes TWO copies, and they are not identical: the canonical one under
+    # .agents/ keeps the full frontmatter, while the agent/ copy drops `name`
+    # because its directory already carries it. Judging on whichever copy the
+    # walk happened to reach first reported "name: present: False" about a
+    # perfectly good install -- so every copy is printed, and the requirement is
+    # that at least one carries both fields.
     want = open(LOCAL, encoding="utf-8").read()
-    got = open(installed[0], encoding="utf-8").read()
-    same = got.strip() == want.strip()
-    print("OK installed %d file(s); byte-identical to what we publish: %s"
-          % (len(installed), same))
-    if not same:
-        print("   (installed %d bytes, published %d -- the installer normalises "
-              "some copies;\n    what matters is that name and description "
-              "survive)" % (len(got), len(want)))
-        for field in ("name:", "description:"):
-            print("   %-13s present in installed copy: %s" % (field, field in got))
+    intact = False
+    print("OK the advertised command installed %d copy/copies:" % len(installed))
+    for f in sorted(installed):
+        got = open(f, encoding="utf-8").read()
+        has = ("name:" in got, "description:" in got)
+        intact = intact or all(has)
+        print("   %-52s %5dB  name=%-5s description=%-5s%s"
+              % (f[len(home):].lstrip("/"), len(got), has[0], has[1],
+                 "  (identical to published)" if got.strip() == want.strip() else ""))
     shutil.rmtree(home, ignore_errors=True)
+    if not intact:
+        print("\nFAILED no installed copy carries both name and description -- "
+              "an agent\nresolving this skill has nothing to match on.")
+        return 1
     return 0
 
 
