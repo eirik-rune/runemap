@@ -33,6 +33,10 @@ try:
 except Exception:
     GI = None
 
+#: MCP protocol versions this endpoint has actually been exercised against,
+#: newest first. Not "every version that exists" -- see the note in initialize.
+_MCP_VERSIONS = ("2026-07-28", "2025-06-18")
+
 #: One line per MCP request. Lives beside the cache so the pool members share
 #: it, same as the coherence log.
 _MCP_LOG = os.environ.get(
@@ -341,6 +345,13 @@ class H(BaseHTTPRequestHandler):
     # repository has hit more than any other.
     _MCP_TOOL = {
         "name": "get_weather",
+        "title": "Weather scene with a text radar map",
+        # Hints, not guarantees, and that is what the spec calls them. They are
+        # here because a caller that cannot tell a read from a write has to treat
+        # every tool as dangerous: this one reads public weather, changes nothing,
+        # can be retried freely, and reaches an outside network.
+        "annotations": {"readOnlyHint": True, "destructiveHint": False,
+                        "idempotentHint": True, "openWorldHint": True},
         "description": ("Live weather for any place on earth, including the radar "
                         "echo drawn as text characters rather than an image: "
                         "current conditions, a short forecast, a 2-hour rain "
@@ -433,7 +444,22 @@ class H(BaseHTTPRequestHandler):
                               ctype="application/json")
 
         if method == "initialize":
-            return ok({"protocolVersion": "2025-06-18",
+            # Answer in the version the client asked for, when it is one we have
+            # actually been tested against. The first version replied "2025-06-18"
+            # to everyone regardless of the request -- a year behind what the
+            # current SDK speaks (2026-07-28), and it ignored the client's half
+            # of a negotiation that exists precisely so both sides can say what
+            # they support.
+            #
+            # The allowlist is versions this endpoint has been exercised on, not
+            # every version that exists: claiming to speak a spec I have not run
+            # against is the same shape as a health check that always returns 200.
+            # Our surface -- initialize, tools/list, tools/call -- is the part
+            # that has not changed across these, which is why the claim is safe
+            # to make for them and not for anything else.
+            want = (req.get("params") or {}).get("protocolVersion")
+            spoken = want if want in _MCP_VERSIONS else _MCP_VERSIONS[0]
+            return ok({"protocolVersion": spoken,
                        "capabilities": {"tools": {}},
                        "serverInfo": {"name": "echorune-radar", "version": "1"}})
         if method in ("notifications/initialized", "notifications/cancelled"):
