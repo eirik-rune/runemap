@@ -53,3 +53,30 @@ jobs:
         run: pip install .
       - name: Run the suite
         run: python -m unittest discover -s tests -v
+
+  advertised-install:
+    # The command in the README, in /help, on the INFERO hub and in every
+    # listing filed with a stranger:
+    #   npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar
+    #
+    # On 2026-08-16 it answered "No valid skills found" for several hours while
+    # every check here was green. One colon in an unquoted YAML description. The
+    # unit tests parse that frontmatter with a regex, which does not care about
+    # quoting; the ops check exercises the curl commands, which were fine.
+    # Neither installs the skill.
+    #
+    # This runs the real installer against PUBLISHED main -- which is why it
+    # cannot usefully run on a pull request: a PR that fixes SKILL.md would
+    # still be installing the unfixed published copy. It runs after the merge
+    # that changes the skill, and weekly, because published main can also break
+    # without anyone here touching it (the installer is somebody else's code).
+    needs: unit-tests
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the skill the way a stranger does
+        run: python ops/skill_installs.py
