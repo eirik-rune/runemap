@@ -20,5 +20,3 @@ radar: obs            obs age: 0min ok
          ▒▒     ·······     ·▒▒░▓▓██▓▓▓█▓
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm  blank=no echo
 ```
-
-Reproducing the map? Keep its `data:` lines — some sources are CC BY.
