@@ -89,6 +89,10 @@ INSTALL AS AN AGENT SKILL
   is the same file the installer fetches. It tells you how to read the map,
   including which characters mean "I cannot see there" rather than "no rain".
 
+MCP
+  A remote MCP server lives at https://echorune.net/mcp (streamable HTTP,
+  one tool: get_weather). Nothing to install -- point a client at the URL.
+
 PRIVACY
   IP to coordinate is resolved locally (DB-IP Lite, CC-BY): your address is
   never sent to a third party, and the access log keeps only the first three
@@ -464,7 +468,8 @@ class H(BaseHTTPRequestHandler):
                     "## Docs\n\n"
                     "- [Agent Skill](https://echorune.net/skill.md): the whole interface, one file\n"
                     "- [Usage and options](https://echorune.net/help): every parameter, with examples\n"
-                    "- [Source](https://github.com/eirik-rune/runemap): including the checks that keep the above honest\n\n"
+                    "- [Source](https://github.com/eirik-rune/runemap): including the checks that keep the above honest\n"
+                    "- [MCP server](https://echorune.net/mcp): streamable HTTP, one tool, nothing to install\n\n"
                     "## Notes\n\n"
                     "- Free, no key, no signup. Plain text by default.\n")
         # /sitemap.xml -- asked for 79 times and refused 74 of them before
