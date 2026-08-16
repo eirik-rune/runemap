@@ -71,3 +71,41 @@ class AgentFacingFilesExist(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class SitemapAdvertisesOnlyRealPages(unittest.TestCase):
+    """A sitemap is a promise to a crawler that these URLs exist.
+
+    Added 2026-08-16 after the access log showed /sitemap.xml asked for 79
+    times and refused 74 of them -- by Googlebot and by ChatGPT-User among
+    others. Advertising a URL that 404s is worse than having no sitemap: the
+    crawler spends its budget and learns the site is broken.
+    """
+
+    def _locs(self):
+        import re as _re
+        src = open(os.path.join(os.path.dirname(__file__), "..", "scripts",
+                                "serve.py"), encoding="utf-8").read()
+        m = _re.search(r'if u\.path == "/sitemap\.xml":\n(.*?)\n        if ',
+                       src, _re.S)
+        if not m:
+            raise AssertionError("no route serving /sitemap.xml")
+        pages = _re.search(r'pages = \(([^)]*)\)', m.group(1)).group(1)
+        return _re.findall(r'"([^"]*)"', pages)
+
+    # There is deliberately no source-level test that every advertised page
+    # exists. The first version asserted each path appears in serve.py, and it
+    # went red on /status -- correctly: **nginx serves /status, not serve.py**.
+    # The sitemap's promise spans two systems, so nothing readable from this
+    # repo can verify it. `ops/sitemap_is_honest.py` checks it the only way it
+    # can be checked, by fetching each URL from the running service.
+    #
+    # An earlier version of that assertion also passed for the wrong reason:
+    # it searched the whole file, so a bogus page added to `pages` satisfied
+    # the assertion with itself. Fired and caught; recorded here because the
+    # replacement must not reintroduce it.
+
+    def test_robots_names_the_sitemap_in_the_form_crawlers_parse(self):
+        """A comment is not a directive. `Sitemap:` is the line they read."""
+        self.assertIn("Sitemap: https://echorune.net/sitemap.xml",
+                      _route("/robots.txt"))

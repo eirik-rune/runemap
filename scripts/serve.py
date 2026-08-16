@@ -372,12 +372,26 @@ class H(BaseHTTPRequestHandler):
                     "## Notes\n\n"
                     "- Free, no key, no signup. Plain text by default.\n"
                     "- `?` on the map means outside radar coverage, which is not the same as clear.\n")
+        # /sitemap.xml -- asked for 79 times and refused 74 of them before
+        # 2026-08-16, by Googlebot and by ChatGPT-User among others. Only the
+        # stable documentation endpoints are listed: place pages are unbounded
+        # (any place on earth is a URL), and a hand-kept sample of them would
+        # be a second list that drifts from the service with nothing to notice.
+        if u.path == "/sitemap.xml":
+                pages = ("/", "/help", "/skill.md", "/llms.txt", "/status")
+                body = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+                        + "".join("  <url><loc>https://echorune.net%s</loc></url>\n"
+                                  % ("" if p == "/" else p) for p in pages)
+                        + "</urlset>\n")
+                return self._send(200, body, ctype="application/xml")
         if u.path == "/robots.txt":
                 return self._send(200,
                     "User-agent: *\n"
                     "Allow: /\n"
                     "# Machine-readable summary of this site:\n"
-                    "# https://echorune.net/llms.txt\n")
+                    "# https://echorune.net/llms.txt\n"
+                    "Sitemap: https://echorune.net/sitemap.xml\n")
         if u.path == "/" and not q:
                 ll = GI.locate(self._client_ip()) if GI else None
                 if not ll:
