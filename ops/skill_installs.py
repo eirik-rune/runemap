@@ -92,8 +92,26 @@ def main():
 
     if not installed:
         print("FAILED the advertised install command produced no SKILL.md.")
-        for line in out.strip().splitlines()[-6:]:
-            print("   ", line[:160])
+        # Enough context to diagnose a failure on a machine I cannot log into.
+        # The first CI run of this check failed in a way that does not reproduce
+        # locally, and the output it printed -- six lines of a progress spinner
+        # -- was not enough to say why. An instrument that only says "no" from
+        # inside someone else's environment sends me guessing.
+        print("   rc=%s  cwd=%s" % (p.returncode, home))
+        print("   HOME=%s  TMPDIR=%s" % (env.get("HOME"), env.get("TMPDIR", "(unset)")))
+        listing = []
+        for root, dirs, files in os.walk(home):
+            rel = root[len(home):].lstrip("/") or "."
+            listing.append("%s/  [%s]" % (rel, ", ".join(sorted(files)[:6])))
+            if len(listing) > 25:
+                listing.append("... (truncated)")
+                break
+        print("   what was written:")
+        for line in listing:
+            print("     ", line[:150])
+        print("   installer output, last 25 lines:")
+        for line in out.strip().splitlines()[-25:]:
+            print("     ", line[:160])
         print("\nThis is the command in the README, in /help, on the hub, and in "
               "every listing\nfiled with a stranger. Nobody who tries it gets a "
               "second attempt.")
