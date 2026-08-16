@@ -195,6 +195,17 @@ Two things learned tonight apply when that is done:
   and Finnish radars I cannot locate. Only "near a known radar ⇒ seen" survives
   an incomplete site list.
 
+  The numbers, since a margin claim is worthless without them. The statistic
+  that *fails* Norway: mean distance from a seen cell to its nearest known
+  radar — 318.6 km for the 180° rotation against 387.8 km read straight, i.e.
+  it ranks the wrong answer first. The statistic that *holds*, "near a known
+  radar ⇒ seen": **94.9% straight / 58.4% flipped vertically / 92.8% rotated
+  180°.** So the vertical flip is excluded by 36 points and the 180° rotation
+  is **not** excluded by 2.1 — Norway's honest status is "vertical flip ruled
+  out, 180° open", never "verified". Report the margin per orientation, not one
+  verdict for the check as a whole: an average over orientations would hide
+  exactly the one that is undecided.
+
 ## How to resolve radar sites, since two routes were tried and one lies
 
 Do **not** join WMO ids to NOAA's `isd-history.csv`: for Norway it returned 3 of
