@@ -37,6 +37,19 @@ reported FAILED, because it went looking for the files under $HOME where
 nothing had been written. A check that damages the subject and misreports the
 result is worse than no check. It now runs entirely inside the temp directory.
 
+**Every run of this costs a number we care about.** skills.sh publishes a
+public install count for each skill. On 2026-08-16 ours read 5, and all of it
+was this check -- CI on every push to main, plus local runs. I had already
+written down that I would not install our own skill repeatedly to move that
+counter, and then built an instrument that does it automatically, which is a
+worse way to arrive at the same place than doing it on purpose would have been:
+at least on purpose I would have known.
+
+So: CI now runs this only when the push touched the skill or the installer, or
+on the weekly schedule. Do not run it casually by hand, and never cite the
+install count as evidence that anyone wants this. The measurement that answers
+that question is ops/who_is_using.py, which counts requests we did not make.
+
 Exit 0 installed, 1 the advertised command failed, 2 could not be determined
 (no npx, no network).
 """

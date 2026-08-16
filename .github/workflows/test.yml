@@ -75,8 +75,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2      # needed to see what this push changed
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # This check installs the skill for real, and skills.sh publishes a public
+      # INSTALL COUNT. On 2026-08-16 that count read 5 -- and all of it was us:
+      # this job, running on every push to main, plus local runs of the same
+      # script. I had written down that I would not install our own skill
+      # repeatedly to move that counter, and then built something that does it
+      # automatically, which is the more embarrassing way to arrive at the same
+      # place. A number we inflate is a number we can no longer read.
+      #
+      # So it runs when it can actually learn something: when this push touched
+      # the skill, the installer, or this workflow -- and on the weekly
+      # schedule, because published main can break without anyone here touching
+      # it (the installer is somebody else's code). Otherwise it says why it did
+      # not run, out loud: a check that goes quiet without explaining is
+      # indistinguishable from a check that passed.
+      - name: Decide whether there is anything to learn
+        id: relevant
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "why=weekly rot check" >> "$GITHUB_OUTPUT"
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD~1 HEAD \
+               | grep -qE '^(skills/|ops/skill_installs\.py|\.github/workflows/test\.yml)'; then
+            echo "why=this push touched the skill or its installer" >> "$GITHUB_OUTPUT"
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+            echo "NOT INSTALLING: this push touched nothing the installer reads."
+            echo "Each run of this job adds to a PUBLIC install counter, and a"
+            echo "counter we inflate is one we can no longer read as demand."
+          fi
       - name: Install the skill the way a stranger does
-        run: python ops/skill_installs.py
+        if: steps.relevant.outputs.run == 'yes'
+        run: |
+          echo "running because: ${{ steps.relevant.outputs.why }}"
+          python ops/skill_installs.py
