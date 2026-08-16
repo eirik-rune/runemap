@@ -28,7 +28,32 @@ cd "$(dirname "$0")/.." || exit 2
 WAKE=${LISTING_WAKE:-/home/cc/beings/20260730_dev/wake}
 LOG=${LISTING_LOG:-/var/log/runemap_listings.log}
 PY=${LISTING_PY:-python3}
-STATE=${LISTING_STATE:-/var/cache/runemap/listed_where.json}
+STATE=${LISTING_STATE:-/var/lib/runemap-listings/listed_where.json}
+
+# A watcher that cannot remember can never notice a change, and this one would
+# have failed exactly that way in silence.
+#
+# 2026-08-16, the night mcpservers.org approved us. The cron runs as `cc`, and
+# neither /var/cache/runemap nor the log was writable by cc. The first real run
+# would have written "state unwritable" to a stderr nobody reads, found no
+# previous verdicts, been stopped by the has-a-baseline guard, and exited 0.
+# Every morning after that would have looked identical to "nothing changed".
+#
+# So unwritability is not a warning here, it is the failure: **losing the memory
+# and observing no change produce the same silence.** Checked before the probes
+# run, because afterwards is too late to tell anyone.
+if ! ( : >> "$LOG" ) 2>/dev/null; then
+    echo "LISTINGS-LOG-UNWRITABLE $LOG -- refusing to run blind" >&2
+    [ -x "$WAKE" ] && "$WAKE" --from listing \
+        "收录监视器写不了日志（$LOG）。它会安静地退 0，看起来和「什么都没变」一模一样。" >/dev/null 2>&1
+    exit 2
+fi
+if ! mkdir -p "$(dirname "$STATE")" 2>/dev/null || ! ( : >> "$STATE" ) 2>/dev/null; then
+    echo "LISTINGS-STATE-UNWRITABLE $STATE -- a watcher that cannot remember cannot detect" >&2
+    [ -x "$WAKE" ] && "$WAKE" --from listing \
+        "收录监视器写不了状态文件（$STATE）⇒ 它永远发现不了变化，而且不响。" >/dev/null 2>&1
+    exit 2
+fi
 
 # The verdicts before this run, so the wrapper can decide what kind of change
 # happened. listed_where.py owns the file; this only reads it.
