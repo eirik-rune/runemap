@@ -42,9 +42,14 @@ NOTE = ("No code, deliberately. This skill installs nothing and runs nothing: "
 #: canonical skill, not a copy of it that can rot. The pointer is the same file
 #: this script reads, served live.
 LIMIT = 4000
-POINTER = ("\n\n---\n\nThis is an excerpt. The full, always-current skill is at\n"
-           "https://echorune.net/skill.md -- the same file, served live, so it\n"
-           "cannot fall behind this listing.\n")
+#: Two endings, because claiming a cut that did not happen is the same lie as
+#: hiding one that did: a reader who is told this is an excerpt goes looking for
+#: the missing part. Which line is used depends on whether anything was removed.
+POINTER_FULL = ("\n\n---\n\nAlways-current copy, served live from the same file:\n"
+                "https://echorune.net/skill.md\n")
+POINTER_CUT = ("\n\n---\n\nThis is an excerpt. The full, always-current skill is at\n"
+               "https://echorune.net/skill.md -- the same file, served live, so it\n"
+               "cannot fall behind this listing.\n")
 
 
 def _fit(body):
@@ -54,15 +59,15 @@ def _fit(body):
     hit most often: the reader cannot see the missing part, so a fragment
     reads as a complete document.
     """
-    if len(body) + len(POINTER) <= LIMIT:
-        return body + POINTER
-    keep, budget = [], LIMIT - len(POINTER)
+    if len(body) + len(POINTER_FULL) <= LIMIT:
+        return body + POINTER_FULL
+    keep, budget = [], LIMIT - len(POINTER_CUT)
     for section in body.split("\n## "):
         chunk = section if not keep else "\n## " + section
         if sum(len(k) for k in keep) + len(chunk) > budget:
             break
         keep.append(chunk)
-    return "".join(keep).rstrip() + POINTER
+    return "".join(keep).rstrip() + POINTER_CUT
 
 
 def build():
