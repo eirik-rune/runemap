@@ -101,19 +101,27 @@ class SkillFileIsValid(unittest.TestCase):
         self.assertEqual(found, [], "time-sensitive facts belong at an "
                                     "endpoint, not in the Skill: %r" % found)
 
-    def test_it_still_teaches_the_distinction_that_changes_answers(self):
-        """The single most valuable line in the file: '?' is not 'clear'.
-        If a rewrite drops this, the Skill still validates and still installs,
-        and agents start reporting blind cells as good weather."""
-        self.assertIn("?", self.body)
-        self.assertIn("outside radar coverage", self.body)
-        # Compare against what a reader sees, not the source. The first version
-        # of this matched raw markdown and failed on `**not** "clear"`, because
-        # the emphasis markers and quotes sit between the two words -- the
-        # document was right and the assertion was wrong. Strip the markup that
-        # a renderer would consume before asserting about wording.
-        plain = re.sub(r'[*_"“”]', "", self.body)
-        self.assertRegex(plain, r"(?i)not\s+clear")
+    def test_the_distinction_that_changes_answers_is_still_guaranteed(self):
+        """'?' is not clear sky — the one distinction that turns into a
+        confidently wrong answer if lost.
+
+        It used to be asserted here, because it used to live in SKILL.md. On
+        2026-08-16 it moved into the product's own legend, so that readers who
+        curl the service — not only those who installed the Skill — are told.
+        The assertion follows it rather than being deleted: a guarantee that
+        stops being checked when it moves house is a guarantee that quietly
+        expires.
+
+        Also asserted: the wording is *conditional* on the map containing a
+        '?'. Printing it on every response is the disclaimer-on-every-line
+        habit that trains readers to skip the legend.
+        """
+        render = open(os.path.join(os.path.dirname(__file__), "..", "scripts",
+                                   "render_scene.py"), encoding="utf-8").read()
+        self.assertIn("outside radar coverage (not clear)", render)
+        self.assertIn('if "?" in art', render,
+                      "the '?' note must be conditional on the map having one")
+        self.assertIn("blank=no echo", render)
 
     def test_paths_are_posix(self):
         self.assertNotIn("\\", self.body)
