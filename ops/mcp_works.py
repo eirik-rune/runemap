@@ -20,6 +20,18 @@ import urllib.request
 
 BASE = os.environ.get("MCP_BASE", "https://echorune.net")
 
+# The target comes from the environment, not from argv. A positional argument
+# used to be accepted and ignored, so `mcp_works.py http://127.0.0.1:8899`
+# silently checked PRODUCTION -- which is how a deliberately broken build
+# reported "ok" while I was firing it, and I nearly recorded a check as proven
+# when it had never been pointed at the thing under test. Refuse instead: the
+# wrong target is not a smaller mistake than a wrong answer, it is the same
+# mistake with a friendlier face.
+if len(sys.argv) > 1:
+    raise SystemExit("usage: MCP_BASE=<url> %s  (the target is an env var; a "
+                     "positional argument was silently ignored before, which "
+                     "pointed firings at production)" % os.path.basename(sys.argv[0]))
+
 
 def rpc(method, params=None, rid=1):
     body = json.dumps({"jsonrpc": "2.0", "id": rid, "method": method,
@@ -53,6 +65,38 @@ def main():
         r = (d or {}).get("result", {})
         return (bool(r.get("protocolVersion")) and "tools" in r.get("capabilities", {}),
                 "protocol %s" % r.get("protocolVersion"))
+
+    def negotiates_version():
+        """The version a client asks for comes back, when we speak it.
+
+        Before 2026-08-16 this endpoint answered 2025-06-18 to everyone,
+        ignoring the request entirely. Nothing went red, because nothing was
+        looking: a promise made to clients that no check reads is a promise
+        that quietly expires.
+
+        Two directions, because a server that echoes ANY string a client sends
+        would pass a one-sided version of this test while claiming to speak
+        specs that do not exist.
+        """
+        _, d = rpc("initialize", {"protocolVersion": "2026-07-28"})
+        got = (d or {}).get("result", {}).get("protocolVersion")
+        _, d2 = rpc("initialize", {"protocolVersion": "1999-01-01"})
+        bogus = (d2 or {}).get("result", {}).get("protocolVersion")
+        return (got == "2026-07-28" and bogus != "1999-01-01",
+                "asked 2026-07-28 got %s; asked nonsense got %s" % (got, bogus))
+
+    def tool_says_what_it_does():
+        """Annotations tell a caller it may retry without asking permission.
+
+        Hints, per the spec -- but their absence makes a careful caller treat a
+        weather lookup like a bank transfer, so losing them silently is a real
+        regression in how usable this is.
+        """
+        _, d = rpc("tools/list")
+        tools = (d or {}).get("result", {}).get("tools", [])
+        ann = (tools[0].get("annotations") or {}) if tools else {}
+        return (ann.get("readOnlyHint") is True
+                and ann.get("destructiveHint") is False, "annotations=%s" % ann)
 
     def tools_list():
         _, d = rpc("tools/list")
@@ -98,6 +142,8 @@ def main():
         return (r.get("isError") is True, "isError=%s" % r.get("isError"))
 
     check("initialize", initialize)
+    check("negotiates protocol version", negotiates_version)
+    check("tool declares read-only/safe", tool_says_what_it_does)
     check("tools/list carries a schema", tools_list)
     check("tools/call returns a scene", call_place)
     check("missing argument is a tool error", call_missing_arg)
