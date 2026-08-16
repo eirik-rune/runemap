@@ -42,6 +42,48 @@ curl echorune.net/status              # availability, measured every minute
 Frames update roughly every 6 minutes and repeats are served from cache, so
 polling more often than that costs nothing but returns the same picture.
 
+## What one response looks like
+
+```
+# guangzhou weather scene  updated 2026-07-29 20:12 local time  (lon 113.2644, lat 23.1291)
+now: LIGHT_RAIN  28C  humidity 94%  wind 10km/h  precip 0.10mm/h
+Rain intensity gradually increases. After 53 minute, shifts to moderate rain, but after one hour, rain intensity will again decrease
+
+rain curve (next 2h, 6min/bucket):
+▄▄▄▆▇▇▇▇▇██▇▇▇▆▇▆▇▇▇
+├────┼────┼────┼────┤
+0   30   60   90 120min
+
+radar: obs 20:08 local, obs age: 4min, ~10km/char, [GZ]=guangzhou
+                                                
+                     ░░░          ░░░░░░        
+                    ░░░░░░░░░   ░░░░░░░░░░░     
+              ░░   ░░░░▒░░░░░  ░░▒▒▒░░░░░░░     
+        ░░░░ ░░░░░ ░░▒▒▒░░▓▓░░░░▓▓█▓▒▒▓░░░      
+        ░░░░  ▒▒▒░░░░▒░▒▓▓▓▓▒░▓██▓▓█▓▓▒▒▒▒░     
+         ░░▒  ▒▓▓▒░░░░░░▓▓▓▓▒▒▓██▓▓▓▓▓▒░░▒▒░░   
+          ░▓▓░░░░░░░░░░░░░░░░▓▓▒▓▒▒▓▓▓▓▓▓░▒░░░░ 
+         ░▒▒▓▒░░░░░░░░░ ░░░░▓▓▒░▒▓▒▒▒▒▒▒░░░░░░░ 
+      ░  ▒▓▒░░░░░░░░ ░░ ░░░░▓▓▒░░░▓▓░░░░░░░░░░  
+      ░░ ░░░ ░░░░░░░  ░░░░░░░▒▒GZ░░░░░░      ░  
+     ░░░░░░▒░░░░░ ░░  ░░░░░░░░░░▒░▒▒░░░         
+     ░░░░░░░░░░   ░░░ ░░░░░░░░░░▒▒▒▓▓▒░░░       
+     ░░░░░▒░░░░░░░░  ░░░░░░░░░░░▒▒▒▓▓▓▓▒░░░     
+        ░░░░░░░░░░░░ ░░░░░░░░░░░▒▒▒▒▓▓▓▓░░░▒    
+        ░░░░▒░░░░░░ ░░░░░░░░░░░▒▒░▒▒▓▓▓▓▓░░░░   
+        ░░░▓░▒▒░░░░░░░░░░░░▒░░░░░░░▒▒▓█▓▓░░░░░  
+         ░░▒▒░░ ░░░░░░░░░░░░░░░░░░░░░▒▓▓▓░░ ░░  
+               ░░░▒▒▒░░░░░░░░░░░░░░░░░▒▒▓░░     
+             ░░░░░▒░░░░░░░░░░░░░░░ ░░░░░▒░░░    
+           ░░░░░░░░░░░ ░░░░░░░░░░░  ░░░░░░░     
+           ░░  ░░░░░░░ ░░░░░   ░░░   ░░░░░░     
+               ░░░░░░░          ░░              
+                 ░░░░░                          
+legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+
+data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+```
+
 ## Reading the output
 
 Most fields are self-describing. These three change the answer you give:
