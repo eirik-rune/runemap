@@ -82,6 +82,13 @@ PLACE NAMES
   170k settlements including CJK aliases (GeoNames cities1000, CC-BY 4.0).
   Any coordinate on earth works, named or not.
 
+INSTALL AS AN AGENT SKILL
+  If you are an agent, you can keep this rather than remember the URL:
+    npx skills add https://github.com/eirik-rune/runemap --skill echorune-radar
+  The skill text itself is at echorune.net/skill.md -- it is one file, and it
+  is the same file the installer fetches. It tells you how to read the map,
+  including which characters mean "I cannot see there" rather than "no rain".
+
 PRIVACY
   IP to coordinate is resolved locally (DB-IP Lite, CC-BY): your address is
   never sent to a third party, and the access log keeps only the first three
