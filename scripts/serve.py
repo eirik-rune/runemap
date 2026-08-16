@@ -37,6 +37,12 @@ TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
 
 
+#: The Agent Skill, served verbatim at /skill.md. Derived from this file's
+#: own location so it follows the deploy rather than a hardcoded /opt path --
+#: dev and production run from different trees.
+SKILL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "..", "skills", "echorune-radar", "SKILL.md")
+
 HOME = """echorune - text radar map for agents
 =====================================
 
@@ -329,6 +335,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
         if u.path in ("/help", "/help/"):
                 return self._send(200, HOME)
+        # /skill.md serves the SAME file that ships as an Agent Skill.
+        # Deliberately one file, not two: a hand-maintained second copy drifts
+        # from the first, and both look reasonable on their own. The skill
+        # directory is the single source; this route only reads it.
+        if u.path in ("/skill.md", "/skill", "/SKILL.md"):
+                try:
+                    with open(SKILL_PATH, encoding="utf-8") as f:
+                        return self._send(200, f.read())
+                except OSError as e:
+                    # Say which file and why. A bare 500 here would look like
+                    # the service being down rather than one missing file.
+                    return self._send(503, "skill.md unavailable: %s\n" % e)
         if u.path == "/" and not q:
                 ll = GI.locate(self._client_ip()) if GI else None
                 if not ll:
