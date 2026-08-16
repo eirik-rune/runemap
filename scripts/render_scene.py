@@ -1440,7 +1440,8 @@ _COHERENCE_LOG = os.environ.get(
 _NO_RAIN_KM = 10000.0
 
 
-def _coherence_sample(name, rt, art, kmcol, marker):
+def _coherence_sample(name, rt, art, kmcol, marker, obs_age=None, age_tok=None,
+                      extrapolated=None):
     """Record what the prose implies against what our own map shows.
 
     2026-08-16. A single case (Chiang Mai: upstream said light rain 18 km NE,
@@ -1505,6 +1506,25 @@ def _coherence_sample(name, rt, art, kmcol, marker):
                 "map_km": None if best is None else round(best, 1),
                 "km_per_char": kmcol, "km_per_row": kmrow,
                 "intensity": near.get("intensity"),
+                # The first 260 pairs said the disagreements are ONE-SIDED: 26
+                # where our map puts the rain farther than the prose does,
+                # against 3 the other way. One-sidedness is a mechanism, not
+                # noise, and the two candidate mechanisms are distinguishable
+                # only by fields this record did not carry:
+                #
+                #   * the frame is an extrapolation, or minutes old, and the
+                #     echo has moved -- an honest disagreement;
+                #   * our 7 dBZ floor drops light echo that upstream counts, so
+                #     the nearest glyph we draw is the next band out -- a
+                #     reader-facing error, and in the direction that matters
+                #     (telling someone rain is 66 km away when it is 13).
+                #
+                # I could not test the second with the data I had: 251 of 260
+                # samples share one upstream intensity value, so the comparison
+                # has no power. That is INSUFFICIENT, not "ruled out", and the
+                # fix is to record what discriminates rather than to argue.
+                "obs_age": obs_age, "age_tok": age_tok,
+                "extrapolated": extrapolated,
             }, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -1643,7 +1663,8 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # one more ambiguous symbol. A fourth state added later must not break
         # a reader that expects "age:" to be optional.
         L.append("radar: %-14s obs age: %dmin %s" % (_axis1, obs_age, _age_tok))
-        _coherence_sample(name, rt, art, kmcol, code)
+        _coherence_sample(name, rt, art, kmcol, code,
+                          obs_age, _age_tok, _extrapolated)
 
         if lang == "ja":
             L.append("1文字≈%.0fkm, [%s]=%s" % (kmcol, code, name) + mo_sfx)
