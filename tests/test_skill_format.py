@@ -123,6 +123,34 @@ class SkillFileIsValid(unittest.TestCase):
                       "the '?' note must be conditional on the map having one")
         self.assertIn("blank=no echo", render)
 
+    def test_frontmatter_is_parseable_yaml_not_merely_regexable(self):
+        """The regex above reads a file a real YAML parser rejects.
+
+        2026-08-16: a rewrite put a colon inside the unquoted description --
+        "...instead of an image: current conditions..." -- and in YAML an
+        unquoted scalar may not contain ": ". The frontmatter stopped parsing,
+        `npx skills add` answered "No valid skills found", and the install
+        command printed in the README, in /help, on the hub and in three listing
+        PRs was dead for hours.
+
+        Every check stayed green. This file parses with a regex on purpose, and
+        a regex does not care about quoting; the ops check exercised the curl
+        commands, which were fine. Both were answering a question next to the
+        one that mattered.
+
+        No YAML library is installed in CI, so the specific rule is asserted
+        rather than a parser imported: a value containing ": " must be quoted.
+        """
+        m = re.match(r"^---\n(.*?)\n---\n", read(), re.S)
+        for line in m.group(1).split("\n"):
+            if not line.strip() or line.startswith(("#", " ", "\t")):
+                continue
+            _key, _sep, val = line.partition(": ")
+            if ": " in val and val[:1] not in ("\"", "'"):
+                self.fail("frontmatter value contains ': ' unquoted, which no "
+                          "YAML parser will accept -- the installer will report "
+                          "'No valid skills found':\n  %s" % line[:120])
+
     def test_paths_are_posix(self):
         self.assertNotIn("\\", self.body)
 
