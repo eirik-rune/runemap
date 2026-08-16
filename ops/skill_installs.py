@@ -99,16 +99,38 @@ def main():
         # inside someone else's environment sends me guessing.
         print("   rc=%s  cwd=%s" % (p.returncode, home))
         print("   HOME=%s  TMPDIR=%s" % (env.get("HOME"), env.get("TMPDIR", "(unset)")))
+        # Skip .npm: it is the package cache, thousands of directories deep,
+        # and on the first diagnostic run it filled the whole listing before
+        # reaching anything the installer wrote. A truncated listing answered a
+        # different question than the one asked.
         listing = []
         for root, dirs, files in os.walk(home):
+            dirs[:] = [d for d in dirs if d != ".npm"]
             rel = root[len(home):].lstrip("/") or "."
             listing.append("%s/  [%s]" % (rel, ", ".join(sorted(files)[:6])))
             if len(listing) > 25:
                 listing.append("... (truncated)")
                 break
-        print("   what was written:")
+        print("   what was written (excluding the npm cache):")
         for line in listing:
             print("     ", line[:150])
+
+        # rc=0 with nothing under our temp HOME means it installed somewhere
+        # else. Name the candidates rather than reasoning about them from a
+        # machine that behaves differently.
+        print("   did it write outside the sandbox?")
+        for label, path in (("real home (~)", os.path.expanduser("~")),
+                            ("cwd of this process", os.getcwd()),
+                            ("/home/runner", "/home/runner")):
+            hits = []
+            if os.path.isdir(path):
+                for root, dirs, files in os.walk(path):
+                    dirs[:] = [d for d in dirs if d not in (".npm", ".git", "node_modules")]
+                    if "SKILL.md" in files and NAME in root:
+                        hits.append(os.path.join(root, "SKILL.md"))
+                    if len(hits) > 3:
+                        break
+            print("     %-22s %s" % (label, hits or "no %s SKILL.md" % NAME))
         print("   installer output, last 25 lines:")
         for line in out.strip().splitlines()[-25:]:
             print("     ", line[:160])
