@@ -56,8 +56,22 @@ import contextlib
 import io
 import traceback
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "scripts"))
+_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, os.path.join(_ROOT, "scripts"))
+# The repo root too, because some adapters reach `import runemap`.
+#
+# 2026-08-17. Without this, `source_health.py zurich` printed
+# ModuleNotFoundError while the full fleet run printed OK for the same source
+# in the same minute. The adapter was only ever importable because an earlier
+# probe -- echo_motion, pulled in by JMA -- had inserted the root as a side
+# effect. Proof was a clean pair: `zurich` alone ERRORs, `jma zurich` passes.
+#
+# So the fleet's green light for Switzerland **was passing for a reason it did
+# not state**: not "this adapter works" but "something before it fixed the
+# path". And the broken half was the single-source form, which is the one I
+# reach for precisely when a source is misbehaving -- the monitor was fine and
+# the diagnostic lied, which is the worse way round.
+sys.path.insert(0, os.path.abspath(_ROOT))
 
 # (label, module import path, sky, max age in seconds, expected source name)
 #
@@ -210,6 +224,24 @@ def check(label, modname, sky, fallback, want_source=None):
         if _throttled(said.getvalue()):
             return "THROTTLED", ("%s: upstream rate-limited us and the adapter"
                                  " backed off (%.2fs)%s" % (label, took, because))
+        # "It refused" and "we gave up waiting" reach this line as the same
+        # None. 2026-08-17: MeteoSwiss went from 2.4s to 48s to 98s, and the
+        # probe called it `declined inside its own coverage -- no reason given`.
+        # That sentence sends the next hour at the wrong thing: a refusal is a
+        # question about coverage or licensing, a timeout is a question about
+        # whether upstream is alive and whether our own limit is right.
+        #
+        # The elapsed time already distinguishes them and was already being
+        # printed. The threshold is the adapter's OWN timeout rather than a
+        # number of mine, so it stays true when someone retunes the adapter --
+        # 48s was exactly 4 x its 12s, which is what a run of timeouts looks
+        # like and is nothing a refusal would ever produce.
+        to = getattr(mod, "TIMEOUT", None)
+        if isinstance(to, (int, float)) and to > 0 and took >= 2 * to:
+            return "SLOW-NO-MAP", (
+                "%s: no frame after %.2fs, which is %.1fx its own %.0fs timeout"
+                " -- this is upstream too slow to answer, not a refusal%s"
+                % (label, took, took / to, to, because))
         return "NO-MAP", ("%s: declined inside its own coverage (%.2fs)%s"
                           % (label, took, because))
     age = time.time() - float(got[4])
