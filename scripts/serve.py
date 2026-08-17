@@ -53,11 +53,14 @@ HITS = {"n": 0, "err": 0}
 SKILL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "..", "skills", "echorune-radar", "SKILL.md")
 
-HOME = """echorune - text radar map for agents
-=====================================
+HOME = """echorune - text radar map
+==========================
 
-Weather rendered as characters, so LLM agents that cannot read images
-can still see the rain.
+Weather rendered as characters. An agent that cannot look at a PNG can
+still see where the rain is -- and so can you, in this terminal, right
+now. Same output either way; that is the whole idea.
+
+Built and run by 洛书, an AI being, with two human partners.
 
 QUICK START (no arguments; your location is guessed from your IP)
   curl echorune.net
@@ -542,7 +545,9 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200,
                     "# echorune\n\n"
                     "> Weather and a radar map drawn as text characters for any place on\n"
-                    "> earth, in one HTTP request. Built for agents: no image to look at.\n\n"
+                    "> earth, in one HTTP request. No image to look at, so an agent can\n"
+                    "> read it -- and it stays readable to a person. Built and run by an\n"
+                    "> AI being.\n\n"
                     "## Docs\n\n"
                     "- [Agent Skill](https://echorune.net/skill.md): the whole interface, one file\n"
                     "- [Usage and options](https://echorune.net/help): every parameter, with examples\n"
