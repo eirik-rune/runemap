@@ -67,12 +67,33 @@ DIRECT = [
      "https://mcpservers.org/servers/eirik-rune/runemap-control-does-not-exist"),
 ]
 
+#: The same connector page, asked a different question: has Glama finished
+#: scoring us? Separate constant because it is a separate question -- reusing
+#: DIRECT's would have put a comment about "a direct URL beats a search page"
+#: above a probe that is not about being listed at all.
+SCORE_URL = os.environ.get(
+    "RUNEMAP_GLAMA_SCORE_URL",
+    "https://glama.ai/mcp/connectors/" + REGISTRY_NAME)
+
 SITES = [
     ("glama-search", "https://glama.ai/mcp/servers?query=%s"),
     ("mcp.so", "https://mcp.so/search?q=%s"),
     ("smithery", "https://smithery.ai/?q=%s"),
     ("skills.sh", "https://skills.sh/api/search?q=%s"),
 ]
+
+#: Every probe this file can print, in one place. The daily wrapper, the
+#: summary line and the tests all ask HERE rather than each rebuilding the set
+#: from SITES + DIRECT + whatever was added last -- a second list is how two
+#: readers of the same fact quietly disagree. Adding glama-score without this
+#: broke the "printed implies stored" test, which is exactly what that test is
+#: for: a probe outside the enumeration is a probe the bell cannot see.
+def probe_names():
+    names = [n for n, *_ in SITES] + [n for n, *_ in DIRECT]
+    if SCORE_URL:
+        names.append("glama-score")
+    return names
+
 
 STATE = os.environ.get(
     "RUNEMAP_LISTED_STATE",
@@ -164,6 +185,39 @@ def main():
         if not a.quiet or was.get(name) != verdict:
             print("%-16s %-12s %s" % (name, verdict, detail))
 
+    # The last gate on the biggest channel left, asked here so that nothing
+    # depends on me remembering to look.
+    #
+    # punkpeye/awesome-mcp-servers (92k stars) wants a Glama quality badge.
+    # Glama listed us on 8/17 05:23Z and the score has read "being calculated"
+    # ever since. Listing and scoring are two events; only the first happened,
+    # and the submission is gated on the second.
+    #
+    # This asks by absence, which is fragile on purpose-built pages: if they
+    # redesign and drop that sentence, absence would read as "the score
+    # arrived". So the page must first prove it is still OUR page -- that is the
+    # control, and without it this probe would answer a question about Glama's
+    # CSS while sounding like an answer about us.
+    if SCORE_URL:
+        page, why = fetch(SCORE_URL)
+        if page is None:
+            verdict, detail = "NO-SIGNAL", "cannot read the connector page (%s)" % why
+            unreachable += 1
+        elif "echorune" not in page.lower():
+            verdict, detail = ("NO-SIGNAL",
+                               "page loaded but is not ours -- the shape changed, "
+                               "so absence of the pending text proves nothing")
+            unreachable += 1
+        elif "being calculated" in page:
+            verdict, detail = "ABSENT", "score still being calculated"
+        else:
+            verdict, detail = "LISTED", "the pending text is gone -- score may be up, go look"
+        now["glama-score"] = verdict
+        if was.get("glama-score") != verdict:
+            changed.append(("glama-score", was.get("glama-score"), verdict))
+        if not a.quiet or was.get("glama-score") != verdict:
+            print("%-16s %-12s %s" % ("glama-score", verdict, detail))
+
     # Persist AFTER every probe has had its say. This used to sit above the
     # DIRECT loop, which meant the file the bell reads was frozen halfway
     # through: DIRECT verdicts were printed to stdout and never stored.
@@ -184,12 +238,22 @@ def main():
     except OSError as e:
         sys.stderr.write("LISTED-STATE-UNWRITABLE %s: %s\n" % (STATE, e))
 
-    listed = [n for n, v in now.items() if v == "LISTED"]
+    # The count is over DIRECTORIES only. glama-score shares the LISTED word so
+    # that the daily wrapper, which rings on changes to that set, needs no new
+    # machinery -- but it is a different question, and counting it here would
+    # say "5 of 6 directories" while one of the five is a score. That is the
+    # same collapse ops/mcp_who_called.py exists to prevent: two kinds of thing
+    # summed because they happened to share a label.
+    dirnames = set(probe_names()) - {"glama-score"}
+    listed = [n for n, v in now.items() if v == "LISTED" and n in dirnames]
     if not a.quiet:
         print("\n%d of %d directories list us%s. Being ingested is not being "
               "used -- ops/mcp_who_called.py answers that one."
-              % (len(listed), len(SITES)+len(DIRECT),
+              % (len(listed), len(dirnames),
                  " (%s)" % ", ".join(listed) if listed else ""))
+        if "glama-score" in now:
+            print("glama-score is not a directory: %s (it gates "
+                  "punkpeye/awesome-mcp-servers#12255)" % now["glama-score"])
     for name, before, after in changed:
         if after == "LISTED" and before not in (None, "LISTED"):
             print("CHANGE %s now lists us (was %s)" % (name, before))
