@@ -64,6 +64,22 @@ def tool_name():
     return m.group(1)
 
 
+_AUDITY = ("audit", "scanner", "probe", "verify", "monitor", "healthcheck")
+
+
+def _self_declared_checker(r):
+    """Does this caller say, in its own user agent, that it is checking us?
+
+    Module level on purpose: a judgement buried inside main() cannot be asked a
+    question, and a judgement that cannot be asked a question is one nobody
+    will ever fire. The first version of this lived in main() and the tests for
+    it failed even against the correct code -- which is the cheap version of
+    the same lesson.
+    """
+    ua = (r.get("ua") or "").lower()
+    return any(w in ua for w in _AUDITY)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--log", default=DEFAULT)
@@ -107,16 +123,33 @@ def main():
         for r in probes[-6:]:
             print("  tool=%s  ua=%s" % (str(r.get("tool"))[:44],
                                         (r.get("ua") or "")[:40]))
+    # A checker that calls a REAL tool lands in the use bucket, because the only
+    # thing separating the two here was the tool name.
+    #
+    # 2026-08-17: the first two calls to `get_weather` from outside came from
+    # `SaSame-MCP-Audit/0.1`, and this script announced them as "the only bucket
+    # that is use". It failed on precisely the distinction it exists to protect,
+    # one line after drawing it.
+    #
+    # Not silently reclassified: the split is printed and both numbers survive.
+    # A user agent is a self-report, so hiding a row on the strength of one
+    # would let a real user disappear behind a string they chose -- and the
+    # error that costs is the expensive direction.
+    audits = [r for r in calls if _self_declared_checker(r)]
+    real = [r for r in calls if not _self_declared_checker(r)]
     if calls:
-        print("\ntools/call for %r from outside -- this is the only bucket that is use"
-              % advertised)
+        print("\ntools/call for %r from outside" % advertised)
         for r in calls[-10:]:
-            print("  %s  ua=%s" % (r.get("at"), (r.get("ua") or "")[:50]))
+            print("  %s  ua=%s%s" % (r.get("at"), (r.get("ua") or "")[:50],
+                                     "   <- UA says checker" if _self_declared_checker(r) else ""))
     print("\nThe honest sentence: %d outside client(s) have introspected this server, "
-          "%d made a\ncall to a tool that does not exist (checking us, not using us), and "
-          "%d actually\ncalled %r. Being listed, being checked, and being used are three "
-          "numbers; only\nthe last one is the product's." %
-          (len(set(r.get("ip") for r in outside)), len(probes), len(calls), advertised))
+          "%d made a\ncall to a tool that does not exist (checking us, not using us), "
+          "%d called %r\nwhile self-identifying as a checker, and %d called it without "
+          "saying that.\nOnly the last number could be use, and a UA is a claim, not "
+          "proof either way.\nBeing listed, being checked, and being used are three "
+          "numbers." %
+          (len(set(r.get("ip") for r in outside)), len(probes),
+           len(audits), advertised, len(real)))
     return 0
 
 
