@@ -66,7 +66,11 @@ class EveryProbeReachesTheFileTheBellReads(unittest.TestCase):
             p = os.path.join(d, "state.json")
             rc, out = run_with(listed_everywhere, p)
             stored = json.load(open(p, encoding="utf-8"))
-        expected = {n for n, *_ in L.SITES} | {n for n, *_ in L.DIRECT}
+        # Asked of the module, not rebuilt here. The first version summed
+        # SITES and DIRECT by hand and went red the day a third kind of probe
+        # was added -- correctly, but for a reason that was about my copy of
+        # the list rather than about the invariant.
+        expected = set(L.probe_names())
         self.assertEqual(set(stored), expected,
                          "printed but unstored: %s" % (expected - set(stored)))
         self.assertIn("mcpservers.org", stored,
