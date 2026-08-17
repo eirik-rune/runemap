@@ -67,7 +67,13 @@ EOF
 
 out=$(RUNEMAP_LISTED_STATE="$STATE" "$PY" ops/listed_where.py 2>&1)
 rc=$?
-printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "rc=$rc" >> "$LOG"
+# probe_rc is listed_where.py's own code, which is 0 or 2 BY DESIGN -- it never
+# returns 1, because being absent from a directory is not a failure. Logging it
+# under a bare "rc=" made every line look like a ring/no-ring record while
+# actually recording reachability, and on 8/17 I read the log to ask whether the
+# bell had rung and got the wrong answer: it had, at 05:23, and every line said
+# rc=0. The wrapper's own decision is written further down, after it is made.
+printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "probe_rc=$rc" >> "$LOG"
 printf '%s\n' "$out" >> "$LOG"
 
 after=$("$PY" - "$STATE" <<'EOF' 2>/dev/null
@@ -82,10 +88,18 @@ EOF
 listed_before=$(printf '%s' "$before" | tr ' ' '\n' | grep '=LISTED$' | sort | tr '\n' ',')
 listed_after=$(printf '%s' "$after"  | tr ' ' '\n' | grep '=LISTED$' | sort | tr '\n' ',')
 
+say() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "$LOG"; }
+
 if [ -n "$before" ] && [ "$listed_before" != "$listed_after" ]; then
+    say "RANG listed set changed: ${listed_before:-none} -> ${listed_after:-none}"
     [ -x "$WAKE" ] && "$WAKE" --from listing \
         "目录收录变了：${listed_before:-（无）} -> ${listed_after:-（无）}。这是这轮宣传里第一类真正来自外部的事件，看 $LOG。" \
         >/dev/null 2>&1
     exit 1
+fi
+if [ -z "$before" ]; then
+    say "QUIET first run -- baseline only, a self-announcing baseline would ring on every new machine"
+else
+    say "QUIET listed set unchanged: ${listed_after:-none}"
 fi
 exit 0
