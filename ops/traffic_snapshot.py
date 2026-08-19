@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # different things with one name -- which is exactly the bug this file exists
 # to prevent, one level up.
 from who_is_using import (AGENTISH_UA, LOG_RE, classify,  # noqa: E402
+                          self_declared_checker,
                           read_lines)
 from source_health import adopt_unit_env  # noqa: E402
 
@@ -174,6 +175,19 @@ def main():
             low = ua.lower()
             agentish["program-like" if any(x in low for x in AGENTISH_UA)
                      else "browser"] += 1
+            # ADDITIVE, on purpose. 2026-08-19 who_is_using learned to split out
+            # callers that say in their own user agent that they are checking
+            # whether we are up (1808 of 4260 over 14 days). Redefining
+            # `program_like` here would make every earlier row in this series
+            # incomparable with every later one, silently -- so the old fields
+            # keep their old meaning and this is a new one. Old rows simply lack
+            # it, which is a gap and reads as a gap.
+            #
+            # Those two agents (SentinelOracle, mcpbeat) do not match
+            # AGENTISH_UA, so they were never inside `program_like`; this counts
+            # them where they actually were, in `browser_like`.
+            if self_declared_checker(ua):
+                agentish["says-checker"] += 1
 
     if not seen_day:
         # The log for that day has rotated away, or the day predates us. Either
@@ -188,6 +202,7 @@ def main():
     row = {"day": day,
            "served": buckets["ASKED-FOR-WEATHER"],
            "program_like": agentish["program-like"],
+           "says_checker": agentish["says-checker"],
            "browser_like": agentish["browser"],
            "outside_ips": len(ips),
            "scanner": buckets["SCANNER"],
