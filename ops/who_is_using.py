@@ -43,6 +43,31 @@ import re
 import sys
 from collections import Counter
 
+#: Words a caller uses to say, in its own user agent, that it is checking us.
+#: It lives here rather than in mcp_who_called because the dependency already
+#: runs that way (that module imports INSIDER_NETS from this one), and because
+#: this file is where "how we classify a caller" belongs. One list, two readers:
+#: two lists of words-meaning-checker would each look reasonable and drift.
+#:
+#: 2026-08-19 additions -- "liveness", "uptime", "heartbeat" -- came from the
+#: site log, where `SentinelOracle/0.1 (+https://glimind.com/opt-out;
+#: liveness-check)` at 1196 requests and `mcpbeat/0.1 (+https://mcpbeat.com/bot/;
+#: liveness check)` at 438 were the two loudest entries in the bucket named
+#: "could be users". They said what they were and this list lacked the word.
+_AUDITY = ("audit", "scanner", "probe", "verify", "monitor", "healthcheck",
+           "liveness", "uptime", "heartbeat")
+
+
+def self_declared_checker(ua):
+    """Does this caller say, in its own user agent, that it is checking us?
+
+    A claim, never proof. Callers must SPLIT on it and print both sides, never
+    filter: a real user whose agent string happens to contain "monitor" would
+    otherwise vanish from the only number that could ever become evidence that
+    a stranger needs this.
+    """
+    return any(w in (ua or "").lower() for w in _AUDITY)
+
 #: Our own machines. First octets-with-zeroed-last, matching how nginx logs them.
 #: Add here, not to a regex somewhere else: a second list drifts from the first
 #: and both look reasonable on their own.
@@ -153,9 +178,52 @@ def main():
             cand_ua[ua[:60]] += 1
             paths_seen[m.group("path")[:44]] += 1
             low = ua.lower()
-            agentish["program-like" if any(x in low for x in AGENTISH_UA)
-                     else "browser-like-or-unknown"] += 1
+            # Three-way, not two-way. `program-like` is the column the weekly
+            # report and the acceptance criterion both name, and on 2026-08-19
+            # its top two entries were `SentinelOracle/0.1 (... liveness-check)`
+            # and `mcpbeat/0.1 (... liveness check)` -- 1634 requests from two
+            # machines that say in their own user agent that they are checking
+            # whether we are up. Counting those toward "could be a user" makes
+            # the number move without anyone needing us.
+            #
+            # SPLIT, never filter, and the predicate is imported rather than
+            # rewritten here: a UA is a claim, so a real user whose agent string
+            # happens to contain "monitor" must still appear in the output --
+            # just under a name that says what it claimed.
+            # Checker first, and across the WHOLE bucket rather than inside the
+            # program-like branch. 2026-08-19: the two loudest agents here are
+            # `SentinelOracle/0.1 (... liveness-check)` and `mcpbeat/0.1 (...
+            # liveness check)`, 1634 requests between them -- and AGENTISH_UA
+            # does not match either, so they were landing in
+            # `browser-like-or-unknown`. That label reads "might be a person",
+            # which is the worst place for a machine that says it is a machine.
+            #
+            # SPLIT, never filter: a real user whose agent string happens to
+            # contain "monitor" still appears, under a name that says what it
+            # claimed rather than what it is.
+            if self_declared_checker(ua):
+                agentish["says it is a checker (not a user)"] += 1
+            elif any(x in low for x in AGENTISH_UA):
+                agentish["program-like"] += 1
+            else:
+                agentish["browser-like-or-unknown"] += 1
 
+    # 2026-08-19: run as `cc` rather than with sudo, every count printed 0 and
+    # the honest sentence read "0 requests came from outside our own machines".
+    # The nginx logs are 0640 www-data:adm; nothing was readable and nothing
+    # said so. **"nobody came" and "I could not look" printed the same page**,
+    # which is the failure this whole file is supposed to guard against, on the
+    # instrument that reports the acceptance criterion. `window: ? -> ?` was the
+    # only tell and it is easy to read past.
+    #
+    # So: refuse. Exit 2 is "could not determine", never 0.
+    if not paths or total == 0:
+        print("NO-LOG: read %d file(s) and parsed %d requests -- refusing to "
+              "report zeros" % (len(paths), total))
+        print("  A zero here would be indistinguishable from 'nobody came'.")
+        print("  Most likely the log is not readable by this user "
+              "(nginx writes 0640 www-data:adm); try sudo.")
+        return 2
     print("logs read      : %d file(s), %d requests parsed" % (len(paths), total))
     # n without a denominator is a number that sounds like whatever you want it
     # to. Print the window the count covers, from the data, not from assumption.
@@ -191,7 +259,15 @@ def main():
     for p, n in paths_seen.most_common(8):
         print("    %4d  %s" % (n, p))
 
-    print("\nThe honest sentence: %d requests came from outside our own machines,\nasked for something we actually serve, and got it. That is an UPPER BOUND on\nreal users -- it still contains anyone we failed to list as an insider, and\nbob's own phone. It is the only number here that could ever become evidence\nthat a stranger needs this." % buckets["ASKED-FOR-WEATHER"])
+    checkers = agentish.get("says it is a checker (not a user)", 0)
+    print("\nThe honest sentence: %d requests came from outside our own machines,\n"
+          "asked for something we actually serve, and got it. That is an UPPER BOUND on\n"
+          "real users -- it still contains anyone we failed to list as an insider, and\n"
+          "bob's own phone. Of those, %d say in their own user agent that they are\n"
+          "checking whether we are up, so the bound that could ever become evidence a\n"
+          "stranger needs this is nearer %d. A user agent is a claim either way."
+          % (buckets["ASKED-FOR-WEATHER"], checkers,
+             buckets["ASKED-FOR-WEATHER"] - checkers))
     return 0
 
 
