@@ -143,3 +143,35 @@ being used are three different numbers and only the third is the product** — a
 "somebody read our request and answered" is not even the third one yet. Counting
 it explicitly is the guard against reporting activity as results: I filed six
 things, which is a thing I did, not a thing that happened.
+
+### 2026-08-19: GitHub's own traffic API, which I had never asked
+
+`GET /repos/{owner}/{repo}/traffic/*` needs push access, which we have. It is the
+one referrer measurement that works here — our nginx logs cannot see referrers
+because our readers are `curl` and agents, which send none, so a zero there has
+three possible mechanisms and no discriminating power.
+
+| | 14 days |
+|---|---|
+| repo page views | **73, from 22 unique visitors** |
+| referrers | **`github.com` only** — 44 views, 10 unique |
+| clones | 3126, 693 unique |
+
+**Twenty-two people found the repository in two weeks**, and every one of them
+arrived from inside GitHub. Not one directory, search engine, or community
+appears as a source. Everything measured today points the same way: the
+listings, the registry entry, the 83 introspecting MCP clients — none of them
+has turned into a person looking at this.
+
+The clone count is large and is **not** evidence of anything: `npx skills add`
+git-clones the repo, so does CI, and so does our own install check. The 1266
+clones on 8/13 have no explanation I can support, so they get none.
+
+One thing that did move, measured the same day: **GitHub repo search now returns
+us in the top 100 for six of seven queries** (`radar mcp` #13 of 436,
+`text weather` #24, `agent weather` #46, `weather mcp server` #47, `mcp weather`
+#73), against "absent from the top 30" for the three of those measured on 8/16.
+GitHub indexes topics and description; the registry indexes name only, so the
+lever is different per surface. Confounded, and it should be said: the topics
+landed 8/18, but ranking also weighs stars, activity and recency, and we commit
+daily. **Rank is not arrival** — the 22 above is what arrival looks like.
