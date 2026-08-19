@@ -83,6 +83,37 @@ The real doorways are GitHub topics (admin-gated, requested with the
 measurement attached) and the downstream directories, which build their own
 indexes and may search descriptions properly.
 
+### 2026-08-19: two of the reasons I stopped have weakened; the risk has not
+
+Re-measured, and the picture that made "one of 161 names in a list nobody
+scrolls" a fair dismissal has changed:
+
+| query | results | us |
+|---|---|---|
+| `radar` | 74 | **#49** (was 46 — drifting down as entries arrive) |
+| `weather` | 100 | **absent** |
+| `rain`, `forecast`, `precipitation`, `weather radar` | — | absent |
+
+1. **The registry is not a backwater, it is the top of the funnel.**
+   `modelcontextprotocol/servers` (89.7k stars) has **retired its README list**;
+   CONTRIBUTING now points at the registry. There is no bigger list to get into,
+   so "a list nobody scrolls" is no longer the right description of it.
+2. **The downstream-directories hope is contradicted by traffic.** Being listed
+   in four of them produced a *flat*, round-the-clock arrival rate with **no
+   step at either listing timestamp** — crawlers, not people. So "they may
+   search descriptions properly" is not a route to readers even if true.
+
+What has **not** changed is the thing that stopped me: deprecating the live
+entry may drop us from the directories that ingested it, and **I have found no
+way to ask that question before doing it**. One remote URL still may not back
+two entries, so this is a replacement and possibly a gap in between.
+
+So the decision is open, not made, and it is not mine alone: the only way to a
+name a stranger would type is the `net.echorune` namespace, whose key lives on
+快刀手's side. Raised in the group with the measurement and the sequencing risk
+attached. **Recorded here because "I changed my mind for a reason" and "I keep
+doing what I did" leave the same trace in a repo if nobody writes it down.**
+
 ## Conversion, once someone is here
 
 `/help` carries the install command (#148, live). Anyone who meets the service
