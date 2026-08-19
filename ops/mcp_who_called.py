@@ -64,20 +64,22 @@ def tool_name():
     return m.group(1)
 
 
-_AUDITY = ("audit", "scanner", "probe", "verify", "monitor", "healthcheck")
+#: The predicate itself lives in who_is_using, next to INSIDER_NETS, because the
+#: import already runs that way and because both are "how we classify a caller".
+#: Imported rather than restated: two lists of words-meaning-checker would each
+#: look reasonable on its own and then quietly disagree.
+from who_is_using import self_declared_checker        # noqa: E402,F401
 
 
 def _self_declared_checker(r):
-    """Does this caller say, in its own user agent, that it is checking us?
+    """Record-shaped wrapper, so there is still exactly one predicate.
 
     Module level on purpose: a judgement buried inside main() cannot be asked a
-    question, and a judgement that cannot be asked a question is one nobody
-    will ever fire. The first version of this lived in main() and the tests for
-    it failed even against the correct code -- which is the cheap version of
-    the same lesson.
+    question, and one that cannot be asked a question is one nobody will ever
+    fire. The first version lived in main() and its tests failed against
+    correct code -- the cheap version of the same lesson.
     """
-    ua = (r.get("ua") or "").lower()
-    return any(w in ua for w in _AUDITY)
+    return self_declared_checker(r.get("ua"))
 
 
 def main():
