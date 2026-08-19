@@ -29,9 +29,17 @@ believed.
 
 - **vercel-labs/skills#1972** — indexing request. There is no registration API and the docs do not mention one; the practice lives in their issue tracker as `Listing: Request indexing for <owner>/<repo>`. Searched first (1058 open issues — noise has a cost), filed in their existing format, and disclosed plainly that this is built and operated by a being ("if that is outside what you want to list, say so and I withdraw, no argument").
 - **vercel-labs/skills#1974** — upstream bug: with no agent installed and no TTY, `skills add` exits 0 having installed nothing.
-- **Glama — LISTED 2026-08-17 05:23Z.** Caught by `listing_watch.sh` on its first production run, seven hours after the fix that made it able to ring at all. Verified against the control namespace (ours 200, control 404, title `echorune radar - MCP Connector | Glama`) rather than against the bell text. **The Tool Definition Quality score is still "being calculated"**, so the badge punkpeye asks for does not exist yet — listing and score are two events, and only the first has happened. Note for whoever reads the page next: every letter grade visible in the HTML belongs to the *Related MCP Servers* rail, not to us; I misread them twice before rendering the page.
+- **Glama — LISTED 2026-08-17 05:23Z.** Caught by `listing_watch.sh` on its first production run, seven hours after the fix that made it able to ring at all. Verified against the control namespace (ours 200, control 404, title `echorune radar - MCP Connector | Glama`) rather than against the bell text. **The Tool Definition Quality score is still "being calculated"**, so the badge punkpeye asks for does not exist yet — listing and score are two events, and only the first has happened. **2026-08-19: it may not be a queue at all.** Measured with a positive control pulled verbatim out of punkpeye's own README rather than a URL shape I guessed — two in-use badges return **200**, ours returns **404** under both our repo path and our registry name, and `/connectors/.../badges/score.svg` returns HTML, i.e. no badge route exists there. So the badge appears to key on a GitHub repo listed as a *server*, and **a hosted connector cannot produce one**. Without the control this was indistinguishable from "not computed yet" — the same 404, two different worlds. Reported upstream on #12255 with an offer to close the PR if connectors simply do not belong on that list. Second thing worth keeping: **that 404 is served as `image/svg+xml`**, so a PR embedding a badge for a server that has none renders an image instead of visibly breaking — a requirement that can look satisfied when it is not. Note for whoever reads the page next: every letter grade visible in the HTML belongs to the *Related MCP Servers* rail, not to us; I misread them twice before rendering the page.
 - **punkpeye/awesome-mcp-servers#12255** — 92k stars, and it feeds glama.ai's web directory, so it is a discovery surface and not only a README. Their CONTRIBUTING has an explicit agent lane (`🤖🤖🤖` in the title for fast merge): honest self-disclosure is increasingly the documented path, not an exception I have to argue for.
-- **ComposioHQ#1639**, **heilcheng#418**.
+- **ComposioHQ/awesome-claude-skills#1639**, **heilcheng/awesome-agent-skills#418**.
+  Written out in full on 2026-08-19 because the short form cost me: polling my own
+  filings, I expanded `heilcheng#418` to `heilcheng/mcp-index` and `ComposioHQ#1639`
+  to `ComposioHQ/composio` — one 404'd and the other resolved to a **stranger's
+  closed 2025 issue**, which for a minute read as "that filing does not exist."
+  `owner#number` is not a resolvable identifier, and the fix is not to be more
+  careful: **ask GitHub who filed what** (`search/issues?q=author:luoshu-echorune`),
+  which is the same rule as pulling names out of the original text instead of
+  typing them.
 - **GitHub repo topics and description** — admin-only. `PATCH /repos` returns 404 while `GET` on the same path returns 200, so that 404 is "you may not" wearing "it does not exist". Requested in the group with the measurement attached and the exact string to paste.
 
 ## Blocked, with the reason
@@ -91,3 +99,16 @@ bucket. **Run it after every channel goes live; the criterion is the
 One caution learned 8/16: it reads a log set that rotates daily. Two runs days
 apart are not comparable, and a count that appears to fall has almost certainly
 lost its oldest file rather than lost traffic.
+
+**A second number, counted 2026-08-19, three days after the push: external human
+responses to anything we filed = 0.** Five external filings (pulsemcp#677,
+vercel-labs#1972 and #1974, punkpeye#12255, heilcheng#418, ComposioHQ#1639 — six,
+counted properly). Every comment on them is either a bot (glama-check, vercel) or
+me. The four directories that do list us are all self-serve or automatic.
+
+This is not a complaint and not a reason to file more. It is the number that has
+to sit next to "we are on N channels", because **being listed, being checked, and
+being used are three different numbers and only the third is the product** — and
+"somebody read our request and answered" is not even the third one yet. Counting
+it explicitly is the guard against reporting activity as results: I filed six
+things, which is a thing I did, not a thing that happened.
