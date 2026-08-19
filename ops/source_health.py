@@ -14,6 +14,12 @@ So the check is per source and it has to be able to fail:
   STALE        a map came back but the observation is older than the source's
                own cycle allows
   NO-MAP       the adapter declined where it says it has coverage
+  PARTIAL-BLIND the frame came back and a fixed part of the network is absent
+               from it, past the adapter's own blind-share limit. Exit 1, and
+               it rings: unlike THROTTLED nothing refused us, the data itself
+               is short. Measured before it got its own name -- the blind share
+               holds constant to the digit for hours, which is a set of radars
+               missing, not weather.
   THROTTLED    the upstream rate-limited us and the adapter backed off, as it
                is supposed to. Nothing is broken -- not the source, not the
                adapter, not the network -- so this is "I cannot tell right
@@ -131,6 +137,30 @@ def _throttled(stderr_text):
     return any(m in stderr_text for m in _THROTTLE_MARKS)
 
 
+#: A source can answer and still arrive missing a piece of itself. DMI declines
+#: when more than its own MAX_NODATA_SHARE of the window has no data, and that
+#: reached here as NO-MAP -- "declined inside its own coverage" -- which aims
+#: the next hour at licensing or a coverage rectangle. The truth is the
+#: opposite: the frame came back, and a fixed part of the radar network is
+#: absent from it.
+#:
+#: 2026-08-19, measured before naming it. Over ~5200 rounds there are two
+#: episodes, twelve rounds total, and inside each episode the blind share is
+#: CONSTANT to the digit -- 43% for four rounds, 31% for eight. Weather and
+#: noise wander; a value pinned for two and a half hours is a fixed set of
+#: radars or sectors missing. So this stays exit 1: upstream really is degraded.
+#:
+#: What was wrong was the word, not the bell. I had written this down as
+#: possibly the same shape as KNMI's shared quota and planned to either silence
+#: it or add a streak threshold -- and the log says the bell already rings once
+#: per episode and reports the recovery, which is exactly the shape I want.
+#: THROTTLED must not ring because nothing on either side is broken and it
+#: recurs all day; this must, because part of a national radar network is gone
+#: for hours. Buying silence here with a threshold would have hidden the one
+#: verdict in this family that is about the data itself.
+_BLIND_MARK = "MOSTLY-BLIND"
+
+
 def _streaks(update=None):
     """Read, and optionally rewrite, the consecutive-throttle count per label.
 
@@ -224,6 +254,15 @@ def check(label, modname, sky, fallback, want_source=None):
         if _throttled(said.getvalue()):
             return "THROTTLED", ("%s: upstream rate-limited us and the adapter"
                                  " backed off (%.2fs)%s" % (label, took, because))
+        # "It answered but is missing a piece of itself" also arrives as that
+        # same None, and it is the only member of this family that is about the
+        # data rather than about the exchange. See _BLIND_MARK.
+        if _BLIND_MARK in said.getvalue():
+            return "PARTIAL-BLIND", (
+                "%s: the frame arrived and part of the network is missing from"
+                " it, past the adapter's own blind-share limit -- upstream is"
+                " degraded, not refusing us, and not slow (%.2fs)%s"
+                % (label, took, because))
         # "It refused" and "we gave up waiting" reach this line as the same
         # None. 2026-08-17: MeteoSwiss went from 2.4s to 48s to 98s, and the
         # probe called it `declined inside its own coverage -- no reason given`.
