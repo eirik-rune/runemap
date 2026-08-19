@@ -1,58 +1,71 @@
 # runemap
 
-**Text radar map for agents.** Carve radar echoes into runes.
+**A weather radar you can read as text.** One HTTP request, no image, no API
+key, no account. It renders in a terminal, in a prompt, or in a log line -- so a
+person and a program read the same answer.
 
-Most LLM agents cannot see images. Weather radar is an image. So when an agent
-asks "is it about to rain on me, and from which direction?", the answer it gets
-is a sentence somebody else already summarized -- the 2D structure is gone.
+Measured: 1.8 KB for a quiet sky, 2.8 KB for a busy one, and 0.4 KB for
+Reykjavik, where we have no radar and the reply says so in one line instead of
+drawing an empty grid.
 
-`runemap` turns a radar field into a compact character grid that fits in a
-prompt (~600 tokens for 48x24) and preserves what matters: **where the rain is,
-how strong it is, and which way it is moving.**
+    curl echorune.net/taipei
+
+Radar is normally a picture, and a picture is the one thing most LLM agents
+cannot see. So when an agent asks *"is it about to rain on me, and from which
+direction?"*, what comes back is a sentence somebody else already summarised,
+and the two-dimensional structure is gone. A character grid keeps it: **where
+the rain is, how strong it is, and which way it is moving** -- about 600 tokens
+for 48x24.
 
 ```
-# guangzhou weather scene  updated 2026-07-29 20:12 local time  (lon 113.2644, lat 23.1291)
-now: LIGHT_RAIN  28C  humidity 94%  wind 10km/h  precip 0.10mm/h
-Rain intensity gradually increases. After 53 minute, shifts to moderate rain, but after one hour, rain intensity will again decrease
+# Taipei, Taipei City, Taiwan, TW weather scene
+# updated 2026-08-20 02:55 UTC+8  (lon 121.52639, lat 25.05306)
+now: CLOUDY  26C  humidity 90%  wind 7km/h  precip 0.00mm/h
+Rain intensity gradually increases. After 21 minute, shifts to moderate rain, but after one hour, rain intensity will again decrease
 
 rain curve (next 2h, 6min/bucket):
-▄▄▄▆▇▇▇▇▇██▇▇▇▆▇▆▇▇▇
+▁▁▃██▆▆██▅▄▄▃▂▁▁▁▁▁▁
 ├────┼────┼────┼────┤
 0   30   60   90 120min
 
-radar: obs 20:08 local, obs age: 4min, ~10km/char, [GZ]=guangzhou
+radar: predict 03:00  obs age: 25min stale
+~6km/char, [><]=Taipei, Taipei City, Taiwan, TW
                                                 
-                     ░░░          ░░░░░░        
-                    ░░░░░░░░░   ░░░░░░░░░░░     
-              ░░   ░░░░▒░░░░░  ░░▒▒▒░░░░░░░     
-        ░░░░ ░░░░░ ░░▒▒▒░░▓▓░░░░▓▓█▓▒▒▓░░░      
-        ░░░░  ▒▒▒░░░░▒░▒▓▓▓▓▒░▓██▓▓█▓▓▒▒▒▒░     
-         ░░▒  ▒▓▓▒░░░░░░▓▓▓▓▒▒▓██▓▓▓▓▓▒░░▒▒░░   
-          ░▓▓░░░░░░░░░░░░░░░░▓▓▒▓▒▒▓▓▓▓▓▓░▒░░░░ 
-         ░▒▒▓▒░░░░░░░░░ ░░░░▓▓▒░▒▓▒▒▒▒▒▒░░░░░░░ 
-      ░  ▒▓▒░░░░░░░░ ░░ ░░░░▓▓▒░░░▓▓░░░░░░░░░░  
-      ░░ ░░░ ░░░░░░░  ░░░░░░░▒▒GZ░░░░░░      ░  
-     ░░░░░░▒░░░░░ ░░  ░░░░░░░░░░▒░▒▒░░░         
-     ░░░░░░░░░░   ░░░ ░░░░░░░░░░▒▒▒▓▓▒░░░       
-     ░░░░░▒░░░░░░░░  ░░░░░░░░░░░▒▒▒▓▓▓▓▒░░░     
-        ░░░░░░░░░░░░ ░░░░░░░░░░░▒▒▒▒▓▓▓▓░░░▒    
-        ░░░░▒░░░░░░ ░░░░░░░░░░░▒▒░▒▒▓▓▓▓▓░░░░   
-        ░░░▓░▒▒░░░░░░░░░░░░▒░░░░░░░▒▒▓█▓▓░░░░░  
-         ░░▒▒░░ ░░░░░░░░░░░░░░░░░░░░░▒▓▓▓░░ ░░  
-               ░░░▒▒▒░░░░░░░░░░░░░░░░░▒▒▓░░     
-             ░░░░░▒░░░░░░░░░░░░░░░ ░░░░░▒░░░    
-           ░░░░░░░░░░░ ░░░░░░░░░░░  ░░░░░░░     
-           ░░  ░░░░░░░ ░░░░░   ░░░   ░░░░░░     
-               ░░░░░░░          ░░              
-                 ░░░░░                          
-legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm
+                                                
+                                                
+                                                
+░░                                              
+░░░                                             
+░░░                                             
+░        ░░░░░░░                                
+         ░░░░░░░▒▓▒░░                           
+       ░░░▒▓▓░░▒▓█▓▓▒░                          
+    ░▒▓▒▒░▒▓▓░░▒▓▓▓▓▒░     ░░░░▒                
+    ░▓▓▒░░░░░▒▓▒▒▒▒░░    ░░░░░▒▒                
+    ░░░░░   ░░▒▒▒░░░░   ><░▒░▒▒░                
+             ░░░░░░░▒░░░░░▒▒░░░       ░░░░░░░░░░
+                ░░░░░░░░░░▓▓░░        ░▒▒░░░▒▓▒▓
+                ░░░░░░░░░░░░░░        ░▒▒░░▒▒▓▓▓
+▓░              ░░░░░░░  ░░░░░░       ░░░░░▓▓▓▓▒
+▓░              ░░░░░░   ░░░░░░       ░░░▒▓▓▓▓▓▒
+                     ░░░░░░░        ░░░░░▒▒▒▒▒▒▒
+                     ░░░░░░░░▒▓▓░░░░░░░░░▒▒▒▒▒▒▒
+                   ░░░░░░░░░▓█▓▓░░░░░░░░░░▒▒▒▒▒▓
+                 ░░░░░░░░░▒▓▓▓▓░░░ ░░░░░░░▓▓▓▒▒▒
+                ░░░░░░░░░░░▒▓▓▓▒░░ ░░░░░░░▓▓▓▒▒░
+              ░░░░░░░░░░░░░░░▒▒░░░ ▒▒░░░ ░░▒▓▒▒░
+↗ NE ~16 km/h   echo motion, upstream forecast
+legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm  blank=no echo
 
-data: caiyunapp.com | rendered by runemap (github.com/eirik-rune/runemap)
+data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)
 ```
 
-(Format example, deliberately frozen -- a pasted "live" sample starts lying
-six minutes after it is pasted. For the real thing, run the curl:
-curl echorune.net/guangzhou)
+*Frozen sample: Taipei, 2026-08-20 02:55 UTC+8.* Deliberately not live -- a
+pasted "live" reading starts lying six minutes after it is pasted. What freezing
+protects is the weather, **not the format**: this sample sat unchanged from
+2026-07-29 while the header, the radar line and the legend all moved, so anyone
+following it would have compared their real answer against fields we no longer
+print. It is re-frozen when the format changes. Run the curl above for today.
 
 
 ## install it as an Agent Skill
