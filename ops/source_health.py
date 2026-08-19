@@ -275,12 +275,34 @@ def check(label, modname, sky, fallback, want_source=None):
         # number of mine, so it stays true when someone retunes the adapter --
         # 48s was exactly 4 x its 12s, which is what a run of timeouts looks
         # like and is nothing a refusal would ever produce.
+        # Ask the words before the arithmetic. 2026-08-19: DWD came back
+        # `NO-MAP wms-berlin: declined inside its own coverage (7.36s) --
+        # WMS-FAILED de-dwd-wn TimeoutError('The read operation timed out')` --
+        # a verdict that says "it refused" sitting directly on top of evidence
+        # that says "we stopped waiting". The elapsed-time rule below missed it
+        # because 7.36s is 1.23x the adapter's 6s timeout, not 2x: one inner
+        # request timed out at its own limit and the adapter gave up promptly,
+        # which is a fast failure, not a slow one.
+        #
+        # Counted over the whole log before changing anything: **15 rounds said
+        # `declined` while their own reason line said timeout, against 4 that
+        # SLOW-NO-MAP caught.** Inferring the mechanism from elapsed time was
+        # wrong more often than right, and the adapter had said so in words each
+        # time. Same correction as PARTIAL-BLIND made this morning: when the
+        # thing being measured states what happened, read that, and keep the
+        # inference only for the case where it says nothing.
         to = getattr(mod, "TIMEOUT", None)
-        if isinstance(to, (int, float)) and to > 0 and took >= 2 * to:
+        said_timeout = any(m in said.getvalue().lower()
+                           for m in ("timeout", "timed out"))
+        if said_timeout or (isinstance(to, (int, float)) and to > 0
+                            and took >= 2 * to):
+            if said_timeout:
+                how = "the adapter said so"
+            else:
+                how = "%.1fx its own %.0fs timeout" % (took / to, to)
             return "SLOW-NO-MAP", (
-                "%s: no frame after %.2fs, which is %.1fx its own %.0fs timeout"
-                " -- this is upstream too slow to answer, not a refusal%s"
-                % (label, took, took / to, to, because))
+                "%s: no frame after %.2fs -- upstream too slow to answer, not a"
+                " refusal (%s)%s" % (label, took, how, because))
         return "NO-MAP", ("%s: declined inside its own coverage (%.2fs)%s"
                           % (label, took, because))
     age = time.time() - float(got[4])

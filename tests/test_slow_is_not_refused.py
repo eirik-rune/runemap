@@ -86,5 +86,60 @@ class SlowIsItsOwnVerdict(unittest.TestCase):
         self.assertEqual(state, "NO-MAP", msg)
 
 
+class TheWordsBeatTheArithmetic(unittest.TestCase):
+    """2026-08-19. DWD answered `NO-MAP wms-berlin: declined inside its own
+    coverage (7.36s) -- WMS-FAILED de-dwd-wn TimeoutError('The read operation
+    timed out')`: a verdict saying "it refused" sitting on evidence saying "we
+    stopped waiting". 7.36s is 1.23x the adapter's 6s timeout, not 2x, because
+    one inner request hit its own limit and the adapter gave up promptly -- a
+    fast failure, not a slow one.
+
+    Counted before changing anything: 15 rounds said `declined` while their own
+    reason line said timeout, against 4 that this file's rule caught. Inferring
+    the mechanism from elapsed time was wrong three times more often than right,
+    and the adapter had said so in words every time.
+    """
+
+    def _spoke(self, text, step, timeout=6.0):
+        mod = types.ModuleType("fake_adapter")
+        if timeout is not None:
+            mod.TIMEOUT = timeout
+        mod.covers = lambda lng, lat: True
+
+        def draw(*a, **k):
+            sys.stderr.write(text + "\n")
+            return None
+
+        mod.draw = draw
+        sys.modules["fake_adapter"] = mod
+        real = S.time.time
+        S.time.time = _Clock(step)
+        try:
+            return S.check("fake-city", "fake_adapter", (0.0, 0.0), None)
+        finally:
+            S.time.time = real
+            del sys.modules["fake_adapter"]
+
+    def test_a_stated_timeout_wins_even_when_it_was_quick(self):
+        state, msg = self._spoke(
+            "WMS-FAILED de-dwd-wn TimeoutError('The read operation timed out')",
+            7.36)
+        self.assertEqual(state, "SLOW-NO-MAP", msg)
+        self.assertIn("the adapter said so", msg)
+
+    def test_the_arithmetic_still_covers_a_silent_giving_up(self):
+        """The control for the branch above: an adapter that times out without
+        saying anything is the case the elapsed-time rule was built for, and it
+        must still be caught -- otherwise this change trades one blind spot for
+        another."""
+        state, msg = self._spoke("SOME-OTHER-PROBLEM nothing about waiting", 48.0)
+        self.assertEqual(state, "SLOW-NO-MAP", msg)
+        self.assertIn("8.0x", msg)
+
+    def test_a_quick_refusal_that_mentions_nothing_is_still_a_refusal(self):
+        state, msg = self._spoke("DE-DWD-OUTSIDE-COVERAGE", 0.4)
+        self.assertEqual(state, "NO-MAP", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
