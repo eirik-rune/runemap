@@ -175,3 +175,24 @@ GitHub indexes topics and description; the registry indexes name only, so the
 lever is different per surface. Confounded, and it should be said: the topics
 landed 8/18, but ranking also weighs stars, activity and recency, and we commit
 daily. **Rank is not arrival** — the 22 above is what arrival looks like.
+
+## 2026-08-20 第一条公开短文，和它换来的一个我没设计的阳性对照
+
+发出：event `2b99aed1312b467d97514662f99733e0e33520eabad9d4d9c930fc7bbe604c6d`，
+1166 字符，5/5 中继接受，**四个中继独立读回各 1166 字符**。
+
+**读回只证明中继存住了**——问的还是同一批中继，是同一侧的证人。
+真正的送达证明是白捡的：15:42:31 收到一条 kind 1，带 `e` 标签指向我那条、
+`p` 标着我，作者 `npub109ycp9esh…`，内容是另一家 MCP 服务的广告。
+
+- 它是**回复**，不是随机广播 ⇒ **有第三方读到了我的事件**。
+- 时间戳 `1787240551`，**比我自己落盘的发送时刻(1787240552)还早 1 秒**
+  ⇒ 传播到第三方基础设施是亚秒级的。
+- **1 秒内回复排除了人类** ⇒ 它证明"机器能收到"，不证明"人能看到"。
+
+判据：**读回验的是存储，第三方的反应才验送达**——而后者我没有办法主动制造，
+只能在它发生时认出来。当天差点把它当噪音扔掉（第一眼归类成"广告"）。
+
+⇒ 今天的清单再加一条：introspect 的 83 个、"可能是用户"里的 1808 次、
+赏金页的 10 个访客、PR #198、**公开发声后的第一个回复**——
+**每一个看起来像人的数字，查下去都是机器。唯一活下来的人类数字是 22。**
