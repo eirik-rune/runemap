@@ -54,7 +54,11 @@ from collections import Counter
 #: liveness-check)` at 1196 requests and `mcpbeat/0.1 (+https://mcpbeat.com/bot/;
 #: liveness check)` at 438 were the two loudest entries in the bucket named
 #: "could be users". They said what they were and this list lacked the word.
-_AUDITY = ("audit", "scanner", "probe", "verify", "monitor", "healthcheck",
+#: `scan` rather than `scanner`: Palo Alto's Xpanse announces itself as "find
+#: out more about our scans", and one missing letter put a self-identifying
+#: internet-wide scanner into the bucket named "could be users" for two weeks.
+#: A word that is one inflection short is a namelist pretending to be a rule.
+_AUDITY = ("audit", "scan", "probe", "verify", "monitor", "healthcheck",
            "liveness", "uptime", "heartbeat")
 
 
@@ -67,6 +71,37 @@ def self_declared_checker(ua):
     a stranger needs this.
     """
     return any(w in (ua or "").lower() for w in _AUDITY)
+
+
+#: Words a crawler uses about itself. `CRAWLER_UA` below is a list of NAMES and
+#: will always be one name behind; this is the shape they share.
+_CRAWLERY = ("bot", "crawler", "spider", "webindex", "indexer")
+
+
+def self_declared_crawler(ua):
+    """Does this caller say, in its own user agent, that it indexes rather
+    than uses?
+
+    Added 2026-08-20 after measuring which callers came back on more than one
+    day -- the intuition being that returning costs a crawler nothing but is
+    the cheapest thing a person can spend that an indexer will not. The top
+    returners were `MJ12bot`, `agent-tools.cloud-crawler`, `PubkyWebIndex` and
+    a Palo Alto Networks scanner: every one of them says what it is, and
+    `CRAWLER_UA` simply did not contain those four names. A namelist is always
+    one name behind, and every name it lacks lands in the bucket that flatters
+    us.
+
+    The `+http` clause is the load-bearing one: putting a contact URL in the
+    user agent is a convention indexers follow and people's browsers do not,
+    so it catches the ones whose names nobody has heard of yet.
+
+    Same contract as `self_declared_checker`: a claim, not proof, and callers
+    must SPLIT on it and print both sides rather than filter. `Bun/1.1.45` and
+    `node` do not match here and must not -- an agent built on a runtime is the
+    reader we are trying to find.
+    """
+    low = (ua or "").lower()
+    return "+http" in low or any(w in low for w in _CRAWLERY)
 
 #: Our own machines. First octets-with-zeroed-last, matching how nginx logs them.
 #: Add here, not to a regex somewhere else: a second list drifts from the first
