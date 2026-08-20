@@ -41,7 +41,8 @@ import gzip
 import os
 import re
 import sys
-from collections import Counter
+import urllib.parse
+from collections import Counter, defaultdict
 
 #: Words a caller uses to say, in its own user agent, that it is checking us.
 #: It lives here rather than in mcp_who_called because the dependency already
@@ -205,11 +206,102 @@ def classify(ip, ua, path, status):
     return "UNCLASSIFIED"
 
 
+#: Paths that are ours rather than a place: asking for these says nothing about
+#: whether anyone wanted to know the weather anywhere.
+NOT_A_PLACE = ("", "/", "/mcp", "/status", "/help", "/robots.txt",
+               "/favicon.ico", "/index.html", "/sitemap.xml", "/en", "/old")
+
+
+def repeat_city(paths):
+    """How many callers asked for the SAME named place on two separate days?
+
+    Everything else this file counts answers "was there traffic". This is the
+    narrowest thing in the logs that could mean somebody wanted an answer:
+    returning costs an indexer nothing, but coming back for *one particular
+    place* is what a person does who has a reason to care about that place.
+    It was suggested by a stranger replying to a public note on 2026-08-20,
+    who put it as: requests/day measures indexing, settled calls measure
+    demand. I would not put a price on the endpoint -- one request with no key
+    and no account is the product -- so this is the version of that idea which
+    costs the caller nothing but repetition.
+
+    First run, 15 days of retained logs: **114 (caller, place) pairs, 5 of them
+    repeated across days, and four of the five did not survive being looked at**
+    -- a lead-scraper sweeping /contact /kontakt /impressum in a dozen
+    languages, two GCP addresses running curl, and a junk path. One browser
+    asking for the same city on two days is left, and it is not confirmed to be
+    a person either.
+
+    So the number this prints is an UPPER BOUND with a very small ceiling, and
+    printing the pairs matters more than printing the count: every time today
+    that a number here looked like people, reading the rows showed machines.
+    """
+    seen = defaultdict(set)
+    agents = defaultdict(set)
+    hits = defaultdict(int)
+    #: "I could not ask" and "everyone who asked was a machine" are different
+    #: answers and must not print the same page. Caught by a test whose
+    #: expectation looked wrong and was not: excluding every caller produced
+    #: the sentence meaning "check your log glob", which would send the next
+    #: reader to fix a path when the finding was that nobody human came.
+    excluded = 0
+    for line in read_lines(paths):
+        m = LOG_RE.match(line)
+        if not m:
+            continue
+        ip, ua, path = m.group("ip"), m.group("ua"), m.group("path")
+        if classify(ip, ua, path, m.group("status")) != "ASKED-FOR-WEATHER":
+            excluded += 1
+            continue
+        if self_declared_checker(ua) or self_declared_crawler(ua):
+            excluded += 1
+            continue
+        p = urllib.parse.unquote(path.split("?")[0]).rstrip("/").lower()
+        if p in NOT_A_PLACE or p.startswith("/mcp"):
+            continue
+        place = p.split("/")[1] if p.startswith("/") and len(p) > 1 else p
+        key = (ip, place)
+        seen[key].add(m.group("t")[:11])          # dd/Mon/YYYY
+        agents[key].add(ua[:46])
+        hits[key] += 1
+
+    if not seen:
+        if excluded:
+            print("0 distinct (caller, place) pairs asked for a named place, "
+                  "out of %d requests that were all either ours, machines by "
+                  "their own description, or not about a place.\n"
+                  "0 of them came back for the SAME place on 2+ separate days.\n"
+                  "This is an answer, not a failure to ask." % excluded)
+            return 0
+        print("NO-PLACES: these logs contain no requests at all that reached "
+              "the point of being classified. That is 'I could not tell', not "
+              "'nobody wanted one' -- check the log glob before reading it as "
+              "an answer.")
+        return 2
+
+    repeat = sorted(((len(d), hits[k], k, sorted(agents[k])) for k, d in seen.items()
+                     if len(d) >= 2), reverse=True)
+    print("%d distinct (caller, place) pairs asked for a named place." % len(seen))
+    print("%d of them came back for the SAME place on 2+ separate days:\n"
+          % len(repeat))
+    for days, n, (ip, place), ua in repeat:
+        print("  %-16s %-20s %d days %4d reqs  %s"
+              % (ip, place, days, n, "; ".join(ua)[:76]))
+    print("\nUPPER BOUND, and a small one. A user agent is a claim, callers are "
+          "/24 networks rather than people, and on 2026-08-20 four of five rows "
+          "here turned out to be machines once the rows themselves were read. "
+          "Read the rows; do not report the count on its own.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--logs", default="/var/log/nginx/access.log*")
     ap.add_argument("--path-filter", default=None,
                     help="only count requests whose path contains this")
+    ap.add_argument("--repeat-city", action="store_true",
+                    help="the narrowest demand signal we have: one caller "
+                         "asking for the SAME named place on separate days")
     a = ap.parse_args()
 
     paths = sorted(glob.glob(a.logs))
@@ -217,6 +309,9 @@ def main():
         print("NO-LOGS %s matched nothing -- this is 'I cannot tell', "
               "not 'nobody came'" % a.logs)
         return 2
+
+    if a.repeat_city:
+        return repeat_city(paths)
 
     buckets = Counter()
     cand_ips = Counter()
