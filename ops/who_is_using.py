@@ -120,10 +120,42 @@ SCANNER_UA = ("apachebench", "libredtail", "zgrab", "masscan", "nmap", "nuclei",
               "sqlmap", "wpscan", "httrack", "l9explore", "netsystemsresearch")
 
 
+def insider(ip):
+    """Which insider /24 this address belongs to, or None.
+
+    This replaced an exact string match (`ip in INSIDER_NETS`) on 2026-08-20,
+    and **the exact match was not broken** -- nginx here anonymises the client
+    address to its /24 before writing it, so every address in the log already
+    ends in `.0` and matched the keys by construction. Measured rather than
+    assumed: 6486 lines of access.log.3.gz, zero addresses not ending in `.0`.
+
+    I claimed the opposite first, and the way I got there is worth keeping.
+    I fired the check with hand-typed addresses (`3.114.3.152`) that do not
+    occur in any log, watched them fall through to ASKED-FOR-WEATHER, and
+    concluded the insider list had never matched. **Names must be taken from
+    the source text, never typed from memory** -- a rule already on the stone,
+    broken here while writing a positive control, which is the one place a
+    fabricated input turns straight into a fabricated finding.
+
+    What survives is a narrower reason to keep this version: the exact match is
+    correct *only because* something upstream of us anonymises. That is a
+    property of an nginx config, not of this program, and if it is ever turned
+    off our own traffic re-enters the acceptance bucket silently and in our
+    favour. Deriving the network here makes the check depend on nothing but the
+    address. Deliberately /24 and no wider: a /16 would swallow strangers who
+    share a datacentre range with us, and calling a real user "ours" shrinks
+    the only number that matters.
+    """
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return None                      # IPv6 or a malformed line: not ours
+    return INSIDER_NETS.get(".".join(parts[:3]) + ".0")
+
+
 def classify(ip, ua, path, status):
     """Five buckets, because four of them are things I would otherwise have
     reported as demand for the product."""
-    if ip in INSIDER_NETS:
+    if insider(ip):
         return "OURS"
     low, lp = ua.lower(), path.lower()
     if any(c in low for c in CRAWLER_UA):
