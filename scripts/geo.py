@@ -99,7 +99,11 @@ def _pack(row, lang=None):
         label = zh
     return {"name": zh or row["name"], "lat": row["lat"], "lon": row["lon"],
             "cc": row["cc"], "pop": row["pop"], "tz": row["tz"], "admin": adm,
-            "label": label}
+            # a1 is the admin1 CODE ("NJ"), which `label` never contains -- it
+            # carries the spelled-out "New Jersey". Without it "princeton, nj"
+            # could not be told from "princeton", and both silently returned
+            # Florida. Reported by bob 2026-08-21.
+            "a1": row["a1"], "label": label}
 
 
 def lookup(q, cc=None, lang=None):
@@ -133,10 +137,59 @@ def lookup(q, cc=None, lang=None):
     if cc:
         cand = [c for c in cand if c["cc"].lower() == cc.lower()] or cand
     if hint:                      # "Chiang Mai, Thailand" -> prefer country/admin match
-        hit = [c for c in cand if hint in norm(c["label"]) or hint == norm(c["cc"])]
+        # Also the admin1 code, so "princeton, nj" works and not only
+        # "princeton, new jersey". Exact equality, never substring: "in"
+        # (Indiana) or "or" (Oregon) as a substring would match half the
+        # labels on earth and quietly pick the wrong country.
+        # Match a WHOLE component of the label ("mercer county" / "new
+        # jersey"), the country code, or the admin1 code -- never a substring.
+        # Substring matching is how "princeton, j" answered New Jersey: "j" is
+        # inside "new jersey". The same accident makes "springfield, or" match
+        # any label containing "york" or "north", and it fails the way this
+        # whole file is about -- silently, with a plausible answer.
+        # Prefix matching is kept for the last component only, so "chiang mai,
+        # chiang" still works, and it must be at least 4 characters: shorter
+        # prefixes are where the accidents live.
+        parts = lambda c: [norm(x) for x in c["label"].split(",")]
+        hit = [c for c in cand
+               if hint in parts(c) or hint == norm(c["cc"])
+               or hint == norm(c.get("a1") or "")
+               or (len(hint) >= 4 and any(x.startswith(hint) for x in parts(c)))]
         if hit:
-            return hit[0]
-    return cand[0]
+            return _with_alternatives(hit, cand, q)
+    return _with_alternatives(cand[:1], cand, q)
+
+
+def _with_alternatives(hit, cand, q):
+    """Return the chosen place, and tell it how many others wore the same name.
+
+    The bug this exists for (bob, 2026-08-21): `/princeton` returned Princeton,
+    Florida -- correct format, plausible numbers, wrong town -- with nothing in
+    the output to suggest a choice had been made. **A confidently wrong answer
+    is worse than a missing one**, and it is worse precisely because it does
+    not prompt anyone to check.
+
+    Note what is NOT changed here. The tie is still broken by population, and
+    his suggestion to rank by population is what already produces the wrong
+    answer: Princeton FL has 39,308 people and Princeton NJ has 29,603
+    (measured, not assumed). Ranking by "fame" would need a signal we do not
+    have, and inventing one would swap this error for a less predictable one.
+    So the rule stays explainable and the fix is disclosure: say that the name
+    was ambiguous, say which one was taken, and say how to ask for another.
+    """
+    chosen = hit[0]
+    others = [c for c in cand
+              if (c["lat"], c["lon"]) != (chosen["lat"], chosen["lon"])
+              and norm(c["name"]) == norm(chosen["name"])]
+    if others:
+        chosen = dict(chosen)
+        chosen["ambiguous"] = len(others) + 1
+        # One example, the runner-up, because a list of eight is noise and the
+        # point is only to show that a qualifier is what disambiguates.
+        alt = others[0]
+        chosen["alt_hint"] = ", ".join(
+            [alt["name"]] + (alt["admin"][-1:] if alt["admin"] else [alt["cc"]]))
+    return chosen
 
 
 def rlookup(lat, lon, radius_km=60, lang=None):

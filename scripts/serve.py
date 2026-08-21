@@ -704,7 +704,13 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, out)
             _t_wx = time.time() - _t; _t = time.time()
             out = R.build(lang, label, code, label, lon, lat, tzh, wx, rb,
-                          radar_err=radar_err, radar_state=radar_state)
+                          radar_err=radar_err, radar_state=radar_state,
+                          # A name that matches several places gets a line
+                          # saying so. Silence here is what made /princeton
+                          # return Florida with nothing to suggest a choice
+                          # had been made (bob, 2026-08-21).
+                          ambiguous=(place or {}).get("ambiguous"),
+                          alt_hint=(place or {}).get("alt_hint"))
             _t_bd = time.time() - _t
             # Per-stage timing, always logged. Cold renders of fresh cities ranged
             # from 0.5s to 13.3s on this box and calling the render functions
