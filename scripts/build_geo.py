@@ -9,7 +9,14 @@ Then: GEO_DB=<outdir>/geo.sqlite python3 scripts/serve.py"""
 import csv, os, sqlite3, sys, time, unicodedata, urllib.request, zipfile
 
 BASE = "https://download.geonames.org/export/dump/"
-FILES = ["cities1000.zip", "admin1CodesASCII.txt", "admin2Codes.txt"]
+FILES = ["cities1000.zip", "admin1CodesASCII.txt", "admin2Codes.txt",
+         # 2026-08-21, issue #200: without this table `san jose, costa rica`
+         # answered California. The country was never stored as a NAME -- only
+         # as the two-letter code -- so the qualifier matched nothing and the
+         # lookup fell back to "most populous", which is US. `paris, france`
+         # looked like it worked, but only because Paris FR is the most
+         # populous candidate anyway: the word "france" did no work at all.
+         "countryInfo.txt"]
 
 
 def norm(s):
@@ -43,7 +50,23 @@ def main():
                        cc TEXT, a1 TEXT, a2 TEXT, pop INTEGER, tz TEXT);
     CREATE TABLE alias(key TEXT, pid INTEGER, pop INTEGER);
     CREATE TABLE admin(code TEXT PRIMARY KEY, name TEXT);
+    CREATE TABLE country(cc TEXT PRIMARY KEY, name TEXT, iso3 TEXT);
     """)
+    ctry = []
+    for row in csv.reader(open("countryInfo.txt", encoding="utf-8"),
+                          delimiter="\t", quoting=csv.QUOTE_NONE):
+        # The file carries ~50 leading comment lines and one header line, both
+        # starting with "#". A row that survives has ISO2, ISO3 and the name.
+        if row and not row[0].startswith("#") and len(row) > 4 and row[4]:
+            ctry.append((row[0], row[4], row[1]))
+    if len(ctry) < 200:
+        # 252 rows today. A parser that silently kept 3 of them would leave the
+        # feature switched off while every other number in this script looked
+        # normal -- the shape this whole file keeps getting caught by.
+        raise SystemExit("countryInfo.txt yielded only %d countries; refusing "
+                         "to build a DB whose country table is quietly empty"
+                         % len(ctry))
+    c.executemany("INSERT OR REPLACE INTO country VALUES(?,?,?)", ctry)
     adm = []
     for fn in ("admin1CodesASCII.txt", "admin2Codes.txt"):
         for row in csv.reader(open(fn, encoding="utf-8"), delimiter="\t"):
@@ -71,8 +94,9 @@ def main():
     c.executemany("INSERT INTO alias VALUES(?,?,?)", aliases)
     c.executescript("CREATE INDEX ix_alias ON alias(key, pop DESC); CREATE INDEX ix_pop ON place(pop DESC); CREATE INDEX ix_alias_sq ON alias(replace(key,' ',''), pop DESC);  -- 8/5: /newyork; +22MB, 1.0s")
     c.commit()
-    print("places=%d aliases=%d admin=%d  %.1fs  %.0fMB  ->  %s/%s"
+    print("places=%d aliases=%d admin=%d country=%d  %.1fs  %.0fMB  ->  %s/%s"
           % (n, c.execute("SELECT count(*) FROM alias").fetchone()[0], len(adm),
+             len(ctry),
              time.time() - t0, os.path.getsize(db) / 1e6, out, db))
 
 
