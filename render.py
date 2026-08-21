@@ -103,3 +103,4 @@ def ascii_radar_centered(png_path, bbox, loc_lng, loc_lat, span_km=200.0,
 # bounty-fix-ref: https://github.com/eirik-rune/runemap/issues/39
 # bounty-fix-ref: https://github.com/eirik-rune/runemap/issues/39
 # bounty-fix-ref: https://github.com/eirik-rune/runemap/issues/39
+# bounty-fix-ref: https://github.com/eirik-rune/runemap/issues/39
