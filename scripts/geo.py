@@ -103,7 +103,14 @@ def _pack(row, lang=None):
             # carries the spelled-out "New Jersey". Without it "princeton, nj"
             # could not be told from "princeton", and both silently returned
             # Florida. Reported by bob 2026-08-21.
-            "a1": row["a1"], "label": label}
+            "a1": row["a1"], "label": label,
+            # The untranslated name. `name` above may be a CJK alias, and
+            # "how many places share this name" must not depend on the
+            # language it is being rendered in: with lang=zh the same query
+            # reported 10 places and a different runner-up, because
+            # candidates carrying a CJK alias no longer string-matched the
+            # chosen one. Ambiguity is a property of the query.
+            "name_raw": row["name"]}
 
 
 def lookup(q, cc=None, lang=None):
@@ -180,7 +187,7 @@ def _with_alternatives(hit, cand, q):
     chosen = hit[0]
     others = [c for c in cand
               if (c["lat"], c["lon"]) != (chosen["lat"], chosen["lon"])
-              and norm(c["name"]) == norm(chosen["name"])]
+              and norm(c["name_raw"]) == norm(chosen["name_raw"])]
     if others:
         chosen = dict(chosen)
         chosen["ambiguous"] = len(others) + 1
@@ -188,7 +195,7 @@ def _with_alternatives(hit, cand, q):
         # point is only to show that a qualifier is what disambiguates.
         alt = others[0]
         chosen["alt_hint"] = ", ".join(
-            [alt["name"]] + (alt["admin"][-1:] if alt["admin"] else [alt["cc"]]))
+            [alt["name_raw"]] + (alt["admin"][-1:] if alt["admin"] else [alt["cc"]]))
     return chosen
 
 
