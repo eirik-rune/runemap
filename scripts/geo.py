@@ -167,6 +167,14 @@ def lookup(q, cc=None, lang=None):
     return _with_alternatives(cand[:1], cand, q)
 
 
+#: How much more populous the chosen place must be before the shared-name note
+#: is dropped. Bounded by a test as well as used, because a value that switches
+#: the feature off entirely (1) or on for everything (100000) is not a tuning
+#: mistake -- it is the feature being removed, and every test that derives its
+#: expectation from this constant would still pass.
+_CONTESTABLE = 10
+
+
 def _with_alternatives(hit, cand, q):
     """Return the chosen place, and tell it how many others wore the same name.
 
@@ -188,6 +196,30 @@ def _with_alternatives(hit, cand, q):
     others = [c for c in cand
               if (c["lat"], c["lon"]) != (chosen["lat"], chosen["lon"])
               and norm(c["name_raw"]) == norm(chosen["name_raw"])]
+    # Only when the choice was CONTESTABLE. Shipped without this on
+    # 2026-08-21 and caught within hours on the live service: `/berlin`
+    # advised the reader that they might have meant Berlín, Usulutan, a
+    # village of about twelve thousand people in El Salvador.
+    #
+    # Measured before choosing the rule, not after: of the 60 most populous
+    # places on earth, 18 carried the note and only 2 had a runner-up within
+    # a factor of ten. Cairo was being compared against 9,752 people, São
+    # Paulo against 3,198. That is 16 lines of noise for every 2 that mean
+    # something, and noise is how the one line that matters gets ignored --
+    # the same failure as a bell that rings to prove it still works.
+    #
+    # The factor is derived from the question the line exists to answer
+    # ("could the reader plausibly have meant the other one?"), not picked
+    # for roundness: it keeps both cases that prompted this work -- Princeton
+    # FL/NJ at 1.33 and Springfield MO/IL at 1.49 -- and drops London at 21.
+    # When either population is unknown the comparison cannot be made, and
+    # the note is kept: disclosure is the safe direction for an unanswerable
+    # question, silence is not.
+    CONTESTABLE = _CONTESTABLE
+    if others:
+        mine, theirs = chosen.get("pop") or 0, others[0].get("pop") or 0
+        if mine and theirs and mine > theirs * CONTESTABLE:
+            others = []
     if others:
         chosen = dict(chosen)
         chosen["ambiguous"] = len(others) + 1

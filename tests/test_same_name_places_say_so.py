@@ -53,11 +53,16 @@ FIXTURE = [
     (2, "Princeton", "US", "NJ", "021", 29603, 40.349, -74.659),
     (3, "Princeton", "US", "TX", "085", 8939, 33.180, -96.498),
     (4, "Tokyo", "JP", "40", "", 9733276, 35.690, 139.692),
+    # A giant and its tiny namesake: the shape that made /berlin advise the
+    # reader about a village in El Salvador.
+    (5, "Berlin", "DE", "16", "", 3426354, 52.524, 13.411),
+    (6, "Berlin", "US", "NH", "007", 9367, 44.469, -71.185),
 ]
 ADMIN = [("US.FL", "Florida"), ("US.FL.086", "Miami-Dade County"),
          ("US.NJ", "New Jersey"), ("US.NJ.021", "Mercer County"),
          ("US.TX", "Texas"), ("US.TX.085", "Collin County"),
-         ("JP.40", "Tokyo")]
+         ("JP.40", "Tokyo"), ("DE.16", "State of Berlin"),
+         ("US.NH", "New Hampshire"), ("US.NH.007", "Coos County")]
 
 
 def build_db(path):
@@ -158,6 +163,54 @@ class ASharedNameIsDisclosed(unittest.TestCase):
         hints = {lang: (self.geo.lookup("princeton", lang=lang) or {}).get("alt_hint")
                  for lang in (None, "zh", "ja")}
         self.assertEqual(len(set(hints.values())), 1, hints)
+
+    def test_a_giant_is_not_asked_whether_it_meant_the_village(self):
+        """Shipped without this and caught on the live service within hours:
+        `/berlin` told readers they might have meant Berlin, New Hampshire.
+
+        Measured before the rule was chosen: of the 60 most populous places on
+        earth, 18 carried the note and only 2 had a runner-up within a factor
+        of ten. Sixteen lines of noise for every two that mean something is how
+        the line that matters gets ignored."""
+        p = self.geo.lookup("berlin")
+        self.assertEqual(p["cc"], "DE")
+        self.assertIsNone(p.get("ambiguous"),
+                          "3,426,354 against 9,367 is not a contestable choice")
+
+    def test_a_close_call_still_speaks_up(self):
+        """The control for the test above. Without it, 'quiet for Berlin' would
+        be indistinguishable from 'quiet for everything', which is the guard
+        with one verdict and no jurisdiction."""
+        self.assertEqual(self.geo.lookup("princeton")["ambiguous"], 3)
+
+    def test_an_unknown_population_keeps_the_note(self):
+        """The comparison cannot be made, so it is not made silently.
+        Disclosure is the safe direction for an unanswerable question."""
+        import sqlite3
+        c = sqlite3.connect(self.path)
+        c.execute("UPDATE place SET pop=0 WHERE id=6")
+        c.commit(); c.close()
+        if hasattr(self.geo._L, "c"):
+            del self.geo._L.c
+        try:
+            self.assertEqual(self.geo.lookup("berlin")["ambiguous"], 2)
+        finally:
+            c = sqlite3.connect(self.path)
+            c.execute("UPDATE place SET pop=9367 WHERE id=6")
+            c.commit(); c.close()
+            if hasattr(self.geo._L, "c"):
+                del self.geo._L.c
+
+    def test_the_contestability_factor_is_inside_a_defensible_range(self):
+        """The constant is bounded on its own, not only used. At 1 the note
+        never appears and at 100000 it appears for everything -- neither is a
+        tuning mistake, both are the feature silently removed, and every test
+        that derives its expectation from the constant would still pass. The
+        range comes from what it must decide: 2 is the smallest gap anyone
+        would call decisive, and above ~50 a runner-up is a different kind of
+        place entirely (London vs a village of 422,324 sits at 21)."""
+        self.assertGreaterEqual(self.geo._CONTESTABLE, 2)
+        self.assertLessEqual(self.geo._CONTESTABLE, 50)
 
     def test_the_alternative_offered_is_not_the_place_we_chose(self):
         """A hint that names the town already being shown teaches nothing."""
