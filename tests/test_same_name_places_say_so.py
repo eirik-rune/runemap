@@ -1,0 +1,144 @@
+"""A name that matches several towns must not answer as if it matched one.
+
+Reported 2026-08-21 by bob: `curl echorune.net/princeton` returned
+
+    # Princeton, Miami-Dade County, Florida, US weather scene
+
+-- correct format, plausible numbers, wrong town, and nothing anywhere in the
+output to suggest a choice had been made. His sentence for it is the one to
+keep: **这类错误比报错更危险——错得自信**. A missing answer sends someone to
+look; a confident wrong one does not.
+
+Two defects, and they are separate:
+
+1. **`princeton, nj` did not work** while `princeton, new jersey` did. The hint
+   was compared against the label ("Mercer County, New Jersey, US") and the
+   country code, never against the admin1 CODE, which is where "NJ" lives.
+2. **Nothing disclosed the ambiguity.** Thirteen places are called Princeton.
+
+What is deliberately NOT changed: the tie-break. bob suggested ranking
+candidates by population, and ranking by population is already what the code
+does and is exactly what produces the wrong answer here -- measured in the real
+database, Princeton FL has 39,308 people and Princeton NJ has 29,603. Ranking
+by "fame" would need a signal we do not have, and inventing one trades a
+predictable error for an unpredictable one. So the rule stays explainable and
+the output says what it did.
+
+Builds its own fixture database, same reason as test_geo_zh: a test that skips
+when GEO_DB is absent skips on this machine AND in CI, and a test that can
+never fail is decoration.
+"""
+import os
+import sqlite3
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+
+#: (id, name, cc, a1, a2, pop, lat, lon). The two Princetons carry the real
+#: populations, because the whole point is that the more populous one is the
+#: one nobody means. Tokyo is the control: one place, one name, no note.
+FIXTURE = [
+    (1, "Princeton", "US", "FL", "086", 39308, 25.538, -80.409),
+    (2, "Princeton", "US", "NJ", "021", 29603, 40.349, -74.659),
+    (3, "Princeton", "US", "TX", "085", 8939, 33.180, -96.498),
+    (4, "Tokyo", "JP", "40", "", 9733276, 35.690, 139.692),
+]
+ADMIN = [("US.FL", "Florida"), ("US.FL.086", "Miami-Dade County"),
+         ("US.NJ", "New Jersey"), ("US.NJ.021", "Mercer County"),
+         ("US.TX", "Texas"), ("US.TX.085", "Collin County"),
+         ("JP.40", "Tokyo")]
+
+
+def build_db(path):
+    c = sqlite3.connect(path)
+    c.execute("CREATE TABLE place (id INT, name TEXT, lat REAL, lon REAL, "
+              "cc TEXT, a1 TEXT, a2 TEXT, pop INT, tz TEXT)")
+    c.execute("CREATE TABLE alias (key TEXT, pid INT, pop INT)")
+    c.execute("CREATE TABLE admin (code TEXT, name TEXT)")
+    for pid, name, cc, a1, a2, pop, lat, lon in FIXTURE:
+        c.execute("INSERT INTO place VALUES (?,?,?,?,?,?,?,?,?)",
+                  (pid, name, lat, lon, cc, a1, a2, pop, "UTC"))
+        c.execute("INSERT INTO alias VALUES (?,?,?)", (name.lower(), pid, pop))
+    c.executemany("INSERT INTO admin VALUES (?,?)", ADMIN)
+    c.commit()
+    c.close()
+
+
+class ASharedNameIsDisclosed(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp()
+        cls.path = os.path.join(cls.dir, "geo.sqlite")
+        build_db(cls.path)
+        os.environ["GEO_DB"] = cls.path
+        import geo
+        geo.DB = cls.path
+        if hasattr(geo._L, "c"):
+            del geo._L.c
+        cls.geo = geo
+
+    # ---- the reported case -------------------------------------------------
+
+    def test_the_bare_name_still_returns_the_most_populous(self):
+        """Unchanged on purpose. The rule is explainable; the fix is saying so."""
+        p = self.geo.lookup("princeton")
+        self.assertEqual(p["a1"], "FL")
+
+    def test_the_bare_name_now_admits_there_was_a_choice(self):
+        p = self.geo.lookup("princeton")
+        self.assertEqual(p["ambiguous"], 3)
+        self.assertIn("Princeton", p["alt_hint"])
+        self.assertIn("New Jersey", p["alt_hint"],
+                      "the example offered should be the runner-up, which is "
+                      "the one a person asking for Princeton usually means")
+
+    def test_a_state_abbreviation_now_works(self):
+        """The defect that made the reported case unfixable by the user."""
+        self.assertEqual(self.geo.lookup("princeton, nj")["a1"], "NJ")
+        self.assertEqual(self.geo.lookup("princeton, tx")["a1"], "TX")
+
+    def test_the_spelled_out_state_still_works(self):
+        """It already did. A fix that broke it would be a net loss."""
+        self.assertEqual(self.geo.lookup("princeton, new jersey")["a1"], "NJ")
+
+    # ---- the disclosure must not become noise ------------------------------
+
+    def test_an_unambiguous_place_carries_no_note(self):
+        """If every place claimed ambiguity the line would be ignored within a
+        day -- the same failure as a bell that rings to prove it works."""
+        p = self.geo.lookup("tokyo")
+        self.assertIsNone(p.get("ambiguous"))
+        self.assertIsNone(p.get("alt_hint"))
+
+    def test_a_qualified_query_still_says_the_name_is_shared(self):
+        """Asking for `princeton, nj` should still show the count: the reader
+        picked one, and knowing others exist is what stops the next person
+        from trusting a bare `/princeton`."""
+        p = self.geo.lookup("princeton, nj")
+        self.assertEqual(p["ambiguous"], 3)
+
+    # ---- the hint must not match by accident -------------------------------
+
+    def test_the_hint_matches_a_state_code_exactly_not_as_a_substring(self):
+        """`in` (Indiana) and `or` (Oregon) are substrings of half the labels
+        on earth. Substring matching here would silently pick a wrong country
+        while looking like it had honoured the qualifier."""
+        p = self.geo.lookup("princeton, fl")
+        self.assertEqual(p["a1"], "FL")
+        # "j" is a substring of "NJ" but is not a state
+        p = self.geo.lookup("princeton, j")
+        self.assertEqual(p["a1"], "FL", "an unmatched hint must fall back to "
+                                        "the ranked first choice, not to "
+                                        "whichever label happens to contain it")
+
+    def test_the_alternative_offered_is_not_the_place_we_chose(self):
+        """A hint that names the town already being shown teaches nothing."""
+        p = self.geo.lookup("princeton")
+        self.assertNotIn("Florida", p["alt_hint"])
+
+
+if __name__ == "__main__":
+    unittest.main()
