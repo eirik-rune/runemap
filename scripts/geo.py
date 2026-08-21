@@ -3,7 +3,7 @@
   lookup("Chiang Mai")      -> place dict (name -> lat/lon)
   rlookup(18.79, 98.99)     -> nearest place + county/province
 No network, no rate limit. DB path via env GEO_DB."""
-import math, os, re, sqlite3, threading, unicodedata
+import math, os, re, sqlite3, sys, threading, unicodedata
 
 DB = os.environ.get("GEO_DB", "/home/ubuntu/geonames/geo.sqlite")
 # One connection per THREAD, not per process. serve.py:6 is a
@@ -38,6 +38,41 @@ def _admin(cc, a1, a2):
         r = d.execute("SELECT name FROM admin WHERE code=?", ("%s.%s" % (cc, a1),)).fetchone()
         if r: out.append(r["name"])
     return out
+
+
+#: cc -> [normalised country name, normalised iso3]. Built once per process.
+_COUNTRY = None
+
+
+def _countries():
+    """{cc: [normalised name, normalised iso3]}. Empty if the DB predates #200.
+
+    An older geo.sqlite has no `country` table, and the service must keep
+    answering while the 65MB rebuild happens -- a deploy that takes the site
+    down to add a qualifier would be a worse bug than the one it fixes. But
+    degrading QUIETLY is the failure this codebase keeps paying for, so the
+    absence is announced once, to the log the service already writes.
+
+    Known NOT covered, written here rather than left in my head: GeoNames
+    gives one English name and the two ISO codes per country and no aliases,
+    so `london, uk` and `东京, 日本` do not match on the country (both happen
+    to answer correctly anyway, for the same coincidental reason `paris,
+    france` did before #200 -- they are the most populous candidate). Adding a
+    hand-written alias list would be a second, drifting source of truth for
+    country names; if these need to work, the fix is a real alias table.
+    """
+    global _COUNTRY
+    if _COUNTRY is None:
+        _COUNTRY = {}
+        try:
+            for r in _db().execute("SELECT cc, name, iso3 FROM country"):
+                _COUNTRY[r["cc"]] = [x for x in (norm(r["name"]),
+                                                 norm(r["iso3"] or "")) if x]
+        except sqlite3.Error:
+            print("geo: this geo.sqlite has no country table, so country-name "
+                  "qualifiers ('san jose, costa rica') will not be honoured. "
+                  "Rebuild with scripts/build_geo.py.", file=sys.stderr)
+    return _COUNTRY
 
 
 def tz_offset(tzname, at=None):
@@ -157,7 +192,16 @@ def lookup(q, cc=None, lang=None):
         # Prefix matching is kept for the last component only, so "chiang mai,
         # chiang" still works, and it must be at least 4 characters: shorter
         # prefixes are where the accidents live.
-        parts = lambda c: [norm(x) for x in c["label"].split(",")]
+        # The country NAME is folded in as one more component of the label, so
+        # it inherits both rules above rather than getting a matcher of its
+        # own. Issue #200: the label ends in the two-letter code ("CR"), never
+        # in "Costa Rica", so `san jose, costa rica` matched nothing and fell
+        # through to most-populous, which is California. Adding it here also
+        # makes `springfield, united states` and `san jose, cri` work, and
+        # keeps one place where a qualifier is decided.
+        ctry = _countries()
+        parts = lambda c: [norm(x) for x in c["label"].split(",")] \
+            + ctry.get(c["cc"], [])
         hit = [c for c in cand
                if hint in parts(c) or hint == norm(c["cc"])
                or hint == norm(c.get("a1") or "")
