@@ -28,9 +28,18 @@ import who_is_using as W  # noqa: E402
 _BROWSER = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
 
 
-def line(ip, day, path, ua=_BROWSER, status="200"):
-    return ('%s - [%s:04:05:06 +0000] "GET %s HTTP/1.1" %s 1800 "%s"\n'
-            % (ip, day, path, status, ua))
+def line(ip, day, path, ua=_BROWSER, status="200", grid="grid"):
+    """One access-log line in the format nginx actually writes.
+
+    Updated 2026-08-22, when repeat_city stopped inferring "this was a place"
+    from the path shape and started reading the service's own verdict. The old
+    fixture wrote the pre-2026-08-12 format, so every line became "no verdict"
+    and five tests went red at once -- the fixture had quietly become a
+    different log than production writes.
+    """
+    return ('%s - [%s:04:05:06 +0000] "GET %s HTTP/1.1" %s 1800 "%s" '
+            '0.5 "-" %s - "echorune.net" "127.0.0.1:8788"\n'
+            % (ip, day, path, status, ua, grid))
 
 
 def run(lines):
@@ -111,6 +120,27 @@ class OnlyARealReturnCounts(unittest.TestCase):
         rc, out = run([line("9.9.9.0", "01/Aug/2026", "/%E6%B8%85%E8%BF%88"),
                        line("9.9.9.0", "03/Aug/2026", "/清迈")])
         self.assertIn("1 of them came back", out)
+
+    def test_a_path_the_service_did_not_treat_as_a_place_never_counts(self):
+        """The defect this predicate was written for: /en/contact returned 200
+        with a full weather scene, so status and byte count both looked like a
+        satisfied reader. Only the service's own verdict separates it."""
+        rc, out = run([line("9.9.9.0", "01/Aug/2026", "/en/contact", grid="error"),
+                       line("9.9.9.0", "03/Aug/2026", "/en/contact", grid="error")])
+        self.assertEqual(rc, 2, out)
+        self.assertIn("NO-PLACES", out)
+
+    def test_lines_without_a_verdict_are_counted_and_announced(self):
+        """Log lines older than 2026-08-12 carry no verdict. Dropping them
+        silently would make a window that quietly got shorter look exactly
+        like a quiet week."""
+        old_fmt = ('9.9.9.0 - [01/Aug/2026:04:05:06 +0000] "GET /tokyo '
+                   'HTTP/1.1" 200 1800 "%s"\n' % _BROWSER)
+        rc, out = run([old_fmt, old_fmt.replace("01/Aug", "03/Aug"),
+                       line("8.8.8.0", "01/Aug/2026", "/osaka"),
+                       line("8.8.8.0", "03/Aug/2026", "/osaka")])
+        self.assertIn("1 of them came back", out)
+        self.assertIn("2 further requests carry no verdict", out)
 
 
 if __name__ == "__main__":

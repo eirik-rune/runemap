@@ -124,6 +124,30 @@ _PROBE_EXT = ("txt", "ico", "xml", "json", "php", "html", "htm", "css", "js",
 _CY_LANG = {"en": "en_US", "zh": "zh_CN", "ja": "ja"}
 
 
+#: The language suffixes this service actually serves. `bare_language_suffix`
+#: is narrow on purpose: only strings that already mean something in our own
+#: URL grammar. /ko still resolves to Kyiv, because we do not serve Korean and
+#: a rule about languages we do not offer would be a guess, not a fix.
+LANGS = ("en", "zh", "ja")
+
+
+def bare_language_suffix(seg):
+    """-> the language, if this whole path is just our own suffix.
+
+    2026-08-22: `en` is an alias of Hardeeville, South Carolina (5,301 people)
+    in the GeoNames data, so `/en` answered with that town's weather -- and so
+    did `/en/contact` and `/en/impressum`, because the unmatched qualifier was
+    dropped. A lead scraper walking contact-page paths in a dozen languages
+    collected eleven confident weather scenes, and my own demand report then
+    counted it as the top returning reader.
+
+    A reader typing `/en` means the language; the town is reachable by name.
+    Returning the language rather than a boolean keeps the caller from having
+    to lowercase the segment a second time to build the message.
+    """
+    return seg[0].lower() if len(seg) == 1 and seg[0].lower() in LANGS else None
+
+
 def _accept_lang(hdr):
     """First supported language in an Accept-Language header, by q-order."""
     if not hdr:
@@ -593,6 +617,20 @@ class H(BaseHTTPRequestHandler):
                     small = True; seg = seg[:-1]
                 if len(seg) > 1 and seg[-1].lower() in ("en", "zh", "ja"):
                     q.setdefault("lang", [seg[-1].lower()]); seg = seg[:-1]
+                # A bare /en, /zh or /ja is our own language suffix, not a
+                # place. It reached geo anyway, and "en" is an alias of
+                # Hardeeville, South Carolina (5,301 people), so /en and
+                # /en/anything answered with that town's weather -- confident,
+                # correctly formatted, and about nowhere the reader named.
+                # Narrow on purpose: only the three strings that already mean
+                # something in this service's URL grammar. /ko still resolves
+                # to Kyiv, because we do not serve Korean and inventing a rule
+                # about languages we do not offer would be guessing.
+                lg = bare_language_suffix(seg)
+                if lg:
+                    return self._send(404, "%s is the language suffix, not a "
+                                      "place.\n\ntry  curl echorune.net/tokyo/%s"
+                                      "\n" % (lg, lg))
                 spec = "/".join(seg).strip()
                 ll = _as_coords(spec)
                 if ll:
@@ -710,7 +748,10 @@ class H(BaseHTTPRequestHandler):
                           # return Florida with nothing to suggest a choice
                           # had been made (bob, 2026-08-21).
                           ambiguous=(place or {}).get("ambiguous"),
-                          alt_hint=(place or {}).get("alt_hint"))
+                          alt_hint=(place or {}).get("alt_hint"),
+                          # A qualifier we could not honour is not a qualifier
+                          # the reader did not type (2026-08-22).
+                          unmatched_hint=(place or {}).get("unmatched_hint"))
             _t_bd = time.time() - _t
             # Per-stage timing, always logged. Cold renders of fresh cities ranged
             # from 0.5s to 13.3s on this box and calling the render functions

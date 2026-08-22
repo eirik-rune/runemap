@@ -156,6 +156,11 @@ def lookup(q, cc=None, lang=None):
         return None
     head = norm(parts[0])
     hint = norm(parts[-1]) if len(parts) > 1 else None
+    #: The qualifier as the reader typed it, kept before `parts` is rebound
+    #: below to a lambda over label components. Reported back verbatim when
+    #: nothing matches it -- echoing my normalised form would hide a typo by
+    #: tidying it up, and the typo is the thing worth showing.
+    hint_raw = parts[-1] if len(parts) > 1 else None
     rows = d.execute(
         "SELECT p.* FROM alias a JOIN place p ON p.id=a.pid WHERE a.key=? ORDER BY a.pop DESC LIMIT 40",
         (head,)).fetchall()
@@ -208,6 +213,23 @@ def lookup(q, cc=None, lang=None):
                or (len(hint) >= 4 and any(x.startswith(hint) for x in parts(c)))]
         if hit:
             return _with_alternatives(hit, cand, q)
+        # The reader named a qualifier and NOTHING matched it. Until
+        # 2026-08-22 that word was silently discarded and the default rule
+        # answered as though it had never been typed, which is how
+        # `/en/contact` served a weather scene for Hardeeville, South
+        # Carolina (5,301 people) to a scraper walking a list of contact-page
+        # paths -- and, worse than the scraper, how `princeton, new jersy`
+        # would confidently answer Florida over a typo.
+        #
+        # It is the same defect #200 was one instance of: an unmatched
+        # qualifier is not the absence of a qualifier. Fixing the country
+        # table fixed one reason a hint could fail to match; this makes the
+        # remaining reasons audible instead of leaving them to be found one
+        # at a time.
+        out = _with_alternatives(cand[:1], cand, q)
+        if out:
+            out["unmatched_hint"] = hint_raw
+        return out
     return _with_alternatives(cand[:1], cand, q)
 
 

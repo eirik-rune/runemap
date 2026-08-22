@@ -1531,7 +1531,7 @@ def _coherence_sample(name, rt, art, kmcol, marker, obs_age=None, age_tok=None,
 
 
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
-          ambiguous=None, alt_hint=None,
+          ambiguous=None, alt_hint=None, unmatched_hint=None,
           radar_state=None):
     code = _mark(code)   # legend and grid must show the same glyph
     rt = wx["realtime"]
@@ -1546,6 +1546,10 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
             L.append("# note: %d places share this name; showing the most "
                      "populous. add a state or country to pick another, "
                      "e.g. \"%s\"" % (ambiguous, alt_hint or ""))
+        if unmatched_hint:
+            L.append("# note: could not match \"%s\" to any state or country "
+                     "for this name, so it was ignored and the most populous "
+                     "match is shown" % unmatched_hint)
         L.append("now: %s  %.0fC  humidity %.0f%%  wind %.0fkm/h  precip %.2fmm/h" % (
             rt["skycon"], rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
@@ -1556,6 +1560,9 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         if ambiguous:
             L.append("# 注: 同名の地名が%d件。人口最大のものを表示。"
                      "別の地点は州・国名を追加 \"%s\"" % (ambiguous, alt_hint or ""))
+        if unmatched_hint:
+            L.append("# 注: \"%s\" はこの地名の州・国名に一致せず無視し、"
+                     "人口最大のものを表示しています" % unmatched_hint)
         L.append("現在: %s  %.0fC  湿度 %.0f%%  風速 %.0fkm/h  降水 %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
@@ -1565,6 +1572,8 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("# \u66f4\u65b0\u4e8e %s %s  (\u7ecf\u5ea6 %s, \u7eac\u5ea6 %s)" % (stamp, _tz_label(tzh), lng, lat))
         if ambiguous:
             L.append("# \u6ce8: \u540c\u540d\u5730\u70b9 %d \u4e2a\uff0c\u6b64\u5904\u53d6\u4eba\u53e3\u6700\u591a\u7684\u3002\u8981\u522b\u7684\u8bf7\u52a0\u5dde\u6216\u56fd\u540d\uff0c\u5982 \"%s\"" % (ambiguous, alt_hint or ""))
+        if unmatched_hint:
+            L.append("# \u6ce8: \"%s\" \u5339\u914d\u4e0d\u5230\u8fd9\u4e2a\u5730\u540d\u7684\u4efb\u4f55\u5dde\u6216\u56fd\u5bb6\uff0c\u5df2\u5ffd\u7565\uff0c\u6b64\u5904\u53d6\u4eba\u53e3\u6700\u591a\u7684" % unmatched_hint)
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
