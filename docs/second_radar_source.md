@@ -753,3 +753,52 @@ One more thing to carry into that build: consecutive items alternate
 collection is exactly the shape that needs checking before use, not after --
 see the JMA row, where `validtime == basetime` separates an observation from a
 forecast in a file that otherwise looks uniform.
+
+## DWD (Germany) is degrading, and that is not by itself a reason to act
+
+**2026-08-22.** The source-health bell rang on `wms-berlin` (`SLOW-NO-MAP`,
+`TimeoutError`). The verdict was correct in a way worth noting first: it said
+*"upstream too slow to answer, not a refusal (the adapter said so)"* — reading
+the reason the adapter itself printed rather than inferring a mechanism from
+elapsed time, which is the 8/20 fix working in production.
+
+The failure rate is genuinely climbing, one line per 20-minute round:
+
+| day | rounds | wms-berlin failures |
+|---|---|---|
+| 08-15 | 144 | 0 |
+| 08-16 | 144 | 0 |
+| 08-17 | 144 | 1 |
+| 08-18 | 144 | 3 |
+| 08-19 | 144 | 8 |
+| 08-20 | 144 | 5 |
+| 08-21 | 144 | 12 |
+| 08-22 | 76 (partial) | 6 |
+
+That is a trend, not jitter — roughly 8% of rounds today, from zero a week ago.
+
+**And it still does not justify spending anything**, because the other half of
+the question has an answer. Across every access log we still retain:
+
+| | requests |
+|---|---|
+| German cities (berlin, munich, hamburg, frankfurt, cologne, …) | **9** |
+| control (chiangmai + 清迈 + tokyo) | **49,859** |
+
+About 5,500 to 1. Whether those nine were readers or checkers does not change
+the decision at this magnitude.
+
+So: **the fastest-degrading source in the fleet serves a country nobody has
+asked about.** No second German source, no paid egress, no work. This is the
+8/20 criterion applied rather than restated — measure who is using a source
+before paying to prop it up.
+
+What would change the answer: German requests reaching the same order as any
+served country, or DWD failing so completely that the fleet-wide health number
+stops meaning anything. Neither is true today. The bell itself is behaving
+correctly and needs no change — it rang once, on a set change that survived a
+debounce round, which is exactly its design.
+
+The reason this is written down rather than remembered: the next ring will look
+identical to this one, and without this table I would spend another twenty
+minutes re-deriving the same two numbers before reaching the same answer.
