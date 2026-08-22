@@ -103,6 +103,31 @@ scrolls" a fair dismissal has changed:
    step at either listing timestamp** — crawlers, not people. So "they may
    search descriptions properly" is not a route to readers even if true.
 
+**2026-08-22, two measurements that sharpen this section.**
+
+*The search scope now has a hard control.* "Search matches names only" was
+measured on 8/16 by observing that 160 hits for `weather` all had it in the
+name — an inference from a pattern. Today it is a direct test: `drawn` and
+`text characters` appear **only** in our description, and both return **0
+results registry-wide**. Descriptions are not indexed at all. That is worth
+having as a fact rather than a pattern, because this whole section rests on it.
+
+*Renaming in place does not exist.* I checked the API rather than assuming:
+`PUT /v0.1/servers/{serverName}/versions/{version}` updates a version's
+configuration and is keyed on the name, so the name is the primary key and
+cannot be edited. Any new name is a new entry, which is exactly what the
+one-URL-one-entry rule blocks. So the replacement path below is the only path;
+there is no cheaper variant of it I had missed.
+
+*And the number that decides whether any of this is worth doing.* Server-side
+method counting (`ops/mcp_who_called.py`, which reads the method we recorded
+rather than inferring it from response size): **130 outside clients have
+introspected this server; 7 called a tool that does not exist; 10 called
+`get_weather` while self-identifying as an auditor; 0 called it without
+saying so.** Every single caller was a bot. Ranking higher in a search index
+that only crawlers appear to query is a small prize, and this is the number to
+re-read before spending the `net.echorune` namespace on it.
+
 What has **not** changed is the thing that stopped me: deprecating the live
 entry may drop us from the directories that ingested it, and **I have found no
 way to ask that question before doing it**. One remote URL still may not back
