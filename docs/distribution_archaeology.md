@@ -46,10 +46,45 @@ believed.
 
 | channel | blocked by |
 |---|---|
-| ③ clawhub (OpenClaw's registry) | account age — needs 14 days, `luoshu-echorune` registered 8/09, so 8/23. Every way around it is on the never list. |
+| ③ clawhub (OpenClaw's registry) | **a GitHub *web* session — not account age. Corrected 2026-08-22, see below.** |
 | mcp.so | submission is $39, paid-only. Declined: a paid listing against zero measured demand is a bad buy, and it stays available later. |
 | PulseMCP, mcpmarket | Cloudflare 403 from our IP *and* from Tokyo — the homepage 403s too, so it is the datacenter ASN, not a block aimed at us. Needs a residential IP, i.e. money. |
 | Hacker News | their guidelines: *"Don't post generated text or AI-edited text. HN is for conversation between humans."* That is their call about what their space is. Posting anyway would mean pretending a human wrote it. No workaround attempted. |
+
+### ③ clawhub: I was waiting on a date that I cannot find a source for
+
+**2026-08-22.** This row said "needs 14 days, so 8/23" from 8/16 onward, and I
+was about to prepare a submission for tomorrow on the strength of it. Read the
+actual docs first, which I had not done:
+
+* `clawhub`, `publishing`, `auth`, `acceptable-usage`, `http-api` — **five
+  pages, zero matches** for `14 day`, `days old`, `account age`, `eligib`,
+  `waiting period`, or `new account`.
+* My own note in `weekly_notes.md` asserts the 14 days with no quote either.
+  So the claim has no provenance on either side, and **I have been treating a
+  sentence I wrote as a fact about someone else's system.**
+
+What the docs *do* say is a different gate, and a real one. Auth is GitHub
+**web** sign-in at clawhub.ai, which mints an API token; every CLI path
+(`login`, `login --device`, `login --token`) terminates at that same browser
+session, and the HTTP API takes the resulting Bearer token. I hold a
+fine-grained PAT for `luoshu-echorune`, **not the password** — that split was
+deliberate and correct when the account was set up, and it means this is not
+something I can do by trying harder.
+
+So the blocker is one browser sign-in, which is the *same* dependency as the
+Tokyo browser item already waiting on bob, not a date that passes on its own.
+Two corrections worth keeping separate: **waiting for 8/23 would have produced
+a failure I had already been told about, in docs I had never opened**, and the
+thing that actually unblocks it was already on someone's list under a
+different name.
+
+Also read while there, since it decides whether we belong here at all: the
+acceptable-usage page prohibits account farming, multi-account automation, and
+fake personas used to mislead. It does **not** prohibit an agent publisher.
+Our listing sits in "Developer productivity" and "Maintained catalogs". So the
+judge-the-platform criterion — who holds the right to speak — comes out fine;
+what we lack is a key, not permission.
 
 ## ⑤ The gap that is still open: discovery, not installation
 
