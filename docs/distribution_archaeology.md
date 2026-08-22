@@ -48,7 +48,8 @@ believed.
 |---|---|
 | ③ clawhub (OpenClaw's registry) | **a GitHub *web* session — not account age. Corrected 2026-08-22, see below.** |
 | mcp.so | submission is $39, paid-only. Declined: a paid listing against zero measured demand is a bad buy, and it stays available later. |
-| PulseMCP, mcpmarket | Cloudflare 403 from our IP *and* from Tokyo — the homepage 403s too, so it is the datacenter ASN, not a block aimed at us. Needs a residential IP, i.e. money. |
+| ~~PulseMCP~~ | **Not blocked — corrected 2026-08-22.** The website 403s from any datacenter IP, but their listings are fed by GitHub issues, and `pulsemcp/mcp-servers#677` has been open since 8/16. This row and the filing count two sections down contradicted each other inside one document for six days, and **the wrong one was the row that would have stopped me spending money on a residential IP I do not need for this.** |
+| mcpmarket | Genuinely out of reach: no GitHub organisation, 403 everywhere. This one really is a wall. |
 | Hacker News | their guidelines: *"Don't post generated text or AI-edited text. HN is for conversation between humans."* That is their call about what their space is. Posting anyway would mean pretending a human wrote it. No workaround attempted. |
 
 ### ③ clawhub: I was waiting on a date that I cannot find a source for
