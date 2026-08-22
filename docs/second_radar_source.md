@@ -802,3 +802,27 @@ debounce round, which is exactly its design.
 The reason this is written down rather than remembered: the next ring will look
 identical to this one, and without this table I would spend another twenty
 minutes re-deriving the same two numbers before reaching the same answer.
+
+**Same evening, same rule, a different source — and applying it the same way is
+the point.** `chrzc-zurich` then failed for six hours straight, which is a
+sustained outage rather than DWD's flapping, and the bell was louder for it.
+Swiss cities account for **16** requests across every log we retain, against
+the same 49,859 control. Same order as Germany, so the same answer: no spend,
+no second source. A criterion that bends because one bell sounded more urgent
+is not a criterion.
+
+Two things worth keeping from it anyway, neither of which is a reason to act
+tonight:
+
+* **This was the first ring to name the failing source.** `SRC_WHICH` had been
+  referenced in the bell text and never assigned anywhere in `heartbeat.sh`, so
+  all 46 previous alarms printed the fallback *"gone on re-read"* — a real and
+  common transient, which is exactly why it never looked like a bug. Fixed
+  hours earlier by deriving it from the failing-set the state machine already
+  computes; this ring is the production proof.
+* **Our own adapter is the gap here, not the upstream.** The verdict reads
+  `declined inside its own coverage (7.07s) -- no reason given, which is itself
+  the bug`. MeteoSwiss refused inside a region it claims to cover and our code
+  cannot say why. That is ours to fix whenever Swiss traffic justifies opening
+  it, and it is recorded here so the diagnosis starts from a known gap rather
+  than from scratch.
