@@ -1,0 +1,269 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>echorune — 两个问题，一轮测完</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+<style>
+:root{
+  color-scheme:light dark;
+  --ink:#171a1f; --dim:#6b7280; --bg:#fff; --line:#e5e7eb; --panel:#f7f8f9;
+  --r1:#b9dcf2; --r2:#3fb56b; --r3:#e0c341; --r4:#e08b3f; --r5:#d64545; --me:#7b3fe4;
+}
+@media (prefers-color-scheme:dark){
+  :root{--ink:#e6e8ec;--dim:#98a0ab;--bg:#0f1115;--line:#232833;--panel:#161920}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  padding:1.1rem;max-width:44rem;margin-inline:auto}
+h1{font-size:1.15rem;margin:0 0 .15rem;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:.82rem;margin:0 0 1.1rem}
+.card{border:1px solid var(--line);border-radius:10px;padding:.85rem .9rem;margin:0 0 .9rem;
+  background:var(--panel)}
+.card h2{font-size:.74rem;font-weight:600;color:var(--dim);margin:0 0 .5rem;
+  text-transform:uppercase;letter-spacing:.07em}
+button{width:100%;padding:.85rem;font-size:1rem;font-weight:600;border:0;border-radius:9px;
+  background:var(--me);color:#fff;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);
+  font-weight:500;font-size:.85rem;padding:.6rem}
+.bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:.7rem 0 0}
+.bar i{display:block;height:100%;width:0;background:var(--me);transition:width .25s}
+.status{font-size:.8rem;color:var(--dim);margin:.45rem 0 0;min-height:1.2em;
+  font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:.83rem}
+th,td{text-align:right;padding:.4rem .35rem;border-bottom:1px solid var(--line);
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem}
+th{color:var(--dim);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+td.med{font-weight:700}
+.who{font-size:.7rem;color:var(--dim);display:block;font-family:inherit}
+.v{border-left:3px solid var(--line);padding:.15rem 0 .15rem .7rem;margin:0 0 .85rem}
+.v:last-child{margin-bottom:0}
+.v b{display:block;font-size:.88rem;margin:0 0 .12rem}
+.v .n{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.v .why{font-size:.78rem;color:var(--dim)}
+.v.hit{border-left-color:var(--r2)}
+.v.miss{border-left-color:var(--r4)}
+.note{font-size:.78rem;color:var(--dim)}
+.note b{color:var(--ink);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+.warn{color:var(--r5)}
+</style>
+
+<h1>两个问题，一轮测完</h1>
+<p class="sub">
+  同源托管，四个目标共用一条 TLS 连接 —— 所以它们之间唯一的差别只有<b>响应大小</b>和<b>谁来应答</b>。
+  轮转发送（每轮四个各打一次），链路抖动对四者一视同仁。
+</p>
+
+<div class="card">
+  <button id="go">跑一轮（约 30 秒）</button>
+  <div class="bar"><i id="bar"></i></div>
+  <p class="status" id="status">还没跑。飞机上直接点就行。</p>
+</div>
+
+<div class="card" id="tablecard" hidden>
+  <h2>每个目标</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>目标</th><th>min</th><th>中位</th><th>首次</th><th>字节</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="verdictcard" hidden>
+  <h2>两个问题的答案</h2>
+  <div id="verdicts"></div>
+</div>
+
+<div class="card" id="copycard" hidden>
+  <button class="ghost" id="copy">复制结果（贴回给我）</button>
+</div>
+
+<div class="card">
+  <h2>这在测什么</h2>
+  <p class="note" style="margin:0 0 .6rem">
+    今天我把 <code>/favicon.ico</code> 从「2,893 字节走 Python」改成了「1,024 字节走 nginx 静态」，
+    你的第二轮里我们的中位从 3685ms 掉到 1013ms，而 Google / Cloudflare / Claude 三个对照几乎没动。
+    <b>那很可能是我们改的那一下，但 n=4、两轮隔了一小时，我证不了。</b>
+  </p>
+  <p class="note" style="margin:0">
+    上面那两组比较各自只放开一个变量。
+    <b>如果两个差值都接近零，就是我在给自己邀功</b> —— 那 3.6 倍是链路波动，我会照实说。
+  </p>
+</div>
+
+<script>
+var TARGETS = [
+  {url:"/healthz",         label:"/healthz",         bytes:14,   who:"Python"},
+  {url:"/favicon.ico",     label:"/favicon.ico",     bytes:1024, who:"nginx 静态"},
+  {url:"/favicon-180.png", label:"/favicon-180.png", bytes:2839, who:"nginx 静态"},
+  {url:"/nothing.txt",     label:"/nothing.txt",     bytes:2893, who:"Python"}
+];
+var ROUNDS = 5;
+// 我们自己的限流是 60r/m，burst 20，且只挂在 Python 那条 location 上。
+// 20 个请求里有 10 个受限，稳稳在 burst 之内 —— 但还是留出间隔：
+// 今天我一次打 24 个，撞了自己的限流拿到 503，差点回头去查一个没问题的功能。
+var GAP_MS = 1200;
+
+var el = function(id){ return document.getElementById(id); };
+var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+function median(a){
+  var s = a.slice().sort(function(x,y){return x-y;});
+  var m = Math.floor(s.length/2);
+  return s.length % 2 ? s[m] : Math.round((s[m-1]+s[m])/2);
+}
+
+async function once(t){
+  // 缓存必须打掉：favicon 是 expires 7d 的，不加这个第二轮就是本地命中，
+  // 会量出一个漂亮的 0ms，而它什么都没测到。
+  var u = t.url + (t.url.indexOf("?") < 0 ? "?" : "&") + "_=" + Math.random();
+  var t0 = performance.now();
+  var r = await fetch(u, {cache:"no-store"});
+  // 必须读完 body，否则计时停在响应头，而响应大小正是被测的那个东西。
+  var buf = await r.arrayBuffer();
+  return {ms: Math.round(performance.now() - t0), bytes: buf.byteLength, status: r.status};
+}
+
+async function run(){
+  var btn = el("go"); btn.disabled = true;
+  el("tablecard").hidden = true; el("verdictcard").hidden = true; el("copycard").hidden = true;
+  var data = {};
+  TARGETS.forEach(function(t){ data[t.url] = {ms:[], bytes:[], bad:0}; });
+
+  var total = ROUNDS * TARGETS.length, done = 0;
+  for (var round = 0; round < ROUNDS; round++){
+    for (var i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i];
+      el("status").textContent = "第 " + (round+1) + "/" + ROUNDS + " 轮 · " + t.label;
+      try {
+        var r = await once(t);
+        data[t.url].ms.push(r.ms);
+        data[t.url].bytes.push(r.bytes);
+      } catch (e) {
+        data[t.url].bad++;
+      }
+      done++;
+      el("bar").style.width = (100*done/total) + "%";
+      await sleep(GAP_MS);
+    }
+  }
+  render(data);
+  el("status").textContent = "跑完了 —— " + ROUNDS + " 轮 × " + TARGETS.length + " 个目标。";
+  btn.disabled = false; btn.textContent = "再跑一轮";
+}
+
+var lastText = "";
+
+function render(data){
+  var rows = "", stat = {};
+  TARGETS.forEach(function(t){
+    var d = data[t.url];
+    if (!d.ms.length){
+      rows += "<tr><td>" + t.label + "<span class='who'>" + t.who + "</span></td>" +
+              "<td colspan='4' class='warn'>全部失败 (" + d.bad + ")</td></tr>";
+      return;
+    }
+    var s = {min: Math.min.apply(null, d.ms), med: median(d.ms), first: d.ms[0],
+             bytes: d.bytes[0], n: d.ms.length, bad: d.bad};
+    stat[t.url] = s;
+    // 实测字节和我声称的字节要对上 —— 仪器自己的阳性对照。
+    var byteCell = s.bytes === t.bytes ? String(s.bytes)
+                 : "<span class='warn'>" + s.bytes + " (说好是 " + t.bytes + ")</span>";
+    rows += "<tr><td>" + t.label + "<span class='who'>" + t.who + "</span></td>" +
+            "<td>" + s.min + "</td><td class='med'>" + s.med + "</td>" +
+            "<td>" + s.first + "</td><td>" + byteCell + "</td></tr>";
+  });
+  el("rows").innerHTML = rows;
+  el("tablecard").hidden = false;
+
+  var big = stat["/favicon-180.png"], small = stat["/favicon.ico"];
+  var py = stat["/nothing.txt"], tiny = stat["/healthz"];
+  var out = "";
+
+  // 这条链路的噪声底：每个目标自己的 med-min，取最大的那个。
+  // 差值小于噪声，判词只能是「量不出来」——不能是「没有差别」。
+  // 在这台服务器上自测时它印过一句斩钉截铁的「字节不是瓶颈」，
+  // 而那条链路 RTT 只有 6ms，整个实验在那儿根本没有分辨力。
+  var noise = 0, floor = Infinity;
+  TARGETS.forEach(function(t){
+    var s = stat[t.url];
+    if (s){ noise = Math.max(noise, s.med - s.min); floor = Math.min(floor, s.med); }
+  });
+  var powerless = floor < 100;
+
+  function verdict(title, a, b, kb, why, whyNot){
+    if (!a || !b){ return "<div class='v'><b>" + title + "</b><span class='why'>目标没跑成，答不了。</span></div>"; }
+    var d = a.med - b.med;
+    var band = Math.max(noise, 30);
+    var hit = Math.abs(d) >= band * 2;
+    var body;
+    if (powerless){
+      body = "<b>这条链路太快，这个实验在这儿没有分辨力</b>（最快目标中位 " + floor +
+             "ms）。差值 " + d + "ms 什么都不说明 —— 要在卫星上跑才问得出来。";
+    } else if (hit){
+      body = why;
+    } else {
+      body = "差值 " + d + "ms 没有超过这轮自己的抖动（±" + band +
+             "ms）⇒ <b>量不出来</b>，这不等于没有差别。" + whyNot;
+    }
+    return "<div class='v " + (powerless ? "" : (hit ? "hit" : "miss")) + "'><b>" + title + "</b>" +
+           "<span class='n'>" + (d >= 0 ? "+" : "") + d + " ms</span>" +
+           "<span class='why'>" + body + "</span></div>";
+  }
+
+  out += verdict("每多 1.8 KB，值多少？", big, small, 1.8,
+    "大的那个明显更慢 —— 在这条链路上，响应体大小是真代价。favicon 缩小 1,869 字节确实买到了东西。",
+    "两者几乎一样 ⇒ <b>在这个尺寸区间，字节不是瓶颈</b>。那今天那 3.6 倍就不是我缩小 favicon 的功劳，得另找解释。");
+
+  out += verdict("绕一趟 Python，值多少？", py, big,
+    0, "字节几乎相同，只差谁来应答 —— 那一跳上游是有代价的，把 favicon 挪成静态文件是对的。",
+    "字节几乎相同、时间也几乎相同 ⇒ <b>那一跳上游在卫星链路上可以忽略</b>。改成静态是干净，不是提速。");
+
+  if (tiny && small){
+    var d2 = small.med - tiny.med;
+    out += "<div class='v'><b>第三个角：14 字节 vs 1,024 字节（都走 Python / 静态）</b>" +
+           "<span class='n'>" + (d2>=0?"+":"") + d2 + " ms</span>" +
+           "<span class='why'>" + (powerless
+             ? "同上：这条链路太快，问不出来。"
+             : "如果这也在抖动之内，说明 3 KB 以下尺寸基本不要钱，这条链路的成本几乎全在往返次数上。")
+           + "</span></div>";
+  }
+  el("verdicts").innerHTML = out;
+  el("verdictcard").hidden = false;
+
+  lastText = "echorune RTT 2x2 · " + ROUNDS + " 轮轮转 · " + new Date().toISOString() + "\n" +
+    TARGETS.map(function(t){
+      var s = stat[t.url];
+      return s ? (t.label + " (" + t.who + ", " + s.bytes + "b) min=" + s.min +
+                  " med=" + s.med + " first=" + s.first + " n=" + s.n +
+                  (s.bad ? " failed=" + s.bad : "")
+                 ) : (t.label + " ALL FAILED");
+    }).join("\n") +
+    "\n尺寸差 (2839-1024): " + (big&&small ? (big.med-small.med)+"ms" : "n/a") +
+    "\n上游差 (python-nginx, 同尺寸): " + (py&&big ? (py.med-big.med)+"ms" : "n/a") +
+    "\n本轮抖动 (最大 med-min): " + noise + "ms" +
+    "\n最快目标中位: " + floor + "ms" + (powerless ? "  <- 链路太快，本轮无分辨力" : "");
+  el("copycard").hidden = false;
+}
+
+el("go").addEventListener("click", function(){ run(); });
+el("copy").addEventListener("click", function(){
+  var b = el("copy");
+  navigator.clipboard.writeText(lastText).then(function(){
+    b.textContent = "复制好了 ✓";
+    setTimeout(function(){ b.textContent = "复制结果（贴回给我）"; }, 2000);
+  }, function(){
+    b.textContent = "复制不了，长按下面选中：";
+    var pre = document.createElement("pre");
+    pre.style.cssText = "white-space:pre-wrap;font-size:.75rem;color:var(--dim);margin:.6rem 0 0";
+    pre.textContent = lastText;
+    b.parentNode.appendChild(pre);
+  });
+});
+</script>
