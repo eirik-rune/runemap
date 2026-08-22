@@ -127,7 +127,14 @@ AGENTISH_UA = ("curl", "wget", "python", "httpie", "go-http", "node-fetch",
 
 LOG_RE = re.compile(
     r'^(?P<ip>\S+) \S+ \[(?P<t>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) [^"]*" '
-    r'(?P<status>\d+) (?P<size>\S+) "(?P<ua>[^"]*)"')
+    r'(?P<status>\d+) (?P<size>\S+) "(?P<ua>[^"]*)"'
+    # Everything past the user agent is optional, because lines older than
+    # 2026-08-12 do not carry it and a regex that stopped matching them would
+    # shorten the history without saying so. `grid` is the SERVICE's own word
+    # for what it did -- grid/nogrid/error/landing -- taken BY POSITION, per
+    # the warning in nginx.conf: the field after it was added later, and
+    # readers taking [-1] silently started reading a different column.
+    r'(?: (?P<rt>\S+) "[^"]*" (?P<grid>\S+))?')
 
 
 def read_lines(paths):
@@ -245,6 +252,11 @@ def repeat_city(paths):
     #: the sentence meaning "check your log glob", which would send the next
     #: reader to fix a path when the finding was that nobody human came.
     excluded = 0
+    #: Requests where the service's own verdict is missing (log lines older
+    #: than 2026-08-12, or responses nginx produced without reaching it).
+    #: Counted and printed rather than dropped: a shrinking window that says
+    #: nothing looks exactly like a quiet week.
+    undeclared = 0
     for line in read_lines(paths):
         m = LOG_RE.match(line)
         if not m:
@@ -258,6 +270,20 @@ def repeat_city(paths):
             continue
         p = urllib.parse.unquote(path.split("?")[0]).rstrip("/").lower()
         if p in NOT_A_PLACE or p.startswith("/mcp"):
+            continue
+        # Ask the service what it did, do not infer it from the path shape.
+        # 2026-08-22: the top row of this report was a lead scraper walking
+        # /en/contact, /kontakt, /impressum. The first path component is not
+        # a place -- it was a locale -- and nothing in the path could have
+        # told me that. The service already writes its own verdict on every
+        # line (grid/nogrid = it resolved a place and drew; error = it did
+        # not), and this function was inferring instead of reading it. The
+        # same mistake mcp_who_called.py was written to avoid.
+        grid = m.group("grid")
+        if grid is None or grid == "-":
+            undeclared += 1          # printed, never silently dropped
+            continue
+        if grid not in ("grid", "nogrid"):
             continue
         place = p.split("/")[1] if p.startswith("/") and len(p) > 1 else p
         key = (ip, place)
@@ -281,7 +307,14 @@ def repeat_city(paths):
 
     repeat = sorted(((len(d), hits[k], k, sorted(agents[k])) for k, d in seen.items()
                      if len(d) >= 2), reverse=True)
-    print("%d distinct (caller, place) pairs asked for a named place." % len(seen))
+    print("%d distinct (caller, place) pairs asked for a named place, "
+          "counting only requests the SERVICE ITSELF logged as having drawn a "
+          "place (grid/nogrid)." % len(seen))
+    if undeclared:
+        print("  (%d further requests carry no verdict from the service -- log "
+              "lines predating 2026-08-12, or answered by nginx without "
+              "reaching it. Excluded, and said so: a window that quietly got "
+              "shorter looks exactly like a quiet week.)" % undeclared)
     print("%d of them came back for the SAME place on 2+ separate days:\n"
           % len(repeat))
     for days, n, (ip, place), ua in repeat:
