@@ -102,6 +102,8 @@ _MULTISPACE = re.compile(r" {2,}")
 PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32">
+<link rel="apple-touch-icon" href="/favicon-180.png">
 <title>%(title)s</title>
 <style>
 :root{color-scheme:light dark;--ink:#171a1f;--dim:#6b7280;--bg:#fff;--line:#e5e7eb}
