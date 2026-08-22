@@ -69,7 +69,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
   <h2>每个目标</h2>
   <div class="scroll">
     <table>
-      <thead><tr><th>目标</th><th>min</th><th>中位</th><th>首次</th><th>字节</th></tr></thead>
+      <thead><tr><th>目标</th><th>min</th><th>中位</th><th>首次</th><th>线路字节</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -82,27 +82,37 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
 
 <div class="card" id="copycard" hidden>
   <button class="ghost" id="copy">复制结果（贴回给我）</button>
+  <button class="ghost" id="reset" style="margin-top:.5rem">清空累计，从头开始</button>
 </div>
 
 <div class="card">
   <h2>这在测什么</h2>
   <p class="note" style="margin:0 0 .6rem">
-    今天我把 <code>/favicon.ico</code> 从「2,893 字节走 Python」改成了「1,024 字节走 nginx 静态」，
-    你的第二轮里我们的中位从 3685ms 掉到 1013ms，而 Google / Cloudflare / Claude 三个对照几乎没动。
-    <b>那很可能是我们改的那一下，但 n=4、两轮隔了一小时，我证不了。</b>
+    你上一轮 n=20 量出的不是斜坡是<b>台阶</b>：14 B 和 1 KB 一样贵，2.8 KB 和 2.9 KB 一样贵，
+    中间跳 <b>887 ms ≈ 一个完整往返</b>。跨出一个 TCP 段就要多等一趟，在静止轨道上就是将近一秒。
+    据此我给 text/plain 开了 gzip（之前 <code>gzip_types</code> 被注释掉、<code>gzip_proxied</code>
+    默认关着，两个都得改）：<code>/tokyo</code> 从 2,690 字节变成 <b>872 字节</b>，落回一个段之内。
   </p>
   <p class="note" style="margin:0">
-    上面那两组比较各自只放开一个变量。
-    <b>如果两个差值都接近零，就是我在给自己邀功</b> —— 那 3.6 倍是链路波动，我会照实说。
+    这一版在验两件事：<b>台阶复不复现</b>（两个图片，不受 gzip 影响，字节数固定），
+    和<b>真实产品现在落在哪一侧</b>。第二组接近零就是我要的结果 ——
+    <b>而第一组如果不复现，那我开 gzip 的理由就得改口</b>：只剩「少发字节总没坏处」，不是「省一个往返」。
   </p>
 </div>
 
 <script>
+// 2026-08-22 06:1x 改过一次目标，理由要写下来：你 n=20 那轮量出的不是斜坡是
+// 台阶（14B 和 1KB 一样贵，2.8KB 和 2.9KB 一样贵，中间跳 887ms ≈ 一个往返）。
+// 据此我给 text/plain 开了 gzip —— 而那一改把这个页面自己的对照组压小了，
+// /nothing.txt 从 2893 变成 1549，"同尺寸不同上游"那一组当场塌掉。
+//
+// 现在守住台阶的是两个图片：image/* 不在 gzip_types 里，它们的字节数不会再变。
+// 加上真实产品 /tokyo，看它现在落在台阶的哪一侧 —— 那才是要紧的那个问题。
 var TARGETS = [
-  {url:"/healthz",         label:"/healthz",         bytes:14,   who:"Python"},
-  {url:"/favicon.ico",     label:"/favicon.ico",     bytes:1024, who:"nginx 静态"},
-  {url:"/favicon-180.png", label:"/favicon-180.png", bytes:2839, who:"nginx 静态"},
-  {url:"/nothing.txt",     label:"/nothing.txt",     bytes:2893, who:"Python"}
+  {url:"/favicon.ico",     label:"/favicon.ico",     bytes:1024, who:"nginx · 一个段"},
+  {url:"/favicon-180.png", label:"/favicon-180.png", bytes:2839, who:"nginx · 两个段"},
+  {url:"/tokyo",           label:"/tokyo  ← 真实产品", bytes:872,  who:"Python · gzip 后"},
+  {url:"/nothing.txt",     label:"/nothing.txt",     bytes:1549, who:"Python · gzip 后"}
 ];
 var ROUNDS = 5;
 // 我们自己的限流是 60r/m，burst 20，且只挂在 Python 那条 location 上。
@@ -112,6 +122,39 @@ var GAP_MS = 1200;
 
 var el = function(id){ return document.getElementById(id); };
 var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+var KEY = "echorune-rtt";
+//: 池子里的数据只在「被测对象 + 仪器」都没变时才可比。我为换目标清过一次池子，
+//: 紧接着把字节的量法从「解压后」改成「线路上」，**却没再清一次** —— 于是表里
+//: 一直显示旧仪器留下的 2562，而页面跑的确实是新代码。查了三步才找到，因为
+//: 「代码是新的」和「数字是新的」是两件事。
+//: 所以不靠我记得：指纹从目标清单和仪器版本派生，对不上就整池作废。
+var INSTRUMENT = "wire-bytes-v1";
+var FINGERPRINT = INSTRUMENT + "|" +
+  TARGETS.map(function(t){ return t.url + ":" + t.bytes; }).join(",");
+//: 每个目标要多少样本才敢下判词。min 是这条链路上唯一稳的统计量（排队和重传
+//: 只会把时间往上推，不会往下），但 min-of-5 仍然是一个样本 —— 它会随 n 单调
+//: 下降，所以两个目标只有在样本数相当时才可比。
+var NEED = 20;
+
+function load(){
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (!raw) return {};
+    var o = JSON.parse(raw);
+    if (o._fp !== FINGERPRINT) return {};   // 换了被测对象或换了仪器 ⇒ 整池作废
+    delete o._fp;
+    return o;
+  } catch (e) { return {}; }
+}
+function save(d){
+  try {
+    var o = {};
+    for (var k in d) if (d.hasOwnProperty(k)) o[k] = d[k];
+    o._fp = FINGERPRINT;
+    localStorage.setItem(KEY, JSON.stringify(o));
+  } catch (e) {}
+}
 
 function median(a){
   var s = a.slice().sort(function(x,y){return x-y;});
@@ -127,14 +170,30 @@ async function once(t){
   var r = await fetch(u, {cache:"no-store"});
   // 必须读完 body，否则计时停在响应头，而响应大小正是被测的那个东西。
   var buf = await r.arrayBuffer();
-  return {ms: Math.round(performance.now() - t0), bytes: buf.byteLength, status: r.status};
+  var ms = Math.round(performance.now() - t0);
+
+  // 2026-08-22：这里原本用 buf.byteLength 当「线路上的字节」，而它是**解压后**的
+  // 大小 —— 浏览器透明解了 gzip，所以 fetch 从构造上就看不见线路。开 gzip 那一刻
+  // 表里就出现「2562（说好是 872）」，是这个页面自己的自检抓到的。
+  // encodedBodySize 才是线路上的字节；同源资源才拿得到，而这四个全是同源。
+  var wire = null;
+  try {
+    var e = performance.getEntriesByName(new URL(u, location.href).href);
+    if (e.length) wire = e[e.length-1].encodedBodySize || null;
+  } catch (err) {}
+  return {ms: ms, bytes: wire, decoded: buf.byteLength, status: r.status};
 }
 
 async function run(){
   var btn = el("go"); btn.disabled = true;
   el("tablecard").hidden = true; el("verdictcard").hidden = true; el("copycard").hidden = true;
-  var data = {};
-  TARGETS.forEach(function(t){ data[t.url] = {ms:[], bytes:[], bad:0}; });
+  // 跨轮累计。2026-08-22 第一轮真实数据回来时，抖动 1047ms 把一个 ~150ms 的
+  // 效应整个淹掉了 —— n=5 在这条链路上没有分辨力，而这不是链路的错，是样本量。
+  // 存在本地：飞机上顺手点几下就够，不用一次坐等两分钟。
+  var data = load();
+  TARGETS.forEach(function(t){
+    if (!data[t.url]) data[t.url] = {ms:[], bytes:[], bad:0};
+  });
 
   var total = ROUNDS * TARGETS.length, done = 0;
   for (var round = 0; round < ROUNDS; round++){
@@ -144,7 +203,7 @@ async function run(){
       try {
         var r = await once(t);
         data[t.url].ms.push(r.ms);
-        data[t.url].bytes.push(r.bytes);
+        if (r.bytes != null) data[t.url].bytes.push(r.bytes);
       } catch (e) {
         data[t.url].bad++;
       }
@@ -153,8 +212,11 @@ async function run(){
       await sleep(GAP_MS);
     }
   }
+  save(data);
   render(data);
-  el("status").textContent = "跑完了 —— " + ROUNDS + " 轮 × " + TARGETS.length + " 个目标。";
+  var n = data[TARGETS[0].url].ms.length;
+  el("status").textContent = "跑完了 —— 累计 " + n + " 个样本/目标。" +
+      (n < NEED ? "（再点 " + Math.ceil((NEED-n)/ROUNDS) + " 次就够判了）" : "");
   btn.disabled = false; btn.textContent = "再跑一轮";
 }
 
@@ -172,9 +234,16 @@ function render(data){
     var s = {min: Math.min.apply(null, d.ms), med: median(d.ms), first: d.ms[0],
              bytes: d.bytes[0], n: d.ms.length, bad: d.bad};
     stat[t.url] = s;
-    // 实测字节和我声称的字节要对上 —— 仪器自己的阳性对照。
-    var byteCell = s.bytes === t.bytes ? String(s.bytes)
-                 : "<span class='warn'>" + s.bytes + " (说好是 " + t.bytes + ")</span>";
+    // 实测线路字节和我声称的要对上 —— 仪器自己的阳性对照，今天它抓到过我一次。
+    // 允许 ±10%：动态场景每次的雨情不同，压缩后差几十字节是正常的。
+    var byteCell;
+    if (s.bytes == null){
+      byteCell = "<span class='warn'>量不到</span>";
+    } else if (Math.abs(s.bytes - t.bytes) <= Math.max(64, t.bytes * 0.1)){
+      byteCell = String(s.bytes);
+    } else {
+      byteCell = "<span class='warn'>" + s.bytes + " (说好是 " + t.bytes + ")</span>";
+    }
     rows += "<tr><td>" + t.label + "<span class='who'>" + t.who + "</span></td>" +
             "<td>" + s.min + "</td><td class='med'>" + s.med + "</td>" +
             "<td>" + s.first + "</td><td>" + byteCell + "</td></tr>";
@@ -183,61 +252,71 @@ function render(data){
   el("tablecard").hidden = false;
 
   var big = stat["/favicon-180.png"], small = stat["/favicon.ico"];
-  var py = stat["/nothing.txt"], tiny = stat["/healthz"];
+  var py = stat["/nothing.txt"], prod = stat["/tokyo"];
   var out = "";
 
   // 这条链路的噪声底：每个目标自己的 med-min，取最大的那个。
   // 差值小于噪声，判词只能是「量不出来」——不能是「没有差别」。
   // 在这台服务器上自测时它印过一句斩钉截铁的「字节不是瓶颈」，
   // 而那条链路 RTT 只有 6ms，整个实验在那儿根本没有分辨力。
-  var noise = 0, floor = Infinity;
+  var noise = 0, floor = Infinity, nmin = Infinity;
   TARGETS.forEach(function(t){
     var s = stat[t.url];
-    if (s){ noise = Math.max(noise, s.med - s.min); floor = Math.min(floor, s.med); }
+    if (s){ noise = Math.max(noise, s.med - s.min); floor = Math.min(floor, s.med);
+            nmin = Math.min(nmin, s.n); }
   });
   var powerless = floor < 100;
+  var thin = nmin < NEED;
 
   function verdict(title, a, b, kb, why, whyNot){
     if (!a || !b){ return "<div class='v'><b>" + title + "</b><span class='why'>目标没跑成，答不了。</span></div>"; }
-    var d = a.med - b.med;
-    var band = Math.max(noise, 30);
-    var hit = Math.abs(d) >= band * 2;
+    // 判词走 min 不走中位。中位吃满了排队和重传（本轮抖动 1047ms 就是这么来的），
+    // 而 min 只吃链路本身 —— 这也是 SkyPing 自己拿 min 当「真实往返时延」的理由。
+    // 中位仍然印在表里，因为它是读者真实体感的那一半。
+    var d = a.min - b.min;
+    var dmed = a.med - b.med;
+    var band = 60;
+    var hit = Math.abs(d) >= band;
     var body;
-    if (powerless){
+    if (thin){
+      body = "样本还不够（每个目标 " + nmin + "/" + NEED + "）。min 会随样本数单调下降，" +
+             "n 太小的时候两个目标之间的差是抽样运气，不是效应。<b>再点几次。</b>" +
+             "（当前 min 差 " + d + "ms，中位差 " + dmed + "ms）";
+    } else if (powerless){
       body = "<b>这条链路太快，这个实验在这儿没有分辨力</b>（最快目标中位 " + floor +
              "ms）。差值 " + d + "ms 什么都不说明 —— 要在卫星上跑才问得出来。";
     } else if (hit){
-      body = why;
+      body = why + "（min 差 " + d + "ms，中位差 " + dmed + "ms，n=" + nmin + "）";
     } else {
-      body = "差值 " + d + "ms 没有超过这轮自己的抖动（±" + band +
-             "ms）⇒ <b>量不出来</b>，这不等于没有差别。" + whyNot;
+      body = "min 只差 " + d + "ms，在 ±" + band + "ms 之内 ⇒ <b>量不出来</b>，" +
+             "这不等于没有差别。" + whyNot;
     }
     return "<div class='v " + (powerless ? "" : (hit ? "hit" : "miss")) + "'><b>" + title + "</b>" +
            "<span class='n'>" + (d >= 0 ? "+" : "") + d + " ms</span>" +
            "<span class='why'>" + body + "</span></div>";
   }
 
-  out += verdict("每多 1.8 KB，值多少？", big, small, 1.8,
-    "大的那个明显更慢 —— 在这条链路上，响应体大小是真代价。favicon 缩小 1,869 字节确实买到了东西。",
-    "两者几乎一样 ⇒ <b>在这个尺寸区间，字节不是瓶颈</b>。那今天那 3.6 倍就不是我缩小 favicon 的功劳，得另找解释。");
+  out += verdict("台阶还在吗？2,839 B vs 1,024 B（都是 nginx 静态，都不压缩）", big, small, 1.8,
+    "在。跨出一个 TCP 段要多付这么多 —— 这就是上一轮 887ms 的那个台阶，复现了。",
+    "这一轮没复现。上一轮的 887ms 可能是抽样运气，<b>那我据此开 gzip 的理由就只剩「少发字节总没坏处」，不是「省一个往返」</b>。");
 
-  out += verdict("绕一趟 Python，值多少？", py, big,
-    0, "字节几乎相同，只差谁来应答 —— 那一跳上游是有代价的，把 favicon 挪成静态文件是对的。",
-    "字节几乎相同、时间也几乎相同 ⇒ <b>那一跳上游在卫星链路上可以忽略</b>。改成静态是干净，不是提速。");
+  out += verdict("真实产品落在台阶哪一侧？/tokyo (872 B) vs /favicon.ico (1,024 B)", prod, small,
+    0, "/tokyo 明显更慢 —— 字节已经不是原因了（它比 favicon 还小），慢的是那一跳 Python 上游。",
+    "两者几乎一样 ⇒ <b>gzip 之后，真实产品和一个 1 KB 的静态文件一样快了。</b> 它以前是 2,690 字节，在台阶的另一边。");
 
-  if (tiny && small){
-    var d2 = small.med - tiny.med;
-    out += "<div class='v'><b>第三个角：14 字节 vs 1,024 字节（都走 Python / 静态）</b>" +
+  if (py && prod){
+    var d2 = py.min - prod.min;
+    out += "<div class='v'><b>第三个角：1,549 B vs 872 B（都走 Python，都压过）</b>" +
            "<span class='n'>" + (d2>=0?"+":"") + d2 + " ms</span>" +
            "<span class='why'>" + (powerless
              ? "同上：这条链路太快，问不出来。"
-             : "如果这也在抖动之内，说明 3 KB 以下尺寸基本不要钱，这条链路的成本几乎全在往返次数上。")
+             : "两个都在一个段之内，所以这一格应该接近零。如果它不接近零，说明台阶不在我以为的那个位置。")
            + "</span></div>";
   }
   el("verdicts").innerHTML = out;
   el("verdictcard").hidden = false;
 
-  lastText = "echorune RTT 2x2 · " + ROUNDS + " 轮轮转 · " + new Date().toISOString() + "\n" +
+  lastText = "echorune RTT 2x2 · 累计 n=" + nmin + "/目标 · " + new Date().toISOString() + "\n" +
     TARGETS.map(function(t){
       var s = stat[t.url];
       return s ? (t.label + " (" + t.who + ", " + s.bytes + "b) min=" + s.min +
@@ -245,14 +324,21 @@ function render(data){
                   (s.bad ? " failed=" + s.bad : "")
                  ) : (t.label + " ALL FAILED");
     }).join("\n") +
-    "\n尺寸差 (2839-1024): " + (big&&small ? (big.med-small.med)+"ms" : "n/a") +
-    "\n上游差 (python-nginx, 同尺寸): " + (py&&big ? (py.med-big.med)+"ms" : "n/a") +
+    "\n台阶 (2839-1024, 不压缩): min " + (big&&small ? (big.min-small.min)+"ms" : "n/a") +
+      ", med " + (big&&small ? (big.med-small.med)+"ms" : "n/a") +
+    "\n真实产品 vs 1KB静态 (tokyo-favicon): min " + (prod&&small ? (prod.min-small.min)+"ms" : "n/a") +
+      ", med " + (prod&&small ? (prod.med-small.med)+"ms" : "n/a") +
     "\n本轮抖动 (最大 med-min): " + noise + "ms" +
     "\n最快目标中位: " + floor + "ms" + (powerless ? "  <- 链路太快，本轮无分辨力" : "");
   el("copycard").hidden = false;
 }
 
 el("go").addEventListener("click", function(){ run(); });
+el("reset").addEventListener("click", function(){
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  el("tablecard").hidden = true; el("verdictcard").hidden = true; el("copycard").hidden = true;
+  el("status").textContent = "累计清空了。";
+});
 el("copy").addEventListener("click", function(){
   var b = el("copy");
   navigator.clipboard.writeText(lastText).then(function(){
