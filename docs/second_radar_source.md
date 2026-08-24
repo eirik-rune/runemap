@@ -826,3 +826,28 @@ tonight:
   cannot say why. That is ours to fix whenever Swiss traffic justifies opening
   it, and it is recorded here so the diagnosis starts from a known gap rather
   than from scratch.
+
+
+### The rule has now been applied three times, which is the point
+
+| date | source | what failed | that country's requests | control | decision |
+|---|---|---|---|---|---|
+| 08-22 | `wms-berlin` (DWD) | upstream timeouts, rising from 0 to ~8% of rounds in a week | 9 | 49,859 | no spend |
+| 08-23 | `chrzc-zurich` (MeteoSwiss) | declined inside its own coverage, 31h sustained | 16 | 49,859 | no spend |
+| 08-24 | `redemet-saopaulo` (REDEMET) | frames stopped advancing; age grew 4.6h → 7.6h monotonically | 6 | 49,859 | no spend |
+
+**Brazil is worth one extra note, because the first reading was wrong.** The
+verdict is `REDEMET-TOO-OLD`, which is *our* ceiling rejecting stale frames,
+not the upstream refusing us — and this repository already knows that the
+REDEMET frame-age ceiling was copied from RainViewer, a source with almost no
+latency of its own. So the obvious suspicion was that our constant was finally
+biting. It is not: REDEMET was **72/72 OK every day for the previous week** and
+is 18/21 today, and the frame age is climbing monotonically, which is what an
+upstream that stopped publishing at a fixed wall-clock moment looks like. Ours
+is fine; theirs froze.
+
+All three are now acknowledged with `./srcack`, each pointing at this file and
+each expiring — the repeats go quiet, new failures and full recovery still
+ring. What would change any of these answers is unchanged: that country's
+requests reaching the same order as a served country, or enough of the fleet
+failing that `N of 13 healthy` stops carrying information.
