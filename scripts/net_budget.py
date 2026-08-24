@@ -28,8 +28,10 @@ a 5s budget.
 """
 import contextlib
 import http.client
+import os
 import socket
 import ssl
+import struct
 import threading
 import time
 import urllib.parse
@@ -126,6 +128,66 @@ class _Deadline:
         return time.monotonic() >= self.end
 
 
+_EGRESS_PROXY = os.environ.get("RUNEMAP_EGRESS_PROXY", "").strip()
+
+
+def _socks5_handshake(sock, target_host, target_port, timeout):
+    """SOCKS5 CONNECT handshake over an already-connected socket.
+
+    Negotiates no authentication (0x00) and issues a CONNECT command for
+    the target host:port.  Returns the same socket on success, raises
+    OSError on any protocol-level failure.
+    """
+    # Greeting: version 0x05, one auth method, no-auth (0x00).
+    sock.sendall(b"\x05\x01\x00")
+    _hdr = _recv_exact(sock, 2, timeout)
+    if _hdr[0] != 0x05:
+        raise OSError("socks5: server replied version 0x%02x" % _hdr[0])
+    if _hdr[1] != 0x00:
+        raise OSError("socks5: no acceptable auth method (got 0x%02x)" % _hdr[1])
+
+    # CONNECT request: ver=0x05 cmd=0x01 rsv=0x00 atyp=0x03 (domain).
+    domain = target_host.encode("ascii")
+    req = b"\x05\x01\x00\x03" + bytes([len(domain)]) + domain + struct.pack("!H", target_port)
+    sock.sendall(req)
+
+    # Response: ver(1) + status(1) + rsv(1) + atyp(1) + bind_addr(var) + bind_port(2)
+    resp = _recv_exact(sock, 4, timeout)
+    if resp[0] != 0x05:
+        raise OSError("socks5: reply version 0x%02x" % resp[0])
+    if resp[1] != 0x00:
+        raise OSError("socks5: CONNECT failed, status 0x%02x" % resp[1])
+    # Read bind address based on atyp.
+    atyp = resp[3]
+    if atyp == 0x01:        # IPv4
+        _recv_exact(sock, 4, timeout)
+    elif atyp == 0x03:      # domain
+        dlen = _recv_exact(sock, 1, timeout)[0]
+        _recv_exact(sock, dlen, timeout)
+    elif atyp == 0x04:      # IPv6
+        _recv_exact(sock, 16, timeout)
+    else:
+        raise OSError("socks5: unknown atyp 0x%02x" % atyp)
+    _recv_exact(sock, 2, timeout)  # bind port
+    return sock
+
+
+def _recv_exact(sock, n, timeout):
+    """Read exactly *n* bytes from *sock*, respecting the deadline."""
+    buf = bytearray()
+    deadline = time.monotonic() + timeout
+    while len(buf) < n:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise OSError("socks5: timed out during handshake")
+        sock.settimeout(max(left, 0.01))
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise OSError("socks5: connection closed during handshake")
+        buf.extend(chunk)
+    return bytes(buf)
+
+
 def _connect(url, dl, headers):
     """Open a connection and send the request, all inside the deadline."""
     u = urllib.parse.urlsplit(url)
@@ -135,17 +197,37 @@ def _connect(url, dl, headers):
         raise BudgetExceeded(url, dl.budget, "dial")
 
     port = u.port or (443 if u.scheme == "https" else 80)
-    if u.scheme == "https":
+    timeout = max(dl.left(), MIN_BUDGET)
+
+    if _EGRESS_PROXY:
+        proxy_host, proxy_port_str = _EGRESS_PROXY.rsplit(":", 1)
+        proxy_port = int(proxy_port_str)
+        raw = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
+        try:
+            _socks5_handshake(raw, u.hostname, port, timeout)
+        except Exception:
+            raw.close()
+            raise
+        if u.scheme == "https":
+            ctx = ssl.create_default_context()
+            conn = http.client.HTTPSConnection(
+                u.hostname, port, timeout=timeout, context=ctx
+            )
+            conn.sock = ctx.wrap_socket(raw, server_hostname=u.hostname)
+        else:
+            conn = http.client.HTTPConnection(u.hostname, port, timeout=timeout)
+            conn.sock = raw
+    elif u.scheme == "https":
         conn = http.client.HTTPSConnection(
-            u.hostname, port, timeout=max(dl.left(), MIN_BUDGET),
+            u.hostname, port, timeout=timeout,
             context=ssl.create_default_context()
         )
     else:
-        conn = http.client.HTTPConnection(u.hostname, port,
-                                          timeout=max(dl.left(), MIN_BUDGET))
+        conn = http.client.HTTPConnection(u.hostname, port, timeout=timeout)
 
     try:
-        conn.connect()                       # dial
+        if not _EGRESS_PROXY:
+            conn.connect()                       # dial
         conn.sock.settimeout(max(dl.left(), MIN_BUDGET))   # send + TTFB
         path = u.path or "/"
         if u.query:
