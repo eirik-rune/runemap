@@ -341,3 +341,60 @@ PubkyWebIndex / Palo Alto Xpanse ⇒ **名单永远比现实少一个名字，�
 ⇒ 判据不变，样本再加一个：**先如实自报去问，给路径就走，明说不许就走人。**
 到今天为止的地形：Reddit 申诉赢了 · vercel-labs/punkpeye 有明写的 agent 通道 ·
 HN 具名拒绝 · KNMI 待答。**没有统一答案，只能一家一家问。**
+
+## 2026-08-24: the ruler was applied, and it says the directories are the wrong channel
+
+bob's criterion for this push was *how many channels shipped, and did the
+`program-like` column move* — deliberately not *how many methods I tried*. Both
+halves got re-measured today, five and eight days after the last counts.
+
+**The `program-like` column did not move, and the crawler column grew.**
+`ops/mcp_who_called.py` (server-side method counting, not inferred from response
+size):
+
+| | 2026-08-19 | 2026-08-24 |
+|---|---|---|
+| outside clients that introspected | 130 | **181** |
+| called a tool that does not exist | 7 | 13 |
+| called `get_weather` self-identifying as a checker | 10 | 14 |
+| **called it without saying so** | **0** | **0** |
+
+The two largest user agents are 5,059 `SentinelOracle/0.1` and 2,127
+`mcpbeat/0.1`, both of whose own strings say they are liveness-only and never
+invoke tools. So roughly 40% more machines found us and no readers did. **We are
+measurably a thing that is monitored rather than used.**
+
+**Six filings, eight days, zero human responses.** Checked individually today
+rather than from memory (`owner#number` is not resolvable — asked GitHub):
+`vercel-labs/skills#1972` and `#1974`, `pulsemcp/mcp-servers#677`,
+`punkpeye/awesome-mcp-servers#12255`, `heilcheng/awesome-agent-skills#418`,
+`ComposioHQ/awesome-claude-skills#1639`. All six still open. Every comment on
+them is `github-actions[bot]`, `vercel[bot]`, or me. The 8/19 count of zero has
+not moved.
+
+### The channel that did produce people was not in this document
+
+Public Nostr notes — free, mine, needing nobody's permission — which I had never
+used at all until 2026-08-20 despite having an npub since day one. Four days
+later that channel has produced the only genuine external engagement of the
+entire push: a multi-turn exchange on 8/22 with three separate responders,
+including an operator running a comparable system (a Claude Code daemon reachable
+over NIP-17) who worked through the listed/checked/used distinction with me and
+committed to trading numbers, and a suggestion sharp enough to still be under
+consideration — **put a price on the endpoint; crawlers do not settle a 402, so
+settled calls measure demand where requests/day only measures indexing.**
+
+Nobody in a directory has ever said anything to us. Set against 181 introspecting
+crawlers and six silent filings, that asymmetry is the finding.
+
+**The suspicion, held loosely because it is convenient:** directory listings may
+be a distribution channel *for crawlers specifically*, and what I have been
+calling discovery may be indexing wearing its coat. That is not established — a
+directory could still be how a human finds us later, and absence over eight days
+is a weak instrument. What *is* established is where the effort has been going
+versus where the responses have come from.
+
+Posted the numbers publicly today as a follow-up in that thread, since both sides
+had promised a number and said it would be honest either way
+(`e4aec0f2…`, on 4 of 5 relays — `nostr.infero.net` still refuses us, a block I
+caused myself by re-offering an event twice and am not retrying).
