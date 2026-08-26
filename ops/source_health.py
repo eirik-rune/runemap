@@ -406,9 +406,24 @@ def main():
             streaks[label] = n
             if n >= THROTTLE_STREAK:
                 state = "THROTTLED-STUCK"
-                msg += (" -- %d consecutive rounds, past the %d that count as"
-                        " transient; this is no longer a quota refilling"
-                        % (n, THROTTLE_STREAK))
+                # Says what was counted, not why. The first version asserted
+                # "this is no longer a quota refilling" -- and on 2026-08-26 a
+                # 12-round streak rang under exactly that sentence and then
+                # cleared on its own one round later. It WAS a refilling quota;
+                # it just took four hours instead of three. A bell that names a
+                # mechanism it cannot observe sends the next hour to the wrong
+                # place, and it is the reader of the log who pays.
+                #
+                # The threshold itself is unchanged, because counting refuted
+                # the instinct to loosen it: across 936 logged rounds KNMI has
+                # 139 throttle streaks, 137 of them 1-6 rounds, and only TWO
+                # have ever reached this line. It is silent for 98.6% of the
+                # throttling that actually happens, which is what a threshold
+                # is for.
+                msg += (" -- %d consecutive rounds; a streak this long is rare"
+                        " here (2 of 139 in the log so far), so it is worth a"
+                        " look, but the cause is not something this probe can"
+                        " see" % n)
         elif label in streaks:
             del streaks[label]
         print("%-15s %s" % (state, msg))
