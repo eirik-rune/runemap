@@ -851,3 +851,44 @@ each expiring — the repeats go quiet, new failures and full recovery still
 ring. What would change any of these answers is unchanged: that country's
 requests reaching the same order as a served country, or enough of the fleet
 failing that `N of 13 healthy` stops carrying information.
+
+## 2026-08-26: KNMI's shared key changed state, and the cache stopped covering it
+
+The Netherlands runs on KNMI's **anonymous** key, which their own documentation
+says is shared by every unregistered user. Being throttled is therefore normal
+here and always has been: across 949 logged rounds there are **140 throttle
+streaks**, and until today all but one were 1–6 rounds.
+
+Today produced two streaks of 12, back to back, separated by two OK rounds —
+so **two of the three ≥9-round streaks in the entire log happened on one day**.
+That is a change of state, not an outlier, and it is not something we caused:
+the key is shared, so the contention is someone else's traffic as much as ours.
+
+**What a reader actually got, measured at both ends of the day:**
+
+| | cache | `/amsterdam` said |
+|---|---|---|
+| 13:20 | warm | `radar: obs   obs age: 4min ok` — a real frame, reader unaffected |
+| 19:54 | exhausted | `radar: fetching -- upstream listed no radar frames; weather above is live` |
+
+Two things follow. First, **the cache is what stood between a four-hour upstream
+outage and the reader**, and its coverage is finite — the first episode was
+invisible downstream and the second was not. Second, and worth more: **the
+product told the truth about it.** It did not draw an empty grid. The line this
+bell has been shipping for weeks — *"readers cannot tell the difference, a dead
+source and a clear sky are both an empty grid"* — is false on this path, and it
+should stop being quoted as a reason to treat every source outage as invisible.
+
+**Decision: nothing bought, nothing built, and this is why.** `/amsterdam` has
+14 requests in the retained log window, against a 49,859-request control. The
+registered-key route exists (`RUNEMAP_KNMI_KEY_FILE` is wired and production
+can read it) and would end the contention outright, so this is a real option
+held open rather than a wall — but it is work spent on the same order of
+readership as Zurich (16) and Brazil (6), all judged the same way. Acked to
+2026-08-31, five days, which is when this note should be re-read rather than
+when the source is assumed fixed.
+
+**What would overturn it:** Dutch requests reaching the same order as a served
+country, or the ≥9-round streaks continuing at today's rate — because a bell
+that escalates twice a day is no longer reporting an outlier, and at that point
+the honest move is the registered key, not another acknowledgement.
