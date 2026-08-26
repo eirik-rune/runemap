@@ -262,3 +262,100 @@ class ItMeasuresTheConfigurationProductionRuns(unittest.TestCase):
         """A unit with no Environment= line is a real, working state, and it
         must be distinguishable from not being able to ask."""
         self.assertEqual(H.adopt_unit_env(run=lambda: "Environment=\n"), [])
+
+
+class TheThrottleEscalation(unittest.TestCase):
+    """The streak ladder, fired on both sides of the line.
+
+    Added 2026-08-26, after this branch rang for the first time in production
+    and I found it had no test at all -- a branch that only executes twice in
+    936 rounds is exactly the one that will be silently wrong when it finally
+    speaks, because nothing exercises it in between.
+
+    The wording is asserted, not just the state. The first version of this
+    message claimed "this is no longer a quota refilling", the streak that
+    triggered it cleared on its own twenty minutes later, and a log line that
+    names a mechanism the probe cannot observe sends whoever reads it next to
+    the wrong place.
+    """
+
+    def _run(self, streak_before):
+        import io
+        import json
+        import tempfile
+        import contextlib
+        old_probes, old_streak, old_check, old_adopt = (
+            H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env)
+        fd, path = tempfile.mkstemp()
+        with os.fdopen(fd, "w") as f:
+            json.dump({"knmi-amsterdam": streak_before}, f)
+        try:
+            H.STREAK_FILE = path
+            H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
+                         "KNMI")]
+            H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
+            H.adopt_unit_env = lambda *a, **k: []
+            out = io.StringIO()
+            # main() reads sys.argv, and under a test runner argv is full of
+            # the runner's own arguments -- so `wanted` was non-empty, no probe
+            # matched, and main() exited before printing anything. All three
+            # assertions failed against an empty string for a reason that had
+            # nothing to do with the code under test.
+            old_argv = sys.argv
+            sys.argv = ["source_health.py"]
+            try:
+                with contextlib.redirect_stdout(out):
+                    with self.assertRaises(SystemExit) as cm:
+                        H.main()
+            finally:
+                sys.argv = old_argv
+            return out.getvalue(), cm.exception.code
+        finally:
+            (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env) = (
+                old_probes, old_streak, old_check, old_adopt)
+            os.unlink(path)
+
+    def test_below_the_line_stays_transient_and_does_not_ring(self):
+        """137 of the 139 throttle streaks in the log live here. If this
+        escalated, the bell would fire several times a day and I would learn
+        to ignore it -- which costs more than the two real streaks are worth."""
+        text, code = self._run(H.THROTTLE_STREAK - 3)
+        self.assertIn("THROTTLED ", text)
+        self.assertNotIn("THROTTLED-STUCK", text)
+        self.assertEqual(code, 2, "transient throttling must exit 2 (cannot "
+                                  "be determined), never 1 (a source is down)")
+
+    def test_at_the_line_it_escalates_and_exits_one(self):
+        text, code = self._run(H.THROTTLE_STREAK - 1)
+        self.assertIn("THROTTLED-STUCK", text)
+        self.assertIn("%d consecutive rounds" % H.THROTTLE_STREAK, text)
+        self.assertEqual(code, 1)
+
+    def test_it_reports_what_it_counted_and_not_why(self):
+        """The correction itself. A probe that can see a 429 and nothing else
+        must not narrate the cause behind it."""
+        text, _ = self._run(H.THROTTLE_STREAK + 2)
+        self.assertIn("THROTTLED-STUCK", text)
+        self.assertIn("not something this probe can see", text)
+        for invented in ("no longer a quota refilling", "no longer a quota"):
+            self.assertNotIn(invented, text,
+                             "the message is asserting a mechanism again")
+
+    def test_a_subset_run_does_not_rewrite_the_streaks(self):
+        """`source_health knmi` while debugging must not zero the fleet's
+        counters -- otherwise looking at one source resets the escalation on
+        every other one, and the reset is invisible."""
+        import json
+        import tempfile
+        fd, path = tempfile.mkstemp()
+        with os.fdopen(fd, "w") as f:
+            json.dump({"knmi-amsterdam": 5, "chrzc-zurich": 7}, f)
+        old = H.STREAK_FILE
+        try:
+            H.STREAK_FILE = path
+            H._streaks({"knmi-amsterdam": 1})     # a subset-style write
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(json.load(f), {"knmi-amsterdam": 1})
+        finally:
+            H.STREAK_FILE = old
+            os.unlink(path)
