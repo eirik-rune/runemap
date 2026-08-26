@@ -420,10 +420,18 @@ def main():
                 # have ever reached this line. It is silent for 98.6% of the
                 # throttling that actually happens, which is what a threshold
                 # is for.
-                msg += (" -- %d consecutive rounds; a streak this long is rare"
-                        " here (2 of 139 in the log so far), so it is worth a"
-                        " look, but the cause is not something this probe can"
-                        " see" % n)
+                # No frozen statistic. The first version of this line said
+                # "rare here (2 of 139 in the log so far)" -- a number I read
+                # out of the log at 13:00 and typed into the message. By 17:53
+                # the same day it was 3 of 140, because the second escalation
+                # was the very event the sentence was describing. A message
+                # that counts its own occurrences cannot carry a total, and I
+                # wrote it into the same change whose whole point was that this
+                # line must not assert what it cannot observe.
+                msg += (" -- %d consecutive rounds, past the %d that count as"
+                        " transient; how unusual that is has to come from the"
+                        " log, and the cause is not something this probe can"
+                        " see" % (n, THROTTLE_STREAK))
         elif label in streaks:
             del streaks[label]
         print("%-15s %s" % (state, msg))
