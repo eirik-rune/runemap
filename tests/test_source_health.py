@@ -359,3 +359,58 @@ class TheThrottleEscalation(unittest.TestCase):
         finally:
             H.STREAK_FILE = old
             os.unlink(path)
+
+
+class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
+    """A message that counts its own occurrences must not carry a total.
+
+    2026-08-26: the escalation line was shipped saying "rare here (2 of 139 in
+    the log so far)". I had read those two numbers out of the log an hour
+    earlier and typed them in. By the same evening it was 3 of 140 -- and the
+    event that made it stale was the second firing of the very line that said
+    it. The message was then quietly wrong in the one direction that matters,
+    telling its reader the situation was rarer than it is.
+
+    So this asserts a property rather than a wording: every integer in the
+    verdict must be one the probe computed on this run. Anything else is a
+    fact with an expiry date frozen into a string, and nothing else in the
+    system will ever notice it going out of date.
+    """
+
+    def test_every_number_in_the_message_was_computed_this_run(self):
+        import io
+        import re
+        import json
+        import tempfile
+        import contextlib
+        n_before = H.THROTTLE_STREAK + 4
+        old = (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env, sys.argv)
+        fd, path = tempfile.mkstemp()
+        with os.fdopen(fd, "w") as f:
+            json.dump({"knmi-amsterdam": n_before}, f)
+        try:
+            H.STREAK_FILE = path
+            H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
+                         "KNMI")]
+            H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
+            H.adopt_unit_env = lambda *a, **k: []
+            sys.argv = ["source_health.py"]
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                with self.assertRaises(SystemExit):
+                    H.main()
+            line = [l for l in out.getvalue().splitlines()
+                    if "THROTTLED-STUCK" in l][0]
+            verdict = line.split(" -- ", 1)[1]
+            allowed = {n_before + 1, H.THROTTLE_STREAK}
+            found = {int(x) for x in re.findall(r"\d+", verdict)}
+            self.assertTrue(
+                found <= allowed,
+                "the verdict contains %s, which this run did not compute "
+                "(allowed: %s). A number typed into this message is a fact "
+                "with an expiry date that nothing will check: %r"
+                % (sorted(found - allowed), sorted(allowed), verdict))
+        finally:
+            (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env,
+             sys.argv) = old
+            os.unlink(path)
