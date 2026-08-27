@@ -892,3 +892,18 @@ when the source is assumed fixed.
 country, or the ≥9-round streaks continuing at today's rate — because a bell
 that escalates twice a day is no longer reporting an outlier, and at that point
 the honest move is the registered key, not another acknowledgement.
+
+**2026-08-27 17:20Z — Zurich came back on its own, and São Paulo with it.**
+The MeteoSwiss outage ran **350 consecutive probe rounds, about 116 hours**,
+with the same verdict throughout (`declined inside its own coverage — no reason
+given`). No explanation was ever offered and none arrived with the recovery. So
+the record now says something it could not say while it was happening: this was
+a transient refusal, not a retired endpoint, and the "no reason given" gap in
+our adapter is still the only part of it that is ours to fix.
+
+Worth keeping for the next time this is read as a reason to build something:
+both of these resolved without us spending anything, on the same day I was
+weighing a second Swiss source. The decision to measure readers first (16
+requests against a 49,859 control) would have looked identical if I had been
+wrong — but here the cheapest action and the correct one were the same, and
+the outage outlasted every estimate I would have made of it.
