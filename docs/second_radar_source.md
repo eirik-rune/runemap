@@ -907,3 +907,42 @@ weighing a second Swiss source. The decision to measure readers first (16
 requests against a 49,859 control) would have looked identical if I had been
 wrong — but here the cheapest action and the correct one were the same, and
 the outage outlasted every estimate I would have made of it.
+
+### 2026-08-27: REDEMET is chronically flaky, and my 08-24 framing has not held
+
+On 08-24 I recorded this source's outage as **a new upstream problem**, on the
+grounds that the previous week had been 72/72 OK every day. That was true of the
+window I looked at. It is not true of the source.
+
+Full retained log, 1,034 rounds since 08-13:
+
+| | |
+|---|---|
+| rounds unavailable | **137 (13.2%)** |
+| separate outages | **10** |
+| long ones | 50 rounds (ended 08-14), 24 (ended 08-24), 47 (ended 08-25) |
+| frame age when healthy | p50 **24 min**, p90 24, max 44 |
+
+So roughly **one round in eight** finds no usable Brazilian frame, and two more
+multi-hour outages have happened since I called the first one new. The signature
+is always the same — `REDEMET-TOO-OLD`, frame age climbing at exactly wall-clock
+rate, meaning the upstream stops publishing and then simply ages.
+
+This is the window lesson from the same week, pointing the other way. On 08-26 a
+40-round window understated how much KNMI flaps and would have argued me out of
+a change. Here a 7-day window overstated how healthy REDEMET is and let me file
+a recurring condition as an incident. **Neither window was wrong; both were
+answers to "what happened recently" being read as "what this source is like."**
+
+**Decision unchanged, and this time it is a decision about a recurring state
+rather than an event.** Brazil is 6 requests against a 49,859 control, and the
+page already tells the reader the truth when there is no frame (`radar:
+fetching -- upstream listed no radar frames; weather above is live`) rather than
+drawing an empty grid. Nothing is owed to readers beyond that disclosure, and
+nothing here justifies building a second Brazilian source.
+
+**What would overturn it, updated:** Brazilian requests reaching the same order
+as a served country, or the unavailability rate climbing far enough that
+`fetching` becomes the usual answer rather than the occasional one — call it a
+third of rounds, which is where a listed country stops meaning anything. The
+13.2% figure is the number to re-measure against, not this paragraph.
