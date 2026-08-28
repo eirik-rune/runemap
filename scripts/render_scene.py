@@ -531,6 +531,30 @@ def _motion_peek(imgs, lng, lat):
 STATE_OK, STATE_FETCHING = "ok", "fetching"
 
 # Credit as each source asks to be credited, keyed by the name it reports.
+def _source_home(name):
+    """The host a source publishes its own product at, or None.
+
+    Pulled out of the adapter's ATTRIB rather than listed here, for the reason
+    _second_attrib already gives: a duplicated table does not fail when it
+    falls behind, it quietly starts pointing somewhere wrong. A source that
+    declares no host gets None and the caller omits the clause -- "I do not
+    know where their product is" and "their product is at X" must not print
+    the same thing.
+    """
+    attrib = _second_attrib(name) or ""
+    for tok in attrib.replace(",", " ").split():
+        # A hostname, not a sentence: no uppercase (institution names are
+        # capitalised), at least two dots or a known short form, and a plain
+        # TLD. "CC" and "BY" have no dot; "4.0" has one but no letters.
+        t = tok.strip(".")
+        if t != t.lower() or "." not in t:
+            continue
+        if not any(c.isalpha() for c in t.split(".")[-1]):
+            continue
+        return t
+    return None
+
+
 def _second_attrib(name):
     """Whose data drew this map, in the words that source declares for itself.
 
@@ -1695,7 +1719,24 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # all of them. Zulu and not local time: the header line already carries
         # local time, and a second local clock on the same page is how two
         # timezones get silently compared.
-        _obs_z = time.strftime("%H:%MZ", time.gmtime(base_ts))
+        # REDEMET/DECEA, 8/28, as a recommendation rather than a condition:
+        # "12:26Z" carries no day. Harmless at a ten-minute cache, and not
+        # harmless during a long upstream outage, when the cache can serve a
+        # frame from hours earlier and a lone clock time starts to mislead
+        # instead of inform. So the date appears when the bare clock could be
+        # read wrong -- either the observation is old, or it fell on a
+        # different UTC day than now, which happens across midnight at any
+        # age at all. The threshold of one hour is THEIRS, not a number I
+        # derived; saying so rather than dressing it up as a calculation.
+        #
+        # "08-27T23:10Z" and not "08-27 23:10Z": no space, so anything that
+        # splits this line on whitespace keeps working when the format widens.
+        _obs_g = time.gmtime(base_ts)
+        _stamp_date = (obs_age >= 60
+                       or time.strftime("%Y-%m-%d", _obs_g)
+                       != time.strftime("%Y-%m-%d", time.gmtime()))
+        _obs_z = time.strftime("%m-%dT%H:%MZ" if _stamp_date else "%H:%MZ",
+                               _obs_g)
         L.append("radar: %-14s obs age: %dmin %s  obs at: %s"
                  % (_axis1, obs_age, _age_tok, _obs_z))
         _coherence_sample(name, rt, art, kmcol, code,
@@ -1780,8 +1821,24 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # the authorship, and a reader could still have taken the grid for
         # something the source publishes. Their condition is right for every
         # source we redraw, so this is not a Brazil-only line.
+        # 8/28, REDEMET/DECEA's second letter, and the reason is theirs and
+        # good: our output is declared to be for other programs, so a consumer
+        # can extract the `radar-data-note` line ALONE. Read on its own it said
+        # "this is not the source's product" without saying where the source's
+        # product is -- which is the exact gap the condition exists to close.
+        # In their words: adjacency does not survive reprocessing. So the line
+        # that makes the disclaimer also carries the address.
+        #
+        # Derived from the adapter's own ATTRIB, never a second table: a table
+        # here would fall behind on the day a source moves, and the note would
+        # keep confidently pointing at the old address. Where a source declares
+        # no host -- CHMI and DMI give a licence name and nothing else -- the
+        # clause is omitted rather than guessed. An invented address is worse
+        # than a missing one.
+        _home = _source_home(_src)
         L.append("radar-data-note: lossy text grid by echorune, "
-                 "not the source's own product")
+                 "not the source's own product"
+                 + ("; official at " + _home if _home else ""))
     return "\n".join(L) + "\n"
 
 def main():
