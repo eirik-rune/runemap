@@ -338,10 +338,26 @@ class NamingTheSourceIsNotTheWholeObligation(unittest.TestCase):
         self.assertIn("Deutscher Wetterdienst", s["attrib"])
         self.assertIn("veraendert", s["attrib"])
 
-    def test_every_drawn_map_says_it_was_redrawn(self):
+    def test_every_drawn_map_disclaims_authorship_and_admits_the_loss(self):
+        """Asserted as three properties rather than one sentence, because the
+        sentence is going to be reworded again and a frozen string would only
+        pin the wording -- while the obligation is what the reader is told.
+
+        REDEMET/DECEA set the third property when they authorised us on 8/28:
+        naming the source and calling the grid a change is not enough, because
+        a reader can still take the grid for something the source publishes.
+        Every response has to say the conversion loses resolution and that the
+        representation is ours, not theirs."""
         for name in ("DWD", "FMI", "RainViewer", "REDEMET/DECEA"):
             b = body((ART, 12.0, 1.0, None, 1.0, name))
-            self.assertIn("radar-data-note: redrawn", b, name)
+            note = next((l for l in b.splitlines()
+                         if l.startswith("radar-data-note: ")), None)
+            self.assertIsNotNone(note, "%s: no note line at all" % name)
+            self.assertIn("lossy", note, name)          # the loss
+            self.assertIn("echorune", note, name)       # whose representation
+            self.assertIn("not the source", note, name)  # and whose it is not
+            self.assertLessEqual(len(note), 79,
+                                 "%s: %d cells, wraps at 80" % (name, len(note)))
 
     def test_a_primary_map_carries_no_note(self):
         """Absence stays informative: the primary drew this one, and we make no
@@ -392,7 +408,7 @@ class JapanIsInTheChainAndCreditsItself(unittest.TestCase):
     def test_the_body_prints_source_and_change_notice(self):
         b = body((ART, 8.0, 1.0, None, 1.0, "JMA"))
         self.assertIn("radar-data: Japan Meteorological Agency jma.go.jp", b)
-        self.assertIn("radar-data-note: redrawn", b)
+        self.assertIn("radar-data-note: lossy text grid by echorune", b)
 
 
 class TheUpgradeMustNotCostTheReaderTheirTime(unittest.TestCase):
@@ -601,3 +617,56 @@ class TheWarmLeavesARecordOfWhatItCost(unittest.TestCase):
         wearing a switch's name."""
         import os
         self.assertTrue(os.environ.get("RUNEMAP_WARM_SECOND", "1") != "0")
+
+
+class TheObservationInstantIsStatedAbsolutely(unittest.TestCase):
+    """`obs age` rots in a cache; `obs at` does not.
+
+    REDEMET/DECEA authorised our use of maxcappi on 2026-08-28 on the
+    condition that every response carry the observation time in UTC/Zulu --
+    "nao o horario da consulta nem o de geracao da resposta" -- and named its
+    absence as the main vector for reading the grid wrong. The mechanism is
+    worth stating because it is not Brazil-specific: `obs age` is computed
+    when the response is GENERATED, so a response served from a ten-minute
+    cache understates the age by up to ten minutes at the moment it is read.
+    An absolute instant cannot drift no matter how long the response sits.
+    """
+
+    def _radar_line(self, base_ts, ts=None):
+        rb = (ART, 12.0, ts if ts is not None else base_ts, None, base_ts, "REDEMET/DECEA")
+        b = body(rb)
+        return next(l for l in b.splitlines() if l.startswith("radar: "))
+
+    def test_an_observed_frame_states_its_instant_in_zulu(self):
+        import time as _t
+        base = _t.time() - 900
+        line = self._radar_line(base)
+        want = _t.strftime("%H:%MZ", _t.gmtime(base))
+        self.assertIn("obs at: " + want, line)
+
+    def test_it_is_the_observation_and_not_the_extrapolation_target(self):
+        """The one that would be wrong if somebody reached for `ts`: an
+        extrapolated frame is drawn for a LATER instant than the last look at
+        the sky, and it is the look that has to be timestamped."""
+        import time as _t
+        base = _t.time() - 1800
+        line = self._radar_line(base, ts=base + 1200)
+        self.assertIn("obs at: " + _t.strftime("%H:%MZ", _t.gmtime(base)), line)
+        self.assertNotIn(_t.strftime("%H:%MZ", _t.gmtime(base + 1200)), line)
+
+    def test_it_is_zulu_and_not_the_local_clock(self):
+        """The header already carries local time. Two clocks in two zones on
+        one page, neither labelled, is how they get compared by mistake -- so
+        this is pinned against a timezone where the two differ."""
+        import time as _t
+        base = _t.time()
+        rb = (ART, 12.0, base, None, base, "REDEMET/DECEA")
+        b = RS.build("en", "saopaulo", "RAIN", "saopaulo", -46.63, -23.55, -3, WX, rb)
+        line = next(l for l in b.splitlines() if l.startswith("radar: "))
+        self.assertIn("obs at: " + _t.strftime("%H:%MZ", _t.gmtime(base)), line)
+        local = _t.strftime("%H:%MZ", _t.gmtime(base - 3 * 3600))
+        self.assertNotIn(local, line)
+
+    def test_the_line_still_fits_an_eighty_column_terminal(self):
+        import time as _t
+        self.assertLessEqual(len(self._radar_line(_t.time() - 60)), 79)

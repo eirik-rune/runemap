@@ -1681,7 +1681,23 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # delete the word "now" this morning -- one fewer true statement beats
         # one more ambiguous symbol. A fourth state added later must not break
         # a reader that expects "age:" to be optional.
-        L.append("radar: %-14s obs age: %dmin %s" % (_axis1, obs_age, _age_tok))
+        # Axis 2 has two carriers, and they rot differently. "obs age" is
+        # relative and is computed when the response is GENERATED; a response
+        # served from a ten-minute cache therefore states an age that is wrong
+        # by up to ten minutes at the moment it is read. "obs at" is the same
+        # instant stated absolutely, in Zulu, and does not rot in a cache no
+        # matter how long the response sits there. REDEMET/DECEA made exactly
+        # this point when they authorised our use of their product on 8/28 --
+        # the observation instant in UTC, not the query time and not the
+        # generation time, is what lets a reader judge how current the sky is,
+        # and its absence is the main vector for reading the grid wrong. They
+        # are right about every source, not only theirs, so it is printed for
+        # all of them. Zulu and not local time: the header line already carries
+        # local time, and a second local clock on the same page is how two
+        # timezones get silently compared.
+        _obs_z = time.strftime("%H:%MZ", time.gmtime(base_ts))
+        L.append("radar: %-14s obs age: %dmin %s  obs at: %s"
+                 % (_axis1, obs_age, _age_tok, _obs_z))
         _coherence_sample(name, rt, art, kmcol, code,
                           obs_age, _age_tok, _extrapolated)
 
@@ -1756,7 +1772,16 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # attribution past 79 cells, so it gets its own token; a machine keys
         # on the token, and "radar-data-note" cannot be confused with either
         # "radar:" (the state) or "radar-data:" (whose data).
-        L.append("radar-data-note: redrawn from the source frames as a text grid")
+        # 8/28: REDEMET/DECEA authorised our use on the condition that every
+        # response distinguish THE DATA from OUR REPRESENTATION of it -- the
+        # data is official, the character grid is not a product of theirs, and
+        # the conversion loses resolution. The old wording said "redrawn ... as
+        # a text grid", which named the change but claimed neither the loss nor
+        # the authorship, and a reader could still have taken the grid for
+        # something the source publishes. Their condition is right for every
+        # source we redraw, so this is not a Brazil-only line.
+        L.append("radar-data-note: lossy text grid by echorune, "
+                 "not the source's own product")
     return "\n".join(L) + "\n"
 
 def main():
