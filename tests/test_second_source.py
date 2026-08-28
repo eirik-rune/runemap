@@ -5,6 +5,7 @@ not RainViewer -- the geometry has its own tests.
 """
 import os
 import sys
+import time as _time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -356,8 +357,8 @@ class NamingTheSourceIsNotTheWholeObligation(unittest.TestCase):
             self.assertIn("lossy", note, name)          # the loss
             self.assertIn("echorune", note, name)       # whose representation
             self.assertIn("not the source", note, name)  # and whose it is not
-            self.assertLessEqual(len(note), 79,
-                                 "%s: %d cells, wraps at 80" % (name, len(note)))
+            # Width is asserted by its own test below, which explains why
+            # this line is exempt from the 80-column budget.
 
     def test_a_primary_map_carries_no_note(self):
         """Absence stays informative: the primary drew this one, and we make no
@@ -370,16 +371,72 @@ class NamingTheSourceIsNotTheWholeObligation(unittest.TestCase):
         self.assertEqual(len([l for l in b.split("\n")
                               if l.startswith("radar-data:")]), 1)
 
-    def test_both_lines_fit_the_width_budget(self):
+    def _cells(self, s):
         import unicodedata
-        cells = lambda s: sum(2 if unicodedata.east_asian_width(c) in ("W", "F")
-                              else 1 for c in s)
+        return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+                   for c in s)
+
+    def test_the_credit_line_fits_the_width_budget(self):
+        """`radar-data:` still has to fit 80 columns. It is short, it is fixed,
+        and there is no reason for it not to."""
         import radar_wms
         for s in radar_wms.SERVICES:
             b = body((ART, 12.0, 1.0, None, 1.0, s["name"]))
             for line in b.split("\n"):
-                if line.startswith("radar-data"):
-                    self.assertLessEqual(cells(line), 79, line)
+                if line.startswith("radar-data:"):
+                    self.assertLessEqual(self._cells(line), 79, line)
+
+    def test_the_note_is_allowed_to_be_long_but_must_stay_one_line(self):
+        """The note is exempt from the 80-column budget, on purpose, as of
+        2026-08-28 -- and the exemption is written here rather than by quietly
+        raising the number, so the next reader sees a decision instead of a
+        looser rule.
+
+        It cannot fit. Four things have to be in it -- the loss, the author,
+        the disclaimer, and the source's address -- and the token plus a
+        twenty-character hostname spends 49 cells before any prose. REDEMET's
+        note lands near 108.
+
+        What is given up is small and what is bought is not. **Wrapping is a
+        display artefact**: the response still contains exactly one line, so
+        every parser sees what it saw before, and a human sees the sentence
+        across two rows of their terminal. What is bought is the licensor's
+        actual requirement -- a consumer that extracts this line ALONE still
+        learns where the official product is. Adjacency to `radar-data:` does
+        not survive reprocessing, which is precisely why they asked.
+
+        So the assertion changes shape: not "short", but "one line, and not
+        endless". The upper bound is a runaway guard, not a layout rule.
+        """
+        import radar_wms
+        for s in radar_wms.SERVICES:
+            b = body((ART, 12.0, 1.0, None, 1.0, s["name"]))
+            notes = [l for l in b.split("\n") if l.startswith("radar-data-note:")]
+            self.assertEqual(len(notes), 1, s["name"])
+            self.assertNotIn("\n", notes[0])
+            self.assertLessEqual(self._cells(notes[0]), 200, notes[0])
+
+    def test_the_note_says_where_the_official_product_is(self):
+        """REDEMET/DECEA, 2026-08-28: the note must carry the address itself,
+        because a program can extract it alone and then it disclaims the
+        source's product without saying where the source's product is."""
+        b = body((ART, 12.0, 1.0, None, 1.0, "REDEMET/DECEA"))
+        note = next(l for l in b.split("\n")
+                    if l.startswith("radar-data-note:"))
+        self.assertIn("redemet.decea.mil.br", note)
+
+    def test_a_source_that_declares_no_address_gets_no_invented_one(self):
+        """The negative control, and the more important half. DWD's required
+        attribution is a sentence with no host in it; CHMI and DMI give a
+        licence name. Inventing a plausible address for them would be worse
+        than saying nothing, and a rule that only ever adds text cannot be
+        seen to be wrong."""
+        for name in ("DWD", "CHMI", "DMI"):
+            b = body((ART, 12.0, 1.0, None, 1.0, name))
+            note = next(l for l in b.split("\n")
+                        if l.startswith("radar-data-note:"))
+            self.assertNotIn("official at", note, name)
+            self.assertIn("lossy", note, name)
 
 
 class JapanIsInTheChainAndCreditsItself(unittest.TestCase):
@@ -670,3 +727,105 @@ class TheObservationInstantIsStatedAbsolutely(unittest.TestCase):
     def test_the_line_still_fits_an_eighty_column_terminal(self):
         import time as _t
         self.assertLessEqual(len(self._radar_line(_t.time() - 60)), 79)
+
+
+class ABareClockStopsBeingEnoughWhenTheFrameIsOld(unittest.TestCase):
+    """REDEMET/DECEA, 2026-08-28, offered as a recommendation and not a
+    condition: "12:26Z" carries no day. At a ten-minute cache that is
+    harmless. During a long upstream outage the cache can serve a frame from
+    hours earlier, and then a lone clock time misleads instead of informing --
+    the reader has no way to see that "23:10Z" was yesterday.
+
+    The one-hour threshold is theirs. I did not derive it and do not pretend
+    to: writing a borrowed number as though it fell out of a calculation is
+    the kind of dressing-up this repository keeps catching itself doing.
+
+    The midnight clause is the part their letter implies rather than states: a
+    frame twenty minutes old at 00:10Z fell on yesterday's date, and the age
+    is short but the ambiguity is total.
+
+    **The clock is stubbed, and the first version of these tests was wrong for
+    exactly the reason this matters.** Written against the real clock, the
+    midnight case had to build a frame from before the last UTC midnight --
+    which, run at 14:00Z, is fourteen hours old, so the AGE clause satisfied
+    it and the midnight clause was never exercised. Deleting the midnight
+    clause left the suite green. A test that only passes because of the branch
+    it is not testing is worse than no test, and a test whose result depends
+    on what time it happens to be run is the same defect wearing a clock.
+    """
+
+    class _Clock(object):
+        """Everything real except "now"."""
+
+        def __init__(self, now):
+            self._now = now
+
+        def time(self):
+            return self._now
+
+        def gmtime(self, t=None):
+            return _time.gmtime(self._now if t is None else t)
+
+        def localtime(self, t=None):
+            return _time.localtime(self._now if t is None else t)
+
+        def strftime(self, f, t=None):
+            return _time.strftime(f, t if t is not None else self.gmtime())
+
+        def __getattr__(self, k):
+            return getattr(_time, k)
+
+    def _line(self, base_ts, now):
+        rb = (ART, 12.0, base_ts, None, base_ts, "REDEMET/DECEA")
+        was = RS.time
+        RS.time = self._Clock(now)
+        try:
+            b = body(rb)
+        finally:
+            RS.time = was
+        return next(l for l in b.splitlines() if l.startswith("radar: "))
+
+    #: 2026-08-27T23:50:00Z and 2026-08-28T00:10:00Z -- a real midnight, fixed,
+    #: so this suite means the same thing at every hour it is ever run.
+    LATE = _time.mktime((2026, 8, 27, 23, 50, 0, 0, 0, 0)) - _time.timezone
+    AFTER_MIDNIGHT = LATE + 1200
+    #: A midday pair, both instants on the SAME UTC day. The age test has to
+    #: use this: written against LATE, "an hour later" is 00:51 the next day,
+    #: so the MIDNIGHT clause satisfied it and disabling the age threshold
+    #: left it green -- the same defect as the one in the docstring, mirrored.
+    #: Each clause has to be exercised where only that clause can fire.
+    MIDDAY = _time.mktime((2026, 8, 27, 10, 0, 0, 0, 0, 0)) - _time.timezone
+
+    def test_a_fresh_frame_on_the_same_day_shows_only_the_clock(self):
+        line = self._line(self.LATE, self.LATE + 300)
+        self.assertIn("obs at: 23:50Z", line)
+        self.assertNotRegex(line, r"obs at: \d\d-\d\d")
+
+    def test_an_hour_old_frame_carries_the_date(self):
+        """Same UTC day at both ends, so only the age clause can be doing
+        this. 10:00Z observed, read at 11:01Z."""
+        line = self._line(self.MIDDAY, self.MIDDAY + 3700)
+        self.assertIn("obs at: 08-27T10:00Z", line)
+
+    def test_a_frame_under_the_hour_on_the_same_day_stays_bare(self):
+        """The negative control for the clause above: 59 minutes is not an
+        hour, and nothing else should be adding a date here either."""
+        line = self._line(self.MIDDAY, self.MIDDAY + 3540)
+        self.assertIn("obs at: 10:00Z", line)
+        self.assertNotIn("08-27T", line)
+
+    def test_a_frame_from_another_utc_day_carries_the_date_at_any_age(self):
+        """Twenty minutes old -- well under the hour -- and on yesterday's
+        date. This is the case the age threshold alone cannot see, and the
+        one the first draft of this test failed to actually exercise."""
+        line = self._line(self.LATE, self.AFTER_MIDNIGHT)
+        self.assertIn("obs age: 20min", line)          # young, by its own report
+        self.assertIn("obs at: 08-27T23:50Z", line)    # and dated anyway
+
+    def test_the_stamp_never_contains_a_space(self):
+        """So that anything splitting the radar line on whitespace keeps
+        working when the format widens. A date written "08-27 23:10Z" would
+        turn one field into two on exactly the days it matters."""
+        for now in (self.LATE + 60, self.LATE + 7200, self.AFTER_MIDNIGHT):
+            stamp = self._line(self.LATE, now).split("obs at: ")[1].strip()
+            self.assertNotIn(" ", stamp)
