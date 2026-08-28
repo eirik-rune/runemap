@@ -78,6 +78,13 @@ USAGE
                                    km/char is span/48. A '?' means outside the
                                    radar's coverage -- not that it is not raining.
   the query form keeps working: /scene?q=<place>&lang=zh
+
+  curl echorune.net/<place>?style   the same document rendered as a styled web
+                                   page. Plain text is the default for
+                                   EVERYONE, browsers included; ?style is the
+                                   only way to get HTML, so a link you paste
+                                   somewhere means the same thing wherever it
+                                   lands.
   (quote that one: & is a shell operator)
 
 POLLING
@@ -276,6 +283,23 @@ class H(BaseHTTPRequestHandler):
         finally:
             self._head = False
 
+    def _asked_for_style(self):
+        """Did this URL ask to be styled?
+
+        Read off self.path rather than threaded through from the routing code,
+        so it is right on EVERY path that reaches _send -- including the error
+        and help pages, which are reached by their own routes. A flag set in
+        one router and read in the sender is how half the responses end up
+        honouring a parameter and the other half silently ignoring it.
+
+        Presence is enough: ?style, ?style=1 and ?style=whatever all mean yes.
+        The value is reserved for naming a theme later and is not read today --
+        so ?style=nonsense must not become an error, because a reader who
+        guesses a value should still get the page they asked for.
+        """
+        q = urlparse(self.path).query
+        return "style" in parse_qs(q, keep_blank_values=True)
+
     def _send(self, code, body, ctype="text/plain; charset=utf-8"):
         b = body.encode() if isinstance(body, str) else body
         # 8/13 (bob): one canonical document. The plain bytes below are the
@@ -286,8 +310,16 @@ class H(BaseHTTPRequestHandler):
         # were computed from the markup, every HTML row would read `nogrid`
         # and the log column would start lying the day this shipped.
         was_plain = ctype.startswith("text/plain")
-        htmlize = (was_plain and code == 200 and _HTML_OK
-                   and MD.wants_html(self.headers.get("Accept")))
+        # 8/28 (bob): "默认就是text", HTML only when asked for by name. The
+        # trigger used to be the Accept header, which meant a browser got the
+        # styled page and everything else got bytes -- reasonable, and wrong in
+        # one specific way: **the same URL meant two documents**, and which one
+        # you got depended on a header you did not write. A person pasting a
+        # link into chat, an agent that happens to send a browser-ish Accept,
+        # and a cache in between all made that choice for you. Now the URL says
+        # it: ?style is a different address for the same content, and plain
+        # text is what every unqualified request gets, browsers included.
+        htmlize = was_plain and code == 200 and _HTML_OK and self._asked_for_style()
         plain = b
         if htmlize:
             try:
@@ -303,13 +335,14 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "public, max-age=300")
-        if was_plain:
-            # Two representations behind one URL and a public max-age: without
-            # this, any cache between us and the reader may hand a browser's
-            # HTML to the next agent that asks. That is precisely the failure
-            # bob named -- a machine getting the giant page by mistake -- and it
-            # would arrive through the cache, not through this code.
-            self.send_header("Vary", "Accept")
+        # `Vary: Accept` is deliberately GONE as of 8/28. It was load-bearing
+        # only while the Accept header chose the representation: it stopped a
+        # cache handing a browser's HTML to the next agent asking for the same
+        # URL. With ?style the two representations have two different URLs, so
+        # the query string is already part of every cache key and the guard has
+        # nothing left to guard. Leaving it would fragment the cache by a
+        # header that no longer changes the answer -- a header that describes a
+        # dependency the code no longer has is a lie a cache acts on.
         # 8/12 17:54: the byte count is a single-sided ruler. Today it left 7 of 105
         # stranger requests undecidable (682-768B: a fetching state for a city with a
         # long name weighs as much as nothing at all), so I could not answer "did that
