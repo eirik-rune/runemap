@@ -946,3 +946,39 @@ as a served country, or the unavailability rate climbing far enough that
 `fetching` becomes the usual answer rather than the occasional one — call it a
 third of rounds, which is where a listed country stops meaning anything. The
 13.2% figure is the number to re-measure against, not this paragraph.
+
+### 2026-08-28: "degrading" was a trend read off seven points, and it did not continue
+
+The section above is titled *DWD is degrading*. Six days later that is not true,
+and the header is a present-tense claim about a source that has since plateaued.
+
+Full retained log, 1,069 rounds:
+
+| | |
+|---|---|
+| rounds unavailable | **49 (4.6%)** |
+| separate outages | **36** |
+| longest | **3 rounds** — there has never been a sustained DWD outage |
+| last 24 hours | 2 of 72 rounds (**2.8%**) |
+| 08-21, the peak that prompted "climbing" | 12 of 144 (**8.3%**) |
+
+So the rate is now a third of the day that produced the word *climbing*. The
+0→12 series was real; **the extrapolation was mine**, and seven consecutive
+daily points is exactly enough to see a slope that is not there.
+
+This is the third time in one week I have read a window as a property. KNMI:
+a 40-round window understated the flapping. REDEMET: a 7-day window overstated
+the health. DWD: a 7-day window showed a trend that stopped. **Two of the three
+errors flattered the source and one maligned it, so this is not a bias I can
+correct by leaning one way** — the fix is to report a rate over everything
+retained, and to treat a direction as a claim needing far more evidence than
+a level does.
+
+**Not acked, deliberately, and the reason generalises.** `srcack` suppresses the
+six-hour repeat, and DWD's outages are 1–3 rounds — it recovers long before a
+repeat could fire, and the recovery bell handles the other end. An
+acknowledgement for a condition that never persists long enough to repeat buys
+nothing and puts a name in the ack list that would then need clearing.
+**Acks are for conditions that persist; short flapping is what the debounce is
+for.** Decision otherwise unchanged: 9 German requests against a 49,859 control,
+the page discloses a missing frame in words, no spend.
