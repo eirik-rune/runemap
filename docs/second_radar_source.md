@@ -982,3 +982,44 @@ nothing and puts a name in the ack list that would then need clearing.
 **Acks are for conditions that persist; short flapping is what the debounce is
 for.** Decision otherwise unchanged: 9 German requests against a 49,859 control,
 the page discloses a missing frame in words, no spend.
+
+### 2026-08-28, same day: the reason I gave for not acking DWD was wrong
+
+This morning I wrote that DWD does not need an acknowledgement because
+*"short flapping is what the debounce is for."* Berlin failed again 3.5 hours
+later and rang, which sent me to check the claim instead of the source.
+
+**The debounce absorbs one-round blips only.** A change must survive a single
+extra round before it rings, so anything lasting two rounds or more rings
+normally. Measured across the whole log:
+
+| source | outages | ≤1 round (absorbed) | ≤2 | ≤3 |
+|---|---|---|---|---|
+| wms-berlin | 39 | 28 | 37 | 39 |
+| knmi-amsterdam | 204 | 116 | 158 | 175 |
+| redemet-saopaulo | 10 | 2 | 3 | 6 |
+| chrzc-zurich | 5 | 3 | 4 | 4 |
+
+So for DWD, 28 of 39 outages are silent and **11 ring** — the debounce covers
+most of the flapping but nothing like all of it, and my sentence claimed all.
+The decision not to ack still stands, but it now rests on the ack being useless
+here (DWD recovers before a six-hour repeat could fire, and an ack would be
+cleared by that recovery anyway) rather than on a property the debounce does
+not have.
+
+**And I am not lengthening the debounce, though the same table says it would
+work.** Requiring two consecutive rounds would silence 37 of 39 DWD outages and
+158 of 204 KNMI ones, at the cost of reporting a real new failure 40 minutes
+late instead of 20 — which, given that every judgement in this document has
+been "≈10 readers, do not spend," costs nothing. The reason not to is the
+change budget, not the design: this state machine has been modified three times
+in five days and each change was broken or exposed by the next within 48 hours.
+
+**The trigger stays where I wrote it, and today tested it honestly.** The last
+24 hours ran at 6.0 rings/day, over my 5/day action line; the 2-day rate is 4.0
+and the 7-day rate is **3.1**. A ring rate is a state, and this week has taught
+me three times that a state must be read over the whole retained window — so
+the answer is 3.1, under the line, no mechanism change. Using the long window
+here is the same rule that corrected DWD's "degrading" and REDEMET's "new
+problem", and it has to apply when it argues for inaction too, or it is not a
+rule.
