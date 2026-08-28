@@ -475,27 +475,27 @@ class ItStaysSmall(unittest.TestCase):
             self.assertNotIn(bad, h.replace("caiyunapp.com", ""))
 
 
-class ItRendersOnlyForClientsThatAskedForIt(unittest.TestCase):
-    """curl and every agent library send `*/*` or nothing. If the wildcard
-    counted, shipping this would have changed what every existing caller
-    receives -- which is the one thing it must not do."""
+class TheAcceptHeaderNoLongerChoosesTheRepresentation(unittest.TestCase):
+    """`wants_html` and the five tests that pinned it were deleted on 8/28.
 
-    def test_a_browser_gets_html(self):
-        self.assertTrue(MD.wants_html(
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"))
+    bob asked for plain text by default with HTML behind an explicit ?style,
+    so the Accept header stopped being the switch. The function was left
+    working and unused for about ten minutes, and that is the shape this
+    repository has been bitten by twice this week: **retiring a branch leaves
+    its guard behind, still守着 the road its successor now takes.** A reader
+    finding a correct, tested `wants_html` would reasonably conclude the
+    service still negotiates on Accept, and would be wrong.
 
-    def test_curl_does_not(self):
-        self.assertFalse(MD.wants_html("*/*"))
+    This test is what remains: it asserts the negotiator is GONE, so that
+    re-adding it silently -- or leaving a copy behind in a refactor -- fails
+    here rather than in somebody's understanding of the service.
+    """
 
-    def test_a_client_that_said_nothing_does_not(self):
-        self.assertFalse(MD.wants_html(None))
-        self.assertFalse(MD.wants_html(""))
-
-    def test_an_explicit_preference_for_plain_text_wins(self):
-        self.assertFalse(MD.wants_html("text/plain,text/html;q=0.5"))
-
-    def test_html_refused_outright_is_not_served(self):
-        self.assertFalse(MD.wants_html("text/html;q=0,*/*"))
+    def test_the_accept_negotiator_is_gone_not_merely_unused(self):
+        self.assertFalse(hasattr(MD, "wants_html"),
+                         "mdhtml.wants_html is back; the representation is "
+                         "chosen by ?style now, and two switches for one "
+                         "decision is how they drift apart")
 
 
 class UnknownSkyIsNotDrawnAsWeather(unittest.TestCase):
@@ -687,3 +687,55 @@ class ThePaddingOnMetaLinesSeparatesFieldsAndIsNotLayout(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheUrlChoosesTheRepresentation(unittest.TestCase):
+    """?style is the whole switch, and it is read off the path.
+
+    2026-08-28, bob: "默认就是text", HTML only with a parameter. What this
+    buys, beyond his preference: **a link now means the same document
+    wherever it is pasted.** Under Accept negotiation the same URL was two
+    documents and the reader did not choose which -- their browser did, and a
+    cache in the middle could hand either one to the next caller.
+
+    Tested against the real handler class rather than a copy of the rule, and
+    through a stub that only carries a path, because the thing that has to be
+    right is "what does this URL mean", not "what does this helper compute".
+    """
+
+    def _handler(self, path):
+        # serve.py calls sys.exit at import time without a token -- correct for
+        # a service (a missing key must not become a half-working server) and
+        # inconvenient here. A placeholder is enough: nothing on this path
+        # reaches the upstream, and the alternative -- reading the real key out
+        # of /root/secrets.env -- would put a production credential inside a
+        # test process for no benefit at all.
+        os.environ.setdefault("CAIYUN_TOKEN", "placeholder-for-tests")
+        import serve as SV
+        h = SV.H.__new__(SV.H)      # the request handler class, uninstantiated
+        h.path = path
+        return h
+
+    def test_a_bare_url_is_text(self):
+        self.assertFalse(self._handler("/tokyo")._asked_for_style())
+
+    def test_style_asks_for_html(self):
+        self.assertTrue(self._handler("/tokyo?style")._asked_for_style())
+
+    def test_style_with_any_value_still_asks(self):
+        """The value is reserved for naming a theme later. A reader who
+        guesses `?style=dark` must get the page, not a rejection for using a
+        parameter we invited them to use."""
+        for u in ("/tokyo?style=1", "/tokyo?style=dark", "/tokyo?style="):
+            self.assertTrue(self._handler(u)._asked_for_style(), u)
+
+    def test_it_composes_with_the_other_parameters(self):
+        self.assertTrue(self._handler("/tokyo?span=100&style")._asked_for_style())
+        self.assertTrue(self._handler("/scene?q=tokyo&style&lang=zh")._asked_for_style())
+
+    def test_a_parameter_that_merely_contains_the_word_does_not_count(self):
+        """The negative control. Matching the substring rather than parsing
+        the query would make ?stylesheet= and ?nostyle= turn on the renderer,
+        and both are things a reader could plausibly send."""
+        for u in ("/tokyo?stylesheet=1", "/tokyo?nostyle=1", "/tokyo?q=style"):
+            self.assertFalse(self._handler(u)._asked_for_style(), u)

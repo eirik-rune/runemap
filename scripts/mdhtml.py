@@ -491,30 +491,10 @@ def render(text, marker="><"):
     }
 
 
-def wants_html(accept):
-    """True only when the client ASKED for HTML above plain text.
-
-    curl sends `*/*`, every agent library sends `*/*` or nothing, and browsers
-    send an explicit `text/html` first. So the wildcard must never count: the
-    default -- for anything that did not say -- stays the plain bytes that are
-    already the contract.
-    """
-    if not accept:
-        return False
-    best_html = best_text = -1.0
-    for part in accept.split(",")[:20]:
-        bits = part.strip().split(";")
-        mime = bits[0].strip().lower()
-        q = 1.0
-        for b in bits[1:]:
-            b = b.strip()
-            if b.startswith("q="):
-                try:
-                    q = float(b[2:])
-                except ValueError:
-                    q = 0.0
-        if mime in ("text/html", "application/xhtml+xml"):
-            best_html = max(best_html, q)
-        elif mime == "text/plain":
-            best_text = max(best_text, q)
-    return best_html > 0 and best_html > best_text
+# `wants_html(accept)` lived here until 2026-08-28. It read the Accept header
+# and decided whether a caller wanted the styled page. It was correct, it was
+# tested, and it is deleted rather than kept "in case" -- because the service
+# now chooses on ?style, and a second, working switch for the same decision is
+# exactly the thing that drifts out of agreement with the first one while both
+# keep looking reasonable in isolation. tests/test_mdhtml.py asserts it stays
+# gone.
