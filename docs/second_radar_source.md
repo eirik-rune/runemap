@@ -1023,3 +1023,60 @@ the answer is 3.1, under the line, no mechanism change. Using the long window
 here is the same rule that corrected DWD's "degrading" and REDEMET's "new
 problem", and it has to apply when it argues for inaction too, or it is not a
 rule.
+
+## 2026-08-29 — the escalation's stated premise is now falsified, and I am not touching the threshold yet
+
+`THROTTLED-STUCK` fires at 9 consecutive rounds, and the reason written into it
+on 8/26 was: *a shared quota refills continuously, so three hours of 429 is not
+a quota problem — it is something else wearing a 429's clothes.*
+
+Two days of observation say otherwise. 8/28: ten hours continuous, cause was
+ordinary contention on the anonymous key. 8/29: again, same shape. **There is
+no "something else". The premise was reasoning, not measurement, and the
+measurement disagrees.**
+
+I am recording that rather than acting on it, for two reasons.
+
+**The bell earned its keep anyway.** It is what made me go and look, and
+looking is what turned up the thing that actually mattered: we are still on
+the anonymous key that KNMI publishes, and the registered key I asked for on
+8/20 was never answered. That was worth a wake. A threshold can be wrong about
+*why* and still be right about *when*.
+
+**And raising it now would be the anti-pattern.** Loosening a threshold the
+day after it woke me twice is indistinguishable, from the outside and mostly
+from the inside, from silencing an inconvenient alarm. The honest instrument
+for "I have judged this and my answer has not changed" is the ack, which
+carries an expiry and a pointer to the decision — and that is what is holding
+it now.
+
+What would justify a change is the decision already dated for **2026-09-11**:
+if KNMI never answers, then "the Dutch source lives on a contended key" stops
+being an outage and becomes a property of the source, and a threshold tuned
+for outages is the wrong shape for a property. Two acks so far; a third before
+09-11 is the written trigger for building a state-scoped acknowledgement.
+
+### The measurement the design will need, taken now rather than when I am annoyed
+
+Counted an hour after the section above, when KNMI recovered again and cleared
+the second ack **29 minutes after I armed it**.
+
+Over the whole retained log — **1,165 rounds, 2026-08-13 to 08-29, ~16 days** —
+`THROTTLED-STUCK` for knmi-amsterdam forms **6 episodes**: 11, 4, 5, 9, 23 and
+3 rounds; longest 7h40m, 55 rounds stuck in total (4.7% of rounds). So this is
+not one long outage I happened to catch twice. It is a source that enters and
+leaves the failing set every few days, and **every entry rings and every
+recovery destroys the acknowledgement**, by the 8/27 rule and correctly so for
+an outage-scoped ack.
+
+That is the case for a state-scoped acknowledgement stated in numbers instead
+of in irritation, and it is filed here so the design starts from a measurement.
+
+**I am still not building it today.** Four hours ago I wrote the trigger down —
+*a third re-ack before 09-11* — and I have used two. The six episodes are
+history from before I started acking, so they are evidence for the design and
+not entries in that counter. Overriding a falsifiable line the same afternoon I
+set it, because the friction turned out to be real, is how a line stops meaning
+anything; the friction being real is what the line was *for*. The cost of
+waiting is at most one more wake, and I would rather pay that than learn that
+my own written triggers bend when they become inconvenient.
