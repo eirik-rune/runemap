@@ -126,6 +126,28 @@ PROBES = [
 #: something else wearing a 429, and I want to be told.
 THROTTLE_STREAK = 9
 
+#: What that 9 actually MEANS, kept separately because the rounds are no
+#: longer all the same length. 9 x 20 minutes = three hours, and three hours
+#: was the judgement; the 9 was arithmetic.
+#:
+#: 2026-09-06, and I introduced this bug myself an hour earlier: giving KNMI a
+#: 6h interval turned "9 consecutive rounds" from three hours into two and a
+#: quarter DAYS, for the one source the threshold was written for. Nothing
+#: would have failed. The constant would simply have meant something else --
+#: the exact shape of "a constant derived from a producer other than the one
+#: it serves", except the other producer was the previous version of me.
+STUCK_AFTER = 3 * 3600
+BASE_ROUND = 20 * 60
+
+
+def streak_line(label):
+    """How many consecutive throttled rounds span STUCK_AFTER, for this source.
+
+    At least 2: one round can never establish "it stayed throttled".
+    """
+    every = PROBE_EVERY.get(label) or BASE_ROUND
+    return max(2, -(-STUCK_AFTER // int(every)))
+
 #: How often a source may be asked, in seconds, when it is not named
 #: explicitly. Absent means every round, which stays the default: a monitor
 #: that asks less is a monitor that notices later, and that cost is only worth
@@ -501,7 +523,8 @@ def main():
         if state == "THROTTLED":
             n = int(streaks.get(label, 0)) + 1
             streaks[label] = n
-            if n >= THROTTLE_STREAK:
+            line = streak_line(label)
+            if n >= line:
                 state = "THROTTLED-STUCK"
                 # Says what was counted, not why. The first version asserted
                 # "this is no longer a quota refilling" -- and on 2026-08-26 a
@@ -525,10 +548,19 @@ def main():
                 # that counts its own occurrences cannot carry a total, and I
                 # wrote it into the same change whose whole point was that this
                 # line must not assert what it cannot observe.
-                msg += (" -- %d consecutive rounds, past the %d that count as"
-                        " transient; how unusual that is has to come from the"
-                        " log, and the cause is not something this probe can"
-                        " see" % (n, THROTTLE_STREAK))
+                # Says the hours as well as the rounds, because rounds are no
+                # longer a fixed length: 2 rounds of a 6h probe and 9 rounds of
+                # a 20-minute one are the same judgement, and only the hours
+                # say so. Both numbers computed this run, per the rule this
+                # message already carries.
+                msg += (" -- %d consecutive rounds (>= %d), spanning about"
+                        " %.1fh at this source's probe interval, past what"
+                        " counts as transient; how unusual that is has to come"
+                        " from the log, and the cause is not something this"
+                        " probe can see"
+                        % (n, line,
+                           (n - 1) * (PROBE_EVERY.get(label) or BASE_ROUND)
+                           / 3600.0))
         elif label in streaks:
             del streaks[label]
         print("%-15s %s" % (state, msg))

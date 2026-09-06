@@ -288,7 +288,7 @@ class TheThrottleEscalation(unittest.TestCase):
             H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env, H.LAST_FILE)
         fd, path = tempfile.mkstemp()
         with os.fdopen(fd, "w") as f:
-            json.dump({"knmi-amsterdam": streak_before}, f)
+            json.dump({"fleet-source": streak_before}, f)
         fd2, lastpath = tempfile.mkstemp()
         os.close(fd2)
         os.unlink(lastpath)          # absent == never asked == ask now
@@ -301,9 +301,9 @@ class TheThrottleEscalation(unittest.TestCase):
             # escalation of the one source with an interval would have been
             # untested by an accident of a shared file.
             H.LAST_FILE = lastpath
-            H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
+            H.PROBES = [("fleet-source", "fake_source", (4.9, 52.4), 900,
                          "KNMI")]
-            H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
+            H.check = lambda *a, **k: ("THROTTLED", "fleet-source: busy")
             H.adopt_unit_env = lambda *a, **k: []
             out = io.StringIO()
             # main() reads sys.argv, and under a test runner argv is full of
@@ -401,7 +401,7 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
                H.LAST_FILE)
         fd, path = tempfile.mkstemp()
         with os.fdopen(fd, "w") as f:
-            json.dump({"knmi-amsterdam": n_before}, f)
+            json.dump({"fleet-source": n_before}, f)
         fd2, lastpath = tempfile.mkstemp()
         os.close(fd2)
         os.unlink(lastpath)          # absent == never asked == ask now
@@ -411,9 +411,9 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
             # an interval now, so the record of when it was last asked has to
             # be this test's own and not whatever /tmp is holding.
             H.LAST_FILE = lastpath
-            H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
+            H.PROBES = [("fleet-source", "fake_source", (4.9, 52.4), 900,
                          "KNMI")]
-            H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
+            H.check = lambda *a, **k: ("THROTTLED", "fleet-source: busy")
             H.adopt_unit_env = lambda *a, **k: []
             sys.argv = ["source_health.py"]
             out = io.StringIO()
@@ -423,7 +423,13 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
             line = [l for l in out.getvalue().splitlines()
                     if "THROTTLED-STUCK" in l][0]
             verdict = line.split(" -- ", 1)[1]
-            allowed = {n_before + 1, H.THROTTLE_STREAK}
+            # Every one of these is computed the same way the verdict computes
+            # it, never typed: the count, the line for THIS source's cadence,
+            # and the digits of the span it spells out. A number that is not
+            # derivable from this run still fails, which is the property.
+            span = "%.1f" % ((n_before + 1 - 1) * H.BASE_ROUND / 3600.0)
+            allowed = ({n_before + 1, H.streak_line("fleet-source")}
+                       | {int(x) for x in re.findall(r"\d+", span)})
             found = {int(x) for x in re.findall(r"\d+", verdict)}
             self.assertTrue(
                 found <= allowed,
