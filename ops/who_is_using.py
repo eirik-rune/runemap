@@ -195,6 +195,24 @@ def insider(ip):
     return INSIDER_NETS.get(".".join(parts[:3]) + ".0")
 
 
+_MON = {m: i for i, m in enumerate(
+    "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), 1)}
+
+
+def _when(t):
+    """'31/Aug/2026:23:59:01 +0000' -> a sortable tuple, or None.
+
+    None rather than a guess: a timestamp this cannot read must not silently
+    become the earliest or latest thing in the window.
+    """
+    try:
+        d, mon, rest = t.split("/", 2)
+        y, hh, mm, ss = rest.split(" ")[0].split(":")
+        return (int(y), _MON[mon], int(d), int(hh), int(mm), int(ss))
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 def classify(ip, ua, path, status):
     """Five buckets, because four of them are things I would otherwise have
     reported as demand for the product."""
@@ -353,6 +371,8 @@ def main():
     paths_seen = Counter()
     total = unparsed = 0
     first_t = last_t = None
+    first_k = last_k = None
+    undated = 0
 
     for line in read_lines(paths):
         m = LOG_RE.match(line)
@@ -362,9 +382,22 @@ def main():
         if a.path_filter and a.path_filter not in m.group("path"):
             continue
         total += 1
+        # Ordered as TIME, not as text. Until 2026-09-06 these were compared
+        # as strings, so "01/Sep" sorted before "31/Aug" and the header read
+        # `window: 01/Sep/2026 -> 31/Aug/2026` -- an interval that ends before
+        # it begins, printed above every count in this report as their
+        # denominator. Nothing failed; the numbers were right and the period
+        # they covered was nonsense, which is worse, because the header is
+        # what I would quote.
         t = m.group("t")
-        if first_t is None or t < first_t: first_t = t
-        if last_t is None or t > last_t: last_t = t
+        k = _when(t)
+        if k is None:
+            undated += 1
+        else:
+            if first_k is None or k < first_k:
+                first_k, first_t = k, t
+            if last_k is None or k > last_k:
+                last_k, last_t = k, t
         ip, ua = m.group("ip"), m.group("ua")
         b = classify(ip, ua, m.group("path"), m.group("status"))
         buckets[b] += 1
@@ -422,7 +455,10 @@ def main():
     print("logs read      : %d file(s), %d requests parsed" % (len(paths), total))
     # n without a denominator is a number that sounds like whatever you want it
     # to. Print the window the count covers, from the data, not from assumption.
-    print("window         : %s  ->  %s" % (first_t or "?", last_t or "?"))
+    print("window         : %s  ->  %s%s"
+          % (first_t or "?", last_t or "?",
+             "   (%d line(s) had a timestamp I could not read and are not in "
+             "this window)" % undated if undated else ""))
     if unparsed:
         # Never silent: an unparsed line is a request we did not judge.
         print("unparsed lines : %d  (not counted anywhere -- format drift?)"
