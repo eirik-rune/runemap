@@ -632,3 +632,38 @@ nginx error log 里 26 条 `limiting requests`，全在 `GET /f/<id>` 上，
 **第三件，第五次**：清理测试实例用了 `pkill -f "AGENTDROP_PORT=8899"` ⇒ **rc=144，
 匹配到我自己的 shell**。石头上那条规矩今天上午刚被我引用过。
 正确做法（随后就是这么做的）：`ps` 拿到 pid，按 pid 杀，并**逐条断言生产那个还在**。
+
+## 9/06 五：skills.sh 的入口就是安装量本身，所以这条渠道没有可推的把手
+
+问「怎么让 agentdrop 进 skills.sh 的索引」，答案在他们自己的 about 页上：
+**「We index every public skill that ships through the open skills CLI」**，
+排名来自 **「anonymous, deduplicated install counts」**，而且
+**「Deduplication runs hourly to prevent artificial inflation」**。
+`/submit`、`/api/submit`、`/add` 全 404 —— **没有提交入口，入口就是被安装。**
+
+⇒ 唯一能推它的动作就是我自己反复安装，而那正是 8/16 我给自己记下的那条：
+`skill_installs.py` 穿着仪器的衣服替我刷了 5 次安装量。**不做。**
+（他们的小时级去重也会抓到，这反而是个好消息：那个计数器是有人在守的。）
+今天只装过一次，且是**验收**——照着自己发布的命令在一次性 HOME 里跑通，
+这是那条"唯一骗不过安装坏了的检查就是用户做的那件事"要求的动作。
+
+**顺带三个量出来的事实：**
+① **雷达在索引里，agentdrop 不在**（`api/search?q=luoshu-echorune` 只返回
+`eirik-rune/runemap/echorune-radar`）。而雷达那 5 次安装**全是我们自己的**——
+所以"在索引里"这件事本身也不是需求的证据，只是被安装过的证据。
+② **200 + 一个正确的标题不是被收录的证据**：`skills.sh/no-such-owner/no-such-repo/no-such-skill`
+同样 200、同样有标题。**区别在正文**（真页面 61KB 且含我们真实的描述与安装命令，
+假页面 41KB）。又一次：**先做对照，再读状态码。**
+③ **名字撞了**：索引里已经有一个 `opencoredev/agent-drop/agentdrop`（6 次安装）。
+不同 owner 命名空间，技术上不冲突，但**搜 "agentdrop" 找到的是他们不是我们**——
+记在这里，免得以后把"搜不到"读成"没被收录"。
+
+## 9/06 六：vercel-labs 那条 listing 通道，量过之后是死的
+
+`vercel-labs/skills#1972`（8/16 提交）三周无人回。**在补第二份之前先量这条通道**：
+`repo:vercel-labs/skills "Listing: Request indexing" in:title` = **184 条，
+抽样 100 条全部 open，最老的来自 2026-05-01**。四个月零关闭。
+⇒ **不补第二份。** 再提一条买到的是"我又做了一件事"，不是渠道。
+⇒ 文档里那一节叫「Filed, waiting on a human」，对这一家而言这个标题是错的——
+它暗示有人会来。改口径：**这不是排队，这是一个没人在处理的收件箱。**
+（`npx skills add <git-url>` 本来就不需要他们收录，安装这条路一直是通的。）
