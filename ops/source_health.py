@@ -40,6 +40,12 @@ So the check is per source and it has to be able to fail:
                Production may well be serving it; ask the service.
   WRONG-SOURCE another service answered, so the one this probe names is not
                being exercised at all
+  SKIPPED      this source has its own probe interval and it has not elapsed.
+               Nothing was asked, so this is not a verdict about the source:
+               it does not touch the streak and it is not in the healthy
+               denominator. Naming the source on the command line always asks
+               anyway -- a rate limit on the monitor must never disable the
+               diagnostic.
   ERROR        it raised
 
 Exit 0 every source OK, 1 a source is down, 2 the only non-OK verdicts were
@@ -120,6 +126,33 @@ PROBES = [
 #: something else wearing a 429, and I want to be told.
 THROTTLE_STREAK = 9
 
+#: How often a source may be asked, in seconds, when it is not named
+#: explicitly. Absent means every round, which stays the default: a monitor
+#: that asks less is a monitor that notices later, and that cost is only worth
+#: paying where the asking itself does harm.
+#:
+#: KNMI is the one place it does. Its key is the shared anonymous key -- the
+#: same one every unregistered user of that service holds -- so this probe is
+#: not spending our budget, it is spending everyone's, and it is the single
+#: heaviest consumer we run: 216 rounds a day, 47.3% of which come back
+#: throttled anyway. Against that, measured rather than assumed: over the 6.9
+#: days journald still holds, requests for Dutch skies from actual readers
+#: number ZERO. So the probe was the consumer and the service was not.
+#:
+#: Six hours, not silence: the source stays under observation, four times a
+#: day, which is enough to answer "is it still there" and is 94% less of a
+#: stranger's quota than before.
+PROBE_EVERY = {
+    "knmi-amsterdam": 6 * 3600,
+}
+
+#: Separate from the streak file on purpose. The streak is a claim about the
+#: source; this is a record of what THIS PROGRAM did, and mixing the two would
+#: mean a corrupt file loses both at once.
+LAST_FILE = os.environ.get(
+    "RUNEMAP_HEALTH_LAST",
+    os.path.join(os.environ.get("RUNEMAP_CACHE", "/tmp"), "health_last.json"))
+
 #: Beside the cache, so both pool members and cron share one count. A streak
 #: kept in memory would reset every run, i.e. never escalate -- a guard whose
 #: release condition can only be met by the thing it forbids.
@@ -186,6 +219,54 @@ def _streaks(update=None):
     except OSError as e:
         sys.stderr.write("HEALTH-STREAK-UNWRITABLE %s: %s\n" % (STREAK_FILE, e))
     return update
+
+
+def _last(update=None):
+    """Read, and optionally rewrite, when each label was last actually asked.
+
+    Unreadable errs the other way from _streaks: no record means "I do not know
+    when I last asked", and the safe answer to that is to ask. Skipping on an
+    unknown would be a rate limit that a broken file could turn into permanent
+    silence, and the whole point of the interval is that the source stays under
+    observation.
+    """
+    try:
+        with open(LAST_FILE, encoding="utf-8") as f:
+            cur = json.load(f)
+        if not isinstance(cur, dict):
+            cur = {}
+    except Exception:
+        cur = {}
+    if update is None:
+        return cur
+    try:
+        tmp = LAST_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(update, f)
+        os.replace(tmp, LAST_FILE)
+    except OSError as e:
+        sys.stderr.write("HEALTH-LAST-UNWRITABLE %s: %s\n" % (LAST_FILE, e))
+    return update
+
+
+def due(label, last, now=None, named=False):
+    """-> (ask?, seconds since it was last asked or None).
+
+    Named on the command line always asks: this file is both the fleet monitor
+    and the single-source diagnostic, and the diagnostic is what I reach for
+    exactly when a source is misbehaving.
+    """
+    every = PROBE_EVERY.get(label)
+    if named or not every:
+        return True, None
+    try:
+        since = (now if now is not None else time.time()) - float(last[label])
+    except (KeyError, TypeError, ValueError):
+        return True, None
+    if since < 0:
+        # A clock that went backwards must not grant an unbounded skip.
+        return True, since
+    return since >= every, since
 
 
 def _max_age(mod, fallback):
@@ -397,9 +478,25 @@ def main():
     # on all the others.
     whole_fleet = not wanted
     streaks = _streaks()
+    last = _last()
     bad = 0        # something is broken -> exit 1
     unknown = 0    # cannot tell right now -> exit 2, and no bell
+    skipped = 0    # not asked at all -> not a verdict, not in the denominator
     for label, modname, sky, fallback, want in rows:
+        ask, since = due(label, last, named=bool(wanted))
+        if not ask:
+            every = PROBE_EVERY[label]
+            # Deliberately says the interval and the age, so a reader can tell
+            # this apart from a source that quietly stopped being probed. A
+            # skip that does not say why it skipped is indistinguishable from
+            # a probe that was dropped from the table.
+            print("%-15s %s: not asked -- probed every %.0fh, last asked %.0f min"
+                  " ago. This is not a verdict about the source; name it on the"
+                  " command line to ask now."
+                  % ("SKIPPED", label, every / 3600.0, (since or 0) / 60.0))
+            skipped += 1
+            continue
+        last[label] = time.time()
         state, msg = check(label, modname, sky, fallback, want)
         if state == "THROTTLED":
             n = int(streaks.get(label, 0)) + 1
@@ -441,13 +538,24 @@ def main():
             bad += 1
     if whole_fleet:
         _streaks(streaks)
+    # Written on every run, including a subset run: this records what was
+    # ASKED, and a named single-source run really did spend a request out of
+    # the same shared quota. Gating it on whole_fleet would let a debugging
+    # session ask without the record ever noticing.
+    _last(last)
     # Three counts, printed separately, because collapsing them is the bug this
     # change exists to fix: "12 of 13 healthy" said the same thing whether the
     # Dutch radar was dead or merely busy.
-    print("-- %d of %d healthy%s%s"
-          % (len(rows) - bad - unknown, len(rows),
+    #
+    # Skipped sources are out of BOTH sides of the ratio. Counting them as
+    # healthy would be a monitor reporting on a source it did not contact;
+    # counting them as unhealthy would ring for a silence I scheduled myself.
+    asked = len(rows) - skipped
+    print("-- %d of %d healthy%s%s%s"
+          % (asked - bad - unknown, asked,
              ", %d down" % bad if bad else "",
-             ", %d could not be determined" % unknown if unknown else ""))
+             ", %d could not be determined" % unknown if unknown else "",
+             ", %d not asked this round" % skipped if skipped else ""))
     sys.exit(1 if bad else (2 if unknown else 0))
 
 

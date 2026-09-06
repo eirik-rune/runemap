@@ -284,13 +284,23 @@ class TheThrottleEscalation(unittest.TestCase):
         import json
         import tempfile
         import contextlib
-        old_probes, old_streak, old_check, old_adopt = (
-            H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env)
+        old_probes, old_streak, old_check, old_adopt, old_last = (
+            H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env, H.LAST_FILE)
         fd, path = tempfile.mkstemp()
         with os.fdopen(fd, "w") as f:
             json.dump({"knmi-amsterdam": streak_before}, f)
+        fd2, lastpath = tempfile.mkstemp()
+        os.close(fd2)
+        os.unlink(lastpath)          # absent == never asked == ask now
         try:
             H.STREAK_FILE = path
+            # 2026-09-06: knmi-amsterdam is now probed on an interval, and
+            # these three tests use that very label. Left pointing at the
+            # default they read whatever /tmp happened to hold from the last
+            # real run, and all three went red printing SKIPPED -- the
+            # escalation of the one source with an interval would have been
+            # untested by an accident of a shared file.
+            H.LAST_FILE = lastpath
             H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
                          "KNMI")]
             H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
@@ -311,9 +321,12 @@ class TheThrottleEscalation(unittest.TestCase):
                 sys.argv = old_argv
             return out.getvalue(), cm.exception.code
         finally:
-            (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env) = (
-                old_probes, old_streak, old_check, old_adopt)
+            (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env,
+             H.LAST_FILE) = (old_probes, old_streak, old_check, old_adopt,
+                             old_last)
             os.unlink(path)
+            if os.path.exists(lastpath):
+                os.unlink(lastpath)
 
     def test_below_the_line_stays_transient_and_does_not_ring(self):
         """137 of the 139 throttle streaks in the log live here. If this
@@ -384,12 +397,20 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
         import tempfile
         import contextlib
         n_before = H.THROTTLE_STREAK + 4
-        old = (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env, sys.argv)
+        old = (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env, sys.argv,
+               H.LAST_FILE)
         fd, path = tempfile.mkstemp()
         with os.fdopen(fd, "w") as f:
             json.dump({"knmi-amsterdam": n_before}, f)
+        fd2, lastpath = tempfile.mkstemp()
+        os.close(fd2)
+        os.unlink(lastpath)          # absent == never asked == ask now
         try:
             H.STREAK_FILE = path
+            # See the note in TheThrottleEscalation: this label is probed on
+            # an interval now, so the record of when it was last asked has to
+            # be this test's own and not whatever /tmp is holding.
+            H.LAST_FILE = lastpath
             H.PROBES = [("knmi-amsterdam", "fake_source", (4.9, 52.4), 900,
                          "KNMI")]
             H.check = lambda *a, **k: ("THROTTLED", "knmi-amsterdam: busy")
@@ -412,5 +433,7 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
                 % (sorted(found - allowed), sorted(allowed), verdict))
         finally:
             (H.PROBES, H.STREAK_FILE, H.check, H.adopt_unit_env,
-             sys.argv) = old
+             sys.argv, H.LAST_FILE) = old
             os.unlink(path)
+            if os.path.exists(lastpath):
+                os.unlink(lastpath)
