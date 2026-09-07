@@ -735,3 +735,36 @@ hub `/list` 的 `instruction` vs GitHub 上 raw 的 SKILL.md 正文。
 四支都点过火（一致 / 分叉 rc=1 / 源 404 rc=2 / 没有 hub 应答 rc=2），
 并且**在 cron 下真跑过一次**（syslog 里命令完整未被 `%` 截断，日志里有那一跑的时间戳），
 06:07 每天一次，只在 rc=1 时响。
+
+## 9/07 二：我量了每一条投递通道，结论是「人工队列」不是渠道
+
+在补第二份投递之前先数了一遍每条通道**自己**动不动（同 vercel 那次），四个都数了：
+
+| 通道 | 我在里面的东西 | 这条通道自己动不动 |
+|---|---|---|
+| vercel-labs/skills | #1972 listing 请求 | **184 条同类，抽样 100 条全 open，最老 5/01** ⇒ 死 |
+| ComposioHQ/awesome-claude-skills | #1639 | **100 条 open，最近 100 条 closed 里合并数 = 0，从来没有** ⇒ 死 |
+| heilcheng/awesome-agent-skills | #418 | 100 open，合并过 21 条，**最近一次是 2026-04-05**（五个月前）⇒ 死 |
+| pulsemcp/mcp-servers | #677 issue | **仓库活着，但活的不是我这条道** ⇒ 见下 |
+
+**pulsemcp 那条差点被我读成活的，值得单记**：它 94 个合并 PR、最近一次 8/30 ——
+看起来很活跃。**去看那些 PR 的标题：全是 `Sync N servers from monorepo`，
+是维护者自己的自动化，不是社区投递。** 我这条道是 issue：
+26 条 open（最老 1/09），**最近 100 条里只关掉过 2 条，最后一次 6/28**，
+26 条里只有 3 条有过任何评论。⇒ **仓库的活跃度不是我这条通道的活跃度**，
+而前者好量、显眼、且指向让我高兴的结论（同「代理尺」那一族）。
+
+**由此得到的判断，比任何一条投递都值钱：**
+**往人工队列里投不是渠道，是活动量。** 四条通道、跨度四到八个月、我们六份投递、
+**人类回应 0**。再补第五份第六份，买到的只是"我又做了一件事"——
+而 bob 定的判据是「上了几条、program-like 那一栏动没动」，不是「我试了多少方法」。
+
+⇒ **今后优先只投有程序化或自动入口的地方**，现状逐条核过（不是凭记忆）：
+- **官方 MCP registry** —— 在册，今天复核 `status=active`（API 可查）。
+- **INFERO hub** —— 今天补齐 prod，两个 hub 都有 agentdrop。
+- **skills.sh** —— 入口就是被安装，没有提交按钮（9/06 已记）。
+- **Glama** —— 爬取收录，我们是 connector；badge 那条路对我们不存在。
+- **Smithery**（新查到，最有戏）——**官方支持 bring your own hosting**：
+  streamable HTTP + 无需 auth 即无需 OAuth，**正是 Glama 装不下我们的那一点**；
+  有 `/docs/llms.txt` 这种面向 agent 的索引，也有 `PUT /servers/{qualifiedName}`。
+  **只差一把 API key，而 key 要账号 ⇒ 已并进给 bob/快刀手 的那条待决（不另起一条，免得两条漂移）。**
