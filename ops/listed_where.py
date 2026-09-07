@@ -41,6 +41,23 @@ NEEDLE = "echorune"
 #: site echoing the query back, and that is the floor a real hit must clear.
 CONTROL = "zzqqxnothingzz"
 
+#: A term that MUST be found if the ruler can see anything at all. Every MCP
+#: directory carries a filesystem server; Anthropic's is the reference one.
+#:
+#: 2026-09-07. Until today this file had only the negative control above, and a
+#: negative control can only detect ECHO. It cannot detect BLINDNESS, because a
+#: page that renders its results in JavaScript returns zero for the impossible
+#: term and zero for us -- and `c == 0 and m == 0` was being printed as ABSENT.
+#: Measured on smithery.ai the same minute: `filesystem` -> 0 occurrences in the
+#: raw HTML, exactly like our own name and like gibberish. So "smithery ABSENT"
+#: was a confident verdict from an instrument that cannot see, and it was
+#: feeding the count I report to bob.
+#:
+#: The two controls answer different questions and both are needed:
+#:   negative (CONTROL) -- does this page echo whatever I typed?  -> NO-SIGNAL
+#:   positive (PRESENT) -- can this page show me anything at all?  -> BLIND
+PRESENT = "filesystem"
+
 #: The official MCP registry name, which is how the directories that ingest the
 #: registry address us. Not typed twice: it is the namespace we published.
 REGISTRY_NAME = "io.github.luoshu-echorune/echorune-radar"
@@ -150,7 +167,24 @@ def main():
                 if m > c:
                     verdict, detail = "LISTED", "%d hits vs %d echoed" % (m, c)
                 elif c == 0 and m == 0:
-                    verdict, detail = "ABSENT", "0 hits, control 0"
+                    # Both zero has two causes that look identical: nobody is
+                    # there, or nothing can be seen. Only the positive control
+                    # separates them, and it is asked ONLY here, where the
+                    # answer would otherwise be an unearned ABSENT.
+                    pos, why3 = fetch(tmpl % PRESENT)
+                    p = count(pos, PRESENT) if pos is not None else 0
+                    if p > 0:
+                        verdict, detail = "ABSENT", (
+                            "0 hits, control 0, and the positive control "
+                            "(%s) returns %d -- the page can be read" %
+                            (PRESENT, p))
+                    else:
+                        verdict, detail = "BLIND", (
+                            "0 hits, but %s returns 0 too (%s) -- this ruler "
+                            "cannot see anything, so this is NOT evidence of "
+                            "absence" % (PRESENT, why3 if pos is None else
+                                         "rendered client-side?"))
+                        unreachable += 1
                 else:
                     verdict, detail = "NO-SIGNAL", (
                         "%d hits vs %d echoed -- the page echoes the query, so "

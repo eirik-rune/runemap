@@ -121,3 +121,66 @@ class TheProbeCanStillSayAbsent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ANegativeControlCannotDetectBlindness(unittest.TestCase):
+    """Both-zero has two causes, and only one of them is absence.
+
+    2026-09-07. Until today the verdict for `ours == 0 and control == 0` was a
+    flat ABSENT. The control is a term that cannot exist, so it catches a page
+    that echoes the query back -- and nothing else. A page that renders its
+    results in JavaScript returns zero for the impossible term, zero for a term
+    that certainly exists, and zero for us, and the report printed a confident
+    ABSENT for smithery.ai on exactly that basis. Measured the same minute:
+    `filesystem` returned 0 occurrences in its raw HTML.
+
+    An instrument that cannot see anything must not be allowed to testify about
+    absence, and it must say so in a word of its own.
+    """
+
+    @staticmethod
+    def _fetch(sees_present):
+        def fetch(url):
+            if "zzqqx-nothing" in url or "does-not-exist" in url:
+                return None, "HTTP 404"
+            if L.CONTROL in url:
+                return "nothing here", None
+            if L.PRESENT in url:
+                return (L.PRESENT * 3, None) if sees_present else ("", None)
+            return "", None          # we are not on the page either way
+        return fetch
+
+    def _verdict_for(self, sees_present, name="smithery"):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "state.json")
+            run_with(self._fetch(sees_present), p)
+            return json.load(open(p, encoding="utf-8"))[name]
+
+    def test_a_page_that_cannot_show_anything_is_BLIND_not_ABSENT(self):
+        self.assertEqual(self._verdict_for(sees_present=False), "BLIND")
+
+    def test_a_readable_page_that_lacks_us_is_still_ABSENT(self):
+        """The positive control must not turn every absence into a shrug --
+        that would be the opposite failure, and just as useless."""
+        self.assertEqual(self._verdict_for(sees_present=True), "ABSENT")
+
+    def test_BLIND_never_counts_as_a_directory_that_lists_us(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "state.json")
+            _, out = run_with(self._fetch(False), p)
+        # The summary line names the directories it counted. A BLIND ruler
+        # must not appear there -- and the assertion has to read that line
+        # rather than the whole report, or the name would satisfy it from the
+        # per-probe rows above and the test would pass for the wrong reason.
+        summary = [l for l in out.splitlines() if "directories list us" in l]
+        self.assertEqual(len(summary), 1, out)
+        self.assertNotIn("smithery", summary[0])
+        self.assertIn("NOT evidence of absence", out)
+
+    def test_BLIND_is_reported_as_could_not_ask(self):
+        """rc 2 is 'I could not tell'. A ruler that cannot see must leave by
+        that door, never by the quiet one."""
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "state.json")
+            rc, _ = run_with(self._fetch(False), p)
+        self.assertEqual(rc, 2)
