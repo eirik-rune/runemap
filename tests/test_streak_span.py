@@ -88,6 +88,15 @@ class TheVerdictSpan(unittest.TestCase):
         self.assertIn("floor", text)
         self.assertNotIn("spanning 0.0h", text)
 
+    def test_the_floor_label_is_sticky(self):
+        """A start stamped mid-streak makes every LATER span a floor as well.
+        The first version cleared the flag on the next round, so the number
+        kept being a floor and stopped saying so."""
+        started = time.time() - 4 * 3600
+        text = self._run({"n": H.THROTTLE_STREAK, "since": started, "mid": True})
+        self.assertIn("at least 4.0h", text)
+        self.assertIn("floor", text)
+
     def test_the_span_does_not_come_from_the_probe_interval(self):
         """The exact bug: with a 6h interval and 6 rounds, the old code said
         30h. The measured span must be what actually elapsed."""

@@ -547,7 +547,15 @@ def main():
             # difference is how "spanning 0.0h" got printed for a streak six
             # rounds old -- the invention this function's docstring forbids,
             # committed three lines away from it.
-            mid = since is None and n > 0
+            prev = streaks.get(label)
+            # STICKY. Caught before it reached production, by tracing two
+            # consecutive updates by hand: a start stamped mid-streak makes
+            # every later span a floor too, and the first version cleared the
+            # flag on the very next round -- so the number went on being a
+            # floor and quietly stopped saying so. The honest label has to
+            # live as long as the reason for it.
+            mid = (isinstance(prev, dict) and bool(prev.get("mid"))) or \
+                  (since is None and n > 0)
             n += 1
             if since is None:
                 since = time.time()
