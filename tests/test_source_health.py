@@ -427,7 +427,12 @@ class TheVerdictCarriesNoFrozenNumbers(unittest.TestCase):
             # it, never typed: the count, the line for THIS source's cadence,
             # and the digits of the span it spells out. A number that is not
             # derivable from this run still fails, which is the property.
-            span = "%.1f" % ((n_before + 1 - 1) * H.BASE_ROUND / 3600.0)
+            # This fixture stores a LEGACY bare int, so the run has no
+            # recorded start: it stamps one now and reports a floor, which is
+            # necessarily 0.0h. Derived from the fixture's shape rather than
+            # typed -- if the code ever starts reporting a real span here,
+            # that means it invented a start, and this test should fail.
+            span = "%.1f" % 0.0
             allowed = ({n_before + 1, H.streak_line("fleet-source")}
                        | {int(x) for x in re.findall(r"\d+", span)})
             found = {int(x) for x in re.findall(r"\d+", verdict)}
