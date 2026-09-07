@@ -291,6 +291,25 @@ def due(label, last, now=None, named=False):
     return since >= every, since
 
 
+def _streak_of(v):
+    """-> (count, started_at or None), tolerating the pre-2026-09-07 shape.
+
+    Old entries were a bare int: the count is known and the start is NOT, and
+    the missing half must stay missing rather than being back-filled with
+    "now". Inventing a start time would make a streak that began yesterday
+    look like it began this minute, and the verdict would say so in hours.
+    """
+    if isinstance(v, dict):
+        try:
+            return int(v.get("n", 0)), float(v["since"]) if v.get("since") else None
+        except (TypeError, ValueError):
+            return 0, None
+    try:
+        return int(v), None
+    except (TypeError, ValueError):
+        return 0, None
+
+
 def _max_age(mod, fallback):
     for name in ("FRAME_MAX_AGE", "MAX_AGE"):
         v = getattr(mod, name, None)
@@ -521,8 +540,19 @@ def main():
         last[label] = time.time()
         state, msg = check(label, modname, sky, fallback, want)
         if state == "THROTTLED":
-            n = int(streaks.get(label, 0)) + 1
-            streaks[label] = n
+            n, since = _streak_of(streaks.get(label))
+            # Whether the start was known BEFORE this round, which is not the
+            # same as whether we have a number to print afterwards. Stamping
+            # `now` on a streak already in progress and then reporting the
+            # difference is how "spanning 0.0h" got printed for a streak six
+            # rounds old -- the invention this function's docstring forbids,
+            # committed three lines away from it.
+            mid = since is None and n > 0
+            n += 1
+            if since is None:
+                since = time.time()
+            streaks[label] = {"n": n, "since": since, "mid": mid} if mid \
+                else {"n": n, "since": since}
             line = streak_line(label)
             if n >= line:
                 state = "THROTTLED-STUCK"
@@ -553,14 +583,32 @@ def main():
                 # a 20-minute one are the same judgement, and only the hours
                 # say so. Both numbers computed this run, per the rule this
                 # message already carries.
-                msg += (" -- %d consecutive rounds (>= %d), spanning about"
-                        " %.1fh at this source's probe interval, past what"
+                # The span is MEASURED, not derived from the current probe
+                # interval. 2026-09-07: it used to be (n-1) x interval, and
+                # the morning after I gave KNMI a 6h interval that printed
+                # "6 consecutive rounds, spanning about 30.0h" for a streak
+                # that had actually run 13.7h -- four of those rounds were
+                # taken 20 minutes apart, before the interval existed. The
+                # number was freshly computed every run, so the guard that
+                # checks for frozen numbers passed it: it was computed from a
+                # false premise rather than typed. A wrong number with a
+                # correct provenance is worse than a stale one, because the
+                # property I check for is provenance.
+                elapsed = (time.time() - since) / 3600.0
+                if not since:
+                    span = ("over an unknown span (no start was recorded)")
+                elif streaks[label].get("mid"):
+                    # True and clearly bounded: the streak is at least this
+                    # old. Printing it bare would understate a streak that
+                    # began before the record existed.
+                    span = ("spanning at least %.1fh (its start predates the"
+                            " record, so this is a floor)" % elapsed)
+                else:
+                    span = "spanning %.1fh" % elapsed
+                msg += (" -- %d consecutive rounds (>= %d), %s, past what"
                         " counts as transient; how unusual that is has to come"
                         " from the log, and the cause is not something this"
-                        " probe can see"
-                        % (n, line,
-                           (n - 1) * (PROBE_EVERY.get(label) or BASE_ROUND)
-                           / 3600.0))
+                        " probe can see" % (n, line, span))
         elif label in streaks:
             del streaks[label]
         print("%-15s %s" % (state, msg))
