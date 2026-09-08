@@ -444,7 +444,7 @@ class H(BaseHTTPRequestHandler):
         with _ur.urlopen(url, timeout=SCENE_BUDGET + 5) as r:
             return r.read().decode("utf-8", "replace")
 
-    def _mcp_note(self, method, tool=None):
+    def _mcp_note(self, method, tool=None, extra=None):
         """Record which JSON-RPC method was asked for, so that being listed and
         being used stay two different numbers.
 
@@ -477,12 +477,29 @@ class H(BaseHTTPRequestHandler):
         # evidence about who called, not proof.
         fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
         try:
+            row = {"at": int(time.time()), "method": method,
+                   "tool": tool,
+                   "ua": (self.headers.get("User-Agent") or "")[:120],
+                   "ip": fwd or self.client_address[0],
+                   "via_proxy": bool(fwd)}
+            # 2026-09-08: glama.ai lists this connector as **Unhealthy**. Their
+            # checker did reach us -- 05:07:38, UA "node", POST /mcp, 200 in
+            # 0.243s -- and then sent nothing further, where a checker that
+            # succeeds sends three requests. So they got a good answer and
+            # walked away, and the one field that would explain it is the one
+            # nobody recorded: which protocol version they asked for.
+            #
+            # We honour 2026-07-28 and 2025-06-18 and answer anything else with
+            # our newest, which is spec-legal and still fatal to a client
+            # pinned to, say, 2025-03-26 -- it gets a version it does not know
+            # and disconnects. That is a HYPOTHESIS. Widening the allowlist on
+            # a guess would be claiming to speak a spec I have not exercised,
+            # which this file already refuses to do, so instead: measure it,
+            # and read their next daily probe.
+            if extra:
+                row.update(extra)
             with open(_MCP_LOG, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"at": int(time.time()), "method": method,
-                                    "tool": tool,
-                                    "ua": (self.headers.get("User-Agent") or "")[:120],
-                                    "ip": fwd or self.client_address[0],
-                                    "via_proxy": bool(fwd)}) + "\n")
+                f.write(json.dumps(row) + "\n")
         except Exception:
             pass
 
@@ -498,8 +515,20 @@ class H(BaseHTTPRequestHandler):
                 ctype="application/json")
 
         rid, method = req.get("id"), req.get("method")
-        self._mcp_note(method, ((req.get("params") or {}).get("name")
-                                if method == "tools/call" else None))
+        _p = req.get("params") or {}
+        _extra = None
+        if method == "initialize":
+            _ci = _p.get("clientInfo") or {}
+            _want = _p.get("protocolVersion")
+            _extra = {"want_version": _want,
+                      "spoke_version": (_want if _want in _MCP_VERSIONS
+                                        else _MCP_VERSIONS[0]),
+                      "honoured": _want in _MCP_VERSIONS,
+                      "client": ("%s/%s" % (_ci.get("name"),
+                                            _ci.get("version")))[:60]}
+        self._mcp_note(method,
+                       (_p.get("name") if method == "tools/call" else None),
+                       extra=_extra)
         def ok(result):
             return self._send(200, json.dumps({"jsonrpc": "2.0", "id": rid,
                                                "result": result}),
