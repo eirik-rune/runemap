@@ -37,6 +37,50 @@ except Exception:
 #: newest first. Not "every version that exists" -- see the note in initialize.
 _MCP_VERSIONS = ("2026-07-28", "2025-06-18")
 
+#: The last revision that used an `initialize` handshake. The spec calls
+#: everything up to it "legacy" and everything after it "modern": modern
+#: revisions carry the version as per-request metadata and have NO handshake
+#: at all.
+_MCP_LAST_LEGACY = "2025-11-25"
+
+#: The versions above that a client arriving via `initialize` could actually
+#: use. Version ids are ISO dates, so string ordering is date ordering.
+_MCP_LEGACY_VERSIONS = tuple(v for v in _MCP_VERSIONS if v <= _MCP_LAST_LEGACY)
+
+
+def _negotiate(want):
+    """-> (version to speak, whether we honoured what they asked for)
+
+    2026-09-09. Measured over 24h of real traffic: 492 initialize calls, and
+    **110 of them asked for 2025-11-25 and were refused** -- 14 distinct
+    clients, including glama/1.0.0 (54 calls), which publicly lists this
+    connector as Unhealthy, and rokmcp-probe (33). 23 distinct clients were
+    handed a version they had not asked for.
+
+    The old rule was `want if supported else _MCP_VERSIONS[0]` -- fall back to
+    our NEWEST. That is the wrong end of the list, and the reason is structural
+    rather than cosmetic: a client that sends `initialize` is by definition a
+    legacy-era client, and 2026-07-28 is a modern revision whose entire premise
+    is that there is no initialize handshake. So we answered a handshake with a
+    version that has no handshakes. The spec is explicit that legacy clients
+    "have no fall-forward mechanism" -- there is nothing such a client can do
+    with that answer except leave, which is exactly what the logs show them
+    doing: one request, a 200, and gone.
+
+    Falling back to our newest LEGACY version instead gives them something they
+    can actually use. A client asking for 2025-11-25 is overwhelmingly likely
+    to also speak 2025-06-18, its immediate predecessor.
+
+    What this deliberately does NOT do is add 2025-11-25 to the allowlist.
+    That list means "exercised against", and claiming a spec I have not run
+    against is the same shape as a health check that always returns 200.
+    """
+    if want in _MCP_VERSIONS:
+        return want, True
+    if _MCP_LEGACY_VERSIONS:
+        return _MCP_LEGACY_VERSIONS[0], False
+    return _MCP_VERSIONS[0], False
+
 #: One line per MCP request. Lives beside the cache so the pool members share
 #: it, same as the coherence log.
 _MCP_LOG = os.environ.get(
@@ -520,10 +564,14 @@ class H(BaseHTTPRequestHandler):
         if method == "initialize":
             _ci = _p.get("clientInfo") or {}
             _want = _p.get("protocolVersion")
+            # Both the log line and the reply come from the SAME call. They
+            # used to be two copies of the rule that happened to agree; equal
+            # by coincidence is not equal by construction, and the log is what
+            # I would have used to check the reply.
+            _spoke, _hon = _negotiate(_want)
             _extra = {"want_version": _want,
-                      "spoke_version": (_want if _want in _MCP_VERSIONS
-                                        else _MCP_VERSIONS[0]),
-                      "honoured": _want in _MCP_VERSIONS,
+                      "spoke_version": _spoke,
+                      "honoured": _hon,
                       "client": ("%s/%s" % (_ci.get("name"),
                                             _ci.get("version")))[:60]}
         self._mcp_note(method,
@@ -549,7 +597,7 @@ class H(BaseHTTPRequestHandler):
             # that has not changed across these, which is why the claim is safe
             # to make for them and not for anything else.
             want = (req.get("params") or {}).get("protocolVersion")
-            spoken = want if want in _MCP_VERSIONS else _MCP_VERSIONS[0]
+            spoken, _ = _negotiate(want)
             return ok({"protocolVersion": spoken,
                        "capabilities": {"tools": {}},
                        "serverInfo": {"name": "echorune-radar", "version": "1"}})
