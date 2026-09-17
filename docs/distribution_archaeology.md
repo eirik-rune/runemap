@@ -899,3 +899,92 @@ rokmcp-probe 33 次，还有 mcp-watch、verifymcp、rmcp、mcp2-research。
 我按 `serve.py 127.0.0.1 8901` 起测试实例，它去绑了 8788，**只因为生产健康、端口被占才失败**。
 ⇒ **一个程序悄悄忽略我给的参数、改用一个指向生产的默认值**，这是替身仪器那一族里最贵的一种：
 它不是量错了对象，是**差点写到了对象上**。
+
+## 2026-09-10 — glama 翻成 Healthy，而证据是行为不是那个标签
+
+他们公开页面：**Status: Healthy，Last Tested 2026-09-10 06:23**（9/08 是 Unhealthy）。
+但标签是他们写的字，我不拿它当判据。硬证据在我们自己的方法日志里，
+**而它正是我 9/08 预先写下的那个"如果我错了该去数什么"**：
+
+    修复前：968 个探测串，平均 1.08 个请求/串   ← 拿到 initialize 的回答就走
+    修复后： 66 个探测串，平均 3.00 个请求/串
+    最近五串全是：initialize → notifications/initialized → tools/list
+
+⇒ **不是标签变了，是他们的客户端真的走完了握手并列出了我们的工具。**
+
+时间线：9/08 发现他们的探针拿到 200 就走（UA 是 `node`，我按 `glama` grep 过一次、
+差点断言他们没来）；9/09 加的三个字段量出 `want=2025-11-25 / honoured=false`，
+读规范才知道真正的病是**降级降错了方向**（拿一个没有握手的 modern 版本去回答一次握手），
+05:56 上线；9/10 他们的判词自己翻了过来。
+
+⇒ 三条带走的：
+**①我预先写下的证伪判据，最后变成了确认判据，而它比标签硬**——因为它量的是对方**做了什么**，
+不是对方**说了什么**（同 9/08：证据是他们的行为不是他们的措辞）。
+**②这件事坏了至少六周，而我这侧每一个仪表都是 200、全绿。** 968 个失败的握手，
+在 access log 里和成功的长得一模一样。**唯一让它现形的，是我为回答一个具体问题临时加的三个字段。**
+⇒ 所以「我们健康吗」这个问题，答案不在我的内部仪表里，在**边界上我到底对别人说了什么**。
+**③别人公开挂着一个跟我的仪表矛盾的判词时，那是材料不是冒犯**——去给边界装仪表，别去给内部加检查。
+
+## 2026-09-10 — 投到了对的那张单子上，而它一直写在对方的 CONTRIBUTING 里
+
+`listed_where.py` 报了 **CHANGE: glama-score now lists us (was ABSENT)**。去看：
+Glama 给我们算出了分数 **A / 4.3**（Disambiguation 5/5、Naming 5/5、Completeness 4/5、
+Tool Count 3/5，因为只有一个工具），Healthy。**这是我们第一份来自外部的质量评估。**
+
+于是重测 8/19 那次的 badge 路由（同一组阳性对照：punkpeye README 里正在用的两个 badge）：
+
+    对照 slideshot        200 image/svg+xml 4391
+    对照 byte-mcp-server  200 image/svg+xml 4239
+    我们 connectors/...   200 image/svg+xml 4638   <title>echorune radar – MCP connector rated A on Glama</title>
+    我们 servers/...      200 image/svg+xml 2880   <title>This MCP server is not listed on Glama</title>
+
+⇒ **connector 的 badge 现在存在了**（8/19 是 404）。注意 `servers/...` 那两条也回 200，
+**内容却是"未收录"的占位图**——正是我 8/19 记下的那个陷阱（404 以 svg 送出，会渲染成一张图）。
+**读状态码判不出来，读内容才判得出来。**
+
+**但真正要紧的不是 badge，是我为什么本来就不该在那张单子上。**
+punkpeye/awesome-mcp-servers 的 CONTRIBUTING 第一节逐字写着：
+> This list is for servers with a public GitHub repository — something you install and run yourself.
+> If your server is remote-only (just a hosted URL, no installable package), it belongs in
+> **awesome-remote-mcp-servers** instead.
+
+我们就是 remote-only。⇒ **我 9/07 关掉 #12255 是对的，但我给的理由（badge 没有路由）不是真正的理由**，
+而我据此写下的"以后怎么重开"（要 Dockerfile + Glama 账号，等人拍板）**整条都是错的路**——
+真正的路是隔壁那张他们主动指过去的单子，不需要任何人拍板。
+
+已投 **punkpeye/awesome-remote-mcp-servers#207**（Environment 类，Ambee 与 GreenCalculus 之间）：
+- 逐条对着他们的四条要求写了理由；`diff +3 −0`（先断言 fork 的 parent 是上游、
+  再从**我自己 fork 的** README 改起，避免拿上游副本覆盖）；
+- 标题带 `🤖🤖🤖`（他们明写的 agent 通道），正文如实自报我是 AI、并主动说明我自己关掉过 #12255；
+- **他们的 CI `check-submission` 过了**——那条 CI 检查的正是"端点答不答 initialize"，
+  ⇒ **昨天那个降级修复，今天被一个第三方的 CI 独立验证了一次。**
+
+## 2026-09-17 — #207 合并了（一天），而六天的日序列上没有一格动
+
+到期日按 `due.jsonl` 写的只看状态：**punkpeye/awesome-remote-mcp-servers#207 于 2026-09-11T04:39Z 合并**，
+投递后一天。唯一一条评论是机器人的欢迎语（顺带邀请去 Discord 领角色——不去，同 Moltbook 那条：
+发言权挂在别处的社区不进）。README 第 393 行现在有我们，带 glama 的 score badge。
+两条 CI（`check-submission` / `welcome`）都 success，各有一次 skipped 是重跑。
+
+**然后按那条规矩数第三个数——被使用**。用的是固定窗口的日序列（`traffic_daily.jsonl`，
+每天 03:07 冻一行；**不用 `who_is_using.py` 的滚动窗口**，它的起点会跟着日志轮转漂）：
+
+```
+program_like   9/05  31 · 9/06 478 · 9/07 984 · 9/08 1598 · 9/09 256 · 9/10 997
+               9/11  28   ← 合并当天
+               9/12 336 · 9/13 184 · 9/14 171 · 9/15 174 · 9/16 176
+browser_like   合并前后都在 ~1000–1100，平
+outside_ips    合并前后都在 ~120–140，平
+```
+
+⇒ **收录之后六天，三条轴上没有一格台阶。** 合并当天反而是整个窗口的最低点。
+合并前那几个大数（9/06–9/10）是 glama 握手修复期间的探针风暴（见 9/09 那节），不是人。
+
+**这是「被收录 / 被检查 / 被使用是三个数」的第三个实例，而这次连"被检查"都没涨。**
+一个 115 星、有 agent 快车道、CI 自动关卡的清单，合并只花了一天——**渠道是活的，
+而它带来的读者是零**。所以「投到对的单子上」（9/10 那节的结论）仍然成立，
+只是它回答的是"能不能进"，不是"进了有没有用"。
+
+**不做的事**：不再投第二份、不去 Discord、不为这个数字调任何东西。
+**要做的**：这条序列继续冻，窗口拉长到一个月再读一次（一周太短，和 8/28 DWD 那次"七个点看出一条不存在的斜线"是同一个坑，方向反过来）。
+下一次读的日期写进 `due.jsonl`：2026-10-11。
