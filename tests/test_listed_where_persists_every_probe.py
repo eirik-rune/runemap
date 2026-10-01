@@ -24,6 +24,7 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from contextlib import redirect_stdout
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -92,6 +93,26 @@ class EveryProbeReachesTheFileTheBellReads(unittest.TestCase):
                       "listing on one of them could never ring")
 
 
+def front_page_up(inner):
+    """Let each site's own front page resolve, then defer to `inner`.
+
+    2026-10-01. The DIRECT probe gained a positive control: a verdict of ABSENT
+    now also requires that the site's front page could be read, because fetch()
+    returns the same None for a real 404, a 403 and a timeout -- and a negative
+    control cannot tell any of those apart. These two tests predate that and
+    stubbed *every* URL as a 404, front page included, so under the new rule
+    they correctly got BLIND. Their intent is unchanged and still worth holding:
+    the probe must remain able to say ABSENT and NO-SIGNAL. Only the fixture had
+    to learn that the site is reachable.
+    """
+    def fetch(url):
+        parts = urllib.parse.urlsplit(url)
+        if parts.path in ("", "/"):
+            return "<html>front page</html>", None
+        return inner(url)
+    return fetch
+
+
 class TheProbeCanStillSayAbsent(unittest.TestCase):
     """A ruler that only ever reads LISTED has no jurisdiction, so the other
     direction is fired here rather than assumed."""
@@ -99,7 +120,7 @@ class TheProbeCanStillSayAbsent(unittest.TestCase):
     def test_absent_when_our_page_404s_like_the_control(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "state.json")
-            run_with(lambda url: (None, "HTTP 404"), p)
+            run_with(front_page_up(lambda url: (None, "HTTP 404")), p)
             stored = json.load(open(p, encoding="utf-8"))
         for name, *_ in L.DIRECT:
             self.assertEqual(stored[name], "ABSENT", name)
@@ -112,7 +133,7 @@ class TheProbeCanStillSayAbsent(unittest.TestCase):
             return None, "HTTP 404"
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "state.json")
-            rc, out = run_with(only_control, p)
+            rc, out = run_with(front_page_up(only_control), p)
             stored = json.load(open(p, encoding="utf-8"))
         for name, *_ in L.DIRECT:
             self.assertEqual(stored[name], "NO-SIGNAL", name)

@@ -31,6 +31,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 #: The word to look for. Read from the registry entry rather than typed, so a
@@ -133,6 +134,17 @@ def fetch(url):
         return None, type(e).__name__
 
 
+def positive_control(url):
+    """The one URL on that site that must exist: its origin.
+
+    Derived, not listed. 2026-08-16's lesson was that a watcher assembled from
+    where I got stuck covers everything except the thing it exists for; a second
+    hand-maintained table of "pages that should be up" would drift the same way.
+    """
+    parts = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, "/", "", ""))
+
+
 def count(body, needle):
     return len(re.findall(re.escape(needle), body, re.I))
 
@@ -201,8 +213,37 @@ def main():
     for name, mine_url, ctrl_url in DIRECT:
         mine, why = fetch(mine_url)
         ctrl, why2 = fetch(ctrl_url)
-        if mine is None and ctrl is None:
-            verdict, detail = "ABSENT", "both 404 (%s) -- control agrees" % why
+        # 2026-10-01. The negative control alone cannot tell "we are not on this
+        # site" from "this ruler cannot see this site at all", because fetch()
+        # returns the same None for a real 404, for a 403, and for a timeout.
+        # On 2026-10-01 05:24 this probe printed
+        #     mcpservers.org ABSENT  both 404 (TimeoutError) -- control agrees
+        # and rang the bell. Measured minutes later: the site answers 403 to our
+        # User-Agent on *every* path, **including its own front page**. So the
+        # ruler was blind and the bell announced a delisting that never happened.
+        #
+        # The SITES path already had this guard (smithery prints BLIND because a
+        # word that must be there returns zero too); the DIRECT path did not.
+        # So: a positive control, derived from the same URL's origin rather than
+        # a second table -- a list I have to remember to update is the next bug.
+        live, why3 = fetch(positive_control(mine_url))
+        if live is None:
+            verdict, detail = "BLIND", (
+                "the site's own front page did not resolve either (%s) -- this "
+                "ruler cannot see this site, so this is NOT evidence about us"
+                % why3)
+            unreachable += 1
+        elif mine is None and ctrl is None and why != "HTTP 404":
+            # Reachable site, but our page failed for a reason that is not
+            # absence. Saying ABSENT here would read a block as a delisting.
+            verdict, detail = "NO-SIGNAL", (
+                "front page resolves but our page gave %s, which is not a 404 "
+                "-- absence is not what was measured" % why)
+            unreachable += 1
+        elif mine is None and ctrl is None:
+            verdict, detail = "ABSENT", (
+                "both 404 (%s) -- control agrees, and the site's front page "
+                "resolves, so the ruler could see" % why)
         elif mine is not None and ctrl is None:
             verdict, detail = "LISTED", "our page exists, control 404s"
         elif mine is None and ctrl is not None:
