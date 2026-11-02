@@ -655,6 +655,40 @@ class H(BaseHTTPRequestHandler):
         R.set_span(_sp)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
+        # 2026-11-02: MCP 的两个标准端点名，GET 必须在这儿结束，不许掉进地名匹配。
+        #
+        # 为什么加：一个外部 MCP 客户端（UA claude-code/2.1.310）10-25 到 10-28 往
+        # `GET /mcp` 打了 **206000 次**，每 1.26 秒一条、昼夜平直、连着三天多。
+        # 它在按 streamable-HTTP 规范开服务器→客户端那条流；而 `mcp` 这三个字母被
+        # 下面的地名匹配**模糊命中了 Macapá（巴西）**，于是我们回 200 + text/plain 的天气。
+        # 客户端拿到一个 200 和一份看起来正常的正文，**从构造上判不出自己坏了**，所以它重试了三天。
+        # `/sse`（旧的 SSE 传输端点名）同样被命中，答的是 Sholapur（印度）。
+        #
+        # 这是 8/22 那个洞的第三次：`/en/contact` 被答成 200 + 一整张天气图，因为 `en` 是
+        # Hardeeville 的别名、限定词 `contact` 匹配不上就被静默丢掉。同一个机制，
+        # 这次吃掉的是**协议握手**，而代价落在一个善意的陌生客户端身上。
+        # 也同 9/08 glama 那次：我这侧每一个仪表都是 200、全绿，而边界上我对别人说的是错话。
+        #
+        # 判词从规范来，不是我拍的：MCP 规范说服务器若不提供 GET 流，就该回 405；
+        # 所以这里回 405 + `Allow: POST`，让它**响亮地失败**，并在正文里指出 POST 那条路。
+        # 不写成"保留前缀通配"，只钉死这几个名字——一个过宽的保留表会把真的地名吃掉，
+        # 而那正好是这个 bug 的镜像。
+        if u.path.rstrip("/").lower() in ("/mcp", "/sse", "/messages", "/mcp/v1"):
+                # `Allow: POST` 规范说 SHOULD，而 `_send` 没有加头的入口。
+                # 我第一版写了 `self._extra_headers = ...`——**一个我凭空发明的属性**，
+                # 它不会报错，只是永远不生效（同我 8/12 调过的那个不存在的 `_log_timing`）。
+                # 不为一个 SHOULD 去改这条热路径：405 这个状态码本身已经让它响亮地失败，
+                # 而正文里写清了该走 POST。要加头就单独改 `_send` 并给它配测试，不在这一刀里夹带。
+                return self._send(
+                    405,
+                    "405 method not allowed\n\n"
+                    "This is the MCP endpoint. It speaks JSON-RPC over POST; it does not offer a\n"
+                    "GET event stream, so there is nothing to open here.\n\n"
+                    "  POST %s   {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\", ...}\n\n"
+                    "Until 2026-11-02 this path answered 200 with the weather for Macapa, Brazil --\n"
+                    "the place matcher fuzzy-matched the word \"mcp\". If you polled it and believed\n"
+                    "the answer, that was ours, not yours.\n\n"
+                    "Weather lives at  curl echorune.net/<city>   (see /help).\n" % u.path)
         if u.path in ("/help", "/help/"):
                 return self._send(200, HOME)
         # /skill.md serves the SAME file that ships as an Agent Skill.
