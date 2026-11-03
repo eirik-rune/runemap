@@ -3,7 +3,7 @@
 Synthetic frames only -- no network, no Caiyun key. Each test names the
 failure it exists for.
 """
-import io, os, sys, time, unittest
+import io, math, os, sys, time, unittest
 
 import numpy as np
 from PIL import Image
@@ -99,6 +99,47 @@ class Picture(unittest.TestCase):
         w = RI.when_text(t, t - 1800)
         self.assertNotIn("observed", w)
         self.assertIn("predicted", w)
+
+
+class Motion(unittest.TestCase):
+    """bob 11-03: the first mock put the eastbound arrow over the place name."""
+    DIRS = [(1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1)]
+
+    def marks(self, vx, vy, kmh=50.0):
+        from PIL import ImageDraw
+        n = math.hypot(vx, vy)
+        mo = {"kind": "moving", "vx": vx / n * kmh, "vy": vy / n * kmh, "kmh": kmh, "dir_en": "?"}
+        im = Image.new("RGB", (RI.SIZE, RI.SIZE)); d = ImageDraw.Draw(im)
+        return RI.draw_motion(d, mo, RI.SIZE, 200)
+
+    def test_name_never_sits_on_a_motion_mark(self):
+        f = RI._font(18)
+        for vx, vy in self.DIRS:
+            segs = self.marks(vx, vy)
+            box = RI.place_label(f.getbbox("Shanghai", stroke_width=3), RI.SIZE / 2, 10, segs, RI.SIZE)
+            self.assertFalse(RI._hits(box, segs), "label on the marks for %r" % ((vx, vy),))
+
+    def test_upwind_dashes_stay_inside_the_map(self):
+        # a fixed radius ran a southbound line into the title bar
+        for vx, vy in self.DIRS:
+            for kmh in (20.0, 60.0, 150.0):
+                line = self.marks(vx, vy, kmh)[0]
+                (x, y) = line[1]
+                self.assertTrue(20 <= x <= RI.SIZE - 20 and 56 <= y <= RI.SIZE - 106,
+                                "dashes end at %r for %r %s" % ((x, y), (vx, vy), kmh))
+
+    def test_nothing_drawn_unless_moving(self):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+        for mo in (None, {"kind": None}, {"kind": "stationary", "vx": 1, "vy": 0, "kmh": 1},
+                   {"kind": "undetermined", "why": "sparse"}):
+            self.assertEqual(RI.draw_motion(d, mo, RI.SIZE, 200), [], mo)
+
+    def test_the_hit_test_can_fail(self):
+        # positive control: a box straddling the arrow must count as a hit
+        segs = self.marks(1, 0)
+        c = RI.SIZE / 2
+        self.assertTrue(RI._hits((c + 20, c - 8, c + 90, c + 8), segs))
 
 
 class Route(unittest.TestCase):

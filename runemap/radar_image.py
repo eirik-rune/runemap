@@ -261,6 +261,136 @@ def when_text(frame_ts, obs_ts=None):
     return "radar observed %s" % hm(frame_ts)
 
 
+# --- motion -----------------------------------------------------------------
+#
+# What the reader wants from a motion vector is "when does that rain get here",
+# so the main mark is a dashed line from the asker UPWIND, ticked in time:
+# rain lying on the "1 h" tick now reaches the marker in about an hour if it
+# keeps moving like this. A short red arrow at the marker says which way it is
+# going. Same vector the text map prints (vx east+, vy SOUTH+, km/h -- image
+# rows), so the two cannot disagree. It assumes the echo translates rigidly;
+# the box says where the vector came from, and says no more than the text line.
+
+MOTION_COL = (30, 60, 110)
+TICKS = ((0.5, "30 min"), (1, "1 h"), (2, "2 h"), (3, "3 h"))
+
+
+def draw_motion(d, mo, size, span_km):
+    """Draw the upwind ticks and the arrow; -> list of segments drawn, for
+    the label placer. Nothing is drawn unless the echo is moving."""
+    if not mo or mo.get("kind") != "moving":
+        return []
+    vx, vy = float(mo["vx"]), float(mo["vy"])
+    sp = math.hypot(vx, vy)
+    if sp <= 0:
+        return []
+    ux, uy = vx / sp, vy / sp
+    nx, ny = -uy, ux
+    c = size / 2.0
+    ppk = size / float(span_km)
+    # How far upwind the dashes may run: to the inner map area, along THIS
+    # direction -- a fixed radius let a southbound line run up into the title
+    # bar. Inner box keeps clear of the title (top) and the legend (bottom).
+    x0, y0, x1, y1 = 24.0, 60.0, size - 24.0, size - 110.0
+    tx = ((x0 - c) / -ux if ux > 0 else (x1 - c) / -ux) if ux else float("inf")
+    ty = ((y0 - c) / -uy if uy > 0 else (y1 - c) / -uy) if uy else float("inf")
+    lim = min(tx, ty)
+    col = MOTION_COL + (235,)
+    segs = []
+    shown = [(h, lab) for h, lab in TICKS if h * sp * ppk <= lim]
+    L = (shown[-1][0] * sp * ppk) if shown else lim
+    # dashes, starting outside the marker ring
+    a = 14.0
+    while a < L:
+        b = min(a + 10.0, L)
+        d.line((c - ux * a, c - uy * a, c - ux * b, c - uy * b), fill=col, width=3)
+        a += 20.0
+    segs.append(((c, c), (c - ux * L, c - uy * L), 14))
+    ft = _font(14)
+    for h, lab in shown:
+        rr = h * sp * ppk
+        x, y = c - ux * rr, c - uy * rr
+        d.line((x - nx * 8, y - ny * 8, x + nx * 8, y + ny * 8), fill=col, width=3)
+        # tick label on one fixed side of the line, never on the line itself
+        tw = ft.getlength(lab)
+        lx, ly = x + nx * 14, y + ny * 14
+        lx -= tw / 2 * (1 - nx)               # left-align when the side points right
+        ly -= 8 * (1 - ny)
+        d.text((lx, ly), lab, font=ft, fill=MOTION_COL, stroke_width=2,
+               stroke_fill=PAL["white"])
+        segs.append(((lx, ly), (lx + tw, ly + 16), 0))
+    # arrow: where the echo is going
+    a0, a1 = 16.0, 50.0
+    d.line((c + ux * a0, c + uy * a0, c + ux * a1, c + uy * a1), fill=PAL["mark"], width=3)
+    tip = (c + ux * (a1 + 9), c + uy * (a1 + 9))
+    d.polygon([tip, (c + ux * a1 + nx * 7, c + uy * a1 + ny * 7),
+               (c + ux * a1 - nx * 7, c + uy * a1 - ny * 7)], fill=PAL["mark"])
+    segs.append(((c, c), tip, 9))
+    return segs
+
+
+def _hits(box, segs):
+    """Does a text box (x0,y0,x1,y1) come within a segment's half-width?"""
+    x0, y0, x1, y1 = box
+    for s in segs:
+        (ax, ay), (bx, by), w = s
+        if w == 0:                            # another text box
+            if not (bx < x0 or ax > x1 or by < y0 or ay > y1):
+                return True
+            continue
+        for t in np.linspace(0.0, 1.0, 40):
+            px, py = ax + (bx - ax) * t, ay + (by - ay) * t
+            if x0 - w <= px <= x1 + w and y0 - w <= py <= y1 + w:
+                return True
+    return False
+
+
+def place_label(bb, c, r, segs, size):
+    """-> (x, y, x1, y1) for the marker's name: first candidate that touches
+    no motion mark. Candidates go round the marker; east first because that
+    is where it sits when there is nothing to avoid."""
+    w, h = bb[2] - bb[0], bb[3] - bb[1]
+    g = r + 9
+    cands = [(c + g, c - h / 2 - 2),               # E
+             (c - w / 2, c - g - h - 4),           # N
+             (c - w / 2, c + g),                   # S
+             (c - g - w, c - h / 2 - 2),           # W
+             (c + g, c - g - h), (c + g, c + g * 0.6),          # NE, SE
+             (c - g - w, c - g - h), (c - g - w, c + g * 0.6)]  # NW, SW
+    for x, y in cands:
+        box = (x, y, x + w, y + h)
+        if box[0] >= 4 and box[2] <= size - 4 and not _hits(box, segs):
+            return box
+    x, y = cands[0]
+    return (x, y, x + w, y + h)
+
+
+def motion_box(d, mo, basis, size):
+    """Top-right box, same words as the text map's motion line."""
+    kind = (mo or {}).get("kind")
+    if kind == "moving":
+        head = "echo moving %s ~%.0f km/h" % (mo.get("dir_en", "?"), float(mo["kmh"]))
+        sub = ["basis: %s" % basis if basis else None,
+               "dashes: when rain there reaches you"]
+    elif kind == "stationary":
+        head, sub = "echo stationary (<5 km/h)", ["basis: %s" % basis if basis else None]
+    elif kind == "undetermined":
+        why = {"sparse": "echo too sparse to track", "corr": "frames not correlated",
+               "fetch": "tracking frames failed", "frames": "too few usable frames",
+               "noecho": "no echo to track", "error": "computation failed"}
+        head, sub = "echo motion undetermined", [why.get(mo.get("why"), mo.get("why") or "")]
+    else:
+        return
+    sub = [x for x in sub if x]
+    fh, fs = _font(16), _font(14)
+    w = max([fh.getlength(head)] + [fs.getlength(x) for x in sub]) + 20
+    x0, y0 = size - 10 - w, 44
+    d.rectangle((x0, y0, size - 10, y0 + 30 + 18 * len(sub)), fill=PAL["white"] + (225,))
+    d.text((x0 + 10, y0 + 6), head, font=fh, fill=PAL["text"])
+    for i, t in enumerate(sub):
+        d.text((x0 + 10, y0 + 28 + 18 * i), t, font=fs, fill=PAL["dim"])
+
+
 def _hatch(size, step=14):
     h = Image.new("RGBA", (size, size), (120, 126, 136, 70))
     hd = ImageDraw.Draw(h)
@@ -270,7 +400,7 @@ def _hatch(size, step=14):
 
 
 def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
-           size=SIZE, frame_key=None):
+           size=SIZE, frame_key=None, motion=None, basis=None):
     """-> (PNG bytes, fraction of the picture with no radar).
 
     png       Caiyun frame bytes (transparent overlay, Web Mercator)
@@ -315,14 +445,22 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     d = ImageDraw.Draw(img)
     fs = _font(14)
     c0, r = size / 2.0, 10
+    segs = draw_motion(d, motion, size, span_km) if motion else []
     d.ellipse((c0 - r, c0 - r, c0 + r, c0 + r), outline=PAL["mark"], width=3)
     d.line((c0 - r - 7, c0, c0 + r + 7, c0), fill=PAL["mark"], width=2)
     d.line((c0, c0 - r - 7, c0, c0 + r + 7), fill=PAL["mark"], width=2)
     # The marker gets the place's own name ("Shanghai"), not the whole
     # gazetteer label ("Shanghai, Shanghai Municipality, Shanghai, CN"),
-    # which ran off the right edge on the first live render.
-    d.text((c0 + r + 9, c0 - 11), label.split(",")[0].strip(), font=_font(18), fill=PAL["marktext"],
+    # which ran off the right edge on the first live render. It goes wherever
+    # the motion marks are not: the first mock put it to the east, right
+    # under an eastbound arrow.
+    name = label.split(",")[0].strip()
+    fm = _font(18)
+    box = place_label(fm.getbbox(name, stroke_width=3), c0, r, segs, size)
+    d.text((box[0], box[1]), name, font=fm, fill=PAL["marktext"],
            stroke_width=3, stroke_fill=PAL["white"])
+    if motion:
+        motion_box(d, motion, basis, size)
 
     when = when_text(frame_ts, obs_ts)
     d.rectangle((0, 0, size, 34), fill=PAL["white"] + (225,))

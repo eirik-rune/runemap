@@ -675,7 +675,7 @@ class H(BaseHTTPRequestHandler):
             for c in cands[:2]:
                 png = R._peek(c[0])
                 if png is not None:
-                    return png, float(c[1]), c[2], base
+                    return png, float(c[1]), c[2], base, imgs
             return None
         got = peek()
         if got is None and wait > 0:
@@ -691,11 +691,19 @@ class H(BaseHTTPRequestHandler):
             # a claim about us. Same promise the text map makes.
             return self._send(503, "radar frame not fetched yet for %s -- ask again in ~30s.\n"
                                    "The text map at the same address (without .png) says why.\n" % label)
-        png, ts, bbox, base = got
+        png, ts, bbox, base, imgs = got
+        # Motion from the same cache the text map's motion line reads; never
+        # waited for (a picture without the arrow is still a picture).
+        try:
+            mo = R._motion_peek(imgs, lon, lat)
+        except Exception as e:
+            sys.stderr.write("PNG-MOTION-PEEK %r\n" % (e,))
+            mo = None
         try:
             from runemap import radar_image as RI
             body, _frac = RI.render(png, bbox, lon, lat, label, ts, base, span,
-                                    frame_key=(round(lon, 2), round(lat, 2), ts))
+                                    frame_key=(round(lon, 2), round(lat, 2), ts),
+                                    motion=mo, basis=R._MO_BASIS_EN)
         except Exception as e:
             HITS["err"] += 1
             sys.stderr.write("PNG-RENDER-FAILED %r\n%s" % (e, traceback.format_exc()))
