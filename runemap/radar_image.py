@@ -164,8 +164,30 @@ def _places():
     return _PLACES
 
 
+# Liberation Sans (Arial metrics) where the box has it: PIL's built-in face is
+# thin, and on a phone the thin strokes are what made "too small" worse.
+_FONT_FILES = {False: ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+               True: ("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")}
+_FONTS = {}
+
+
+def font(px, bold=False):
+    f = _FONTS.get((px, bold))
+    if f is None:
+        for path in _FONT_FILES[bold]:
+            if os.path.exists(path):
+                f = ImageFont.truetype(path, px)
+                break
+        else:
+            f = ImageFont.load_default(size=px)
+        _FONTS[(px, bold)] = f
+    return f
+
+
 def _font(n):
-    return ImageFont.load_default(size=n)
+    return font(n)
 
 
 _BASE = OrderedDict()

@@ -191,8 +191,11 @@ def fake_weather(now=1762182000):
                      "wind": {"speed": 3, "direction": 100}, "air_quality": {"aqi": {"chn": 55}}},
         "minutely": {"description": "rain stops in an hour", "precipitation_2h": [0.5] * 60 + [0.0] * 60,
                      "probability": [.98, .9, .4, 0]},
-        "hourly": {"temperature": hours, "precipitation": hp, "skycon": sk},
+        "hourly": {"temperature": hours, "precipitation": hp, "skycon": sk,
+                   "air_quality": {"aqi": [{"datetime": h["datetime"], "value": {"chn": 40 + 4 * i}}
+                                           for i, h in enumerate(hours)]}},
         "daily": {"temperature": [{"date": d, "min": 13 + k, "max": 20 + k} for k, d in enumerate(days)],
+                  "air_quality": {"aqi": [{"date": d, "max": {"chn": 71 + 20 * k}} for k, d in enumerate(days)]},
                   "precipitation": [{"date": d, "probability": 60} for d in days],
                   "skycon": [{"date": d, "value": "CLOUDY"} for d in days],
                   "astro": [{"date": d, "sunrise": {"time": "06:11"}, "sunset": {"time": "17:04"}} for d in days]}}}
@@ -211,18 +214,59 @@ class Panorama(unittest.TestCase):
         self.assertGreater(im.size[1], 2 * im.size[0])
 
     def test_planned_height_is_what_gets_drawn(self):
-        # the canvas is allocated at height() to avoid an oversized canvas and
-        # a crop copy; if a block changes and height() does not, this goes red
+        # the layout runs twice, once to measure and once to draw; a block
+        # that moves y only when it really draws would leave a strip of empty
+        # canvas or cut the footer off
         from runemap import panorama as PN
         bb = station_box(LON, LAT, 3)
         rd = dict(png=frame(bb), bbox=bb, ts=time.time(), obs_ts=time.time(), lon=LON, lat=LAT, key="h")
         wx = fake_weather()
         for radar, note in ((rd, None), (None, "not yet"), (None, None)):
-            PN.render(wx, radar, "X", radar_note=note)
-            self.assertEqual(PN._render.last_y, PN.height(wx, radar, note), (radar is None, note))
+            body = PN.render(wx, radar, "X", radar_note=note)
+            planned, drawn = PN.render.last
+            self.assertEqual(planned, drawn, (radar is None, note))
+            self.assertEqual(Image.open(io.BytesIO(body)).size[1], round(drawn * PN.K))
         wx["result"]["minutely"]["description"] = ""
+        del wx["result"]["hourly"]["air_quality"]
         PN.render(wx, rd, "X")
-        self.assertEqual(PN._render.last_y, PN.height(wx, rd))
+        self.assertEqual(*PN.render.last)
+
+    def test_nothing_smaller_than_a_phone_caption(self):
+        # bob 11-03, twice: "too small". Sizes are phone points drawn at
+        # W/390 px per point. Next to a phone-app reference at the same scale
+        # the 13 pt captions were what read worst, so the floor is 14 pt
+        # (footer, map ticks); everything else is 15 and up. Counted at the
+        # font loader, so the radar's own labels are held to it too.
+        from runemap import panorama as PN, radar_image as RI
+        seen, real = [], RI.font
+        def spy(px, bold=False):
+            seen.append(px)
+            return real(px, bold)
+        RI.font = spy
+        try:
+            bb = station_box(LON, LAT, 3)
+            PN.render(fake_weather(), dict(png=frame(bb, blob=(LON, LAT, 20)), bbox=bb, ts=time.time(),
+                                           obs_ts=time.time() - 600, lon=LON, lat=LAT, key="f"),
+                      "Shanghai, CN", {"kind": "moving", "vx": 40, "vy": 0, "kmh": 40, "dir_en": "E"}, "x")
+        finally:
+            RI.font = real
+        self.assertTrue(seen)
+        self.assertGreaterEqual(min(seen), round(14 * PN.W / 390.0))
+
+    def test_air_quality_forecast_is_drawn(self):
+        # bob 11-03: "no air-quality forecast". The hourly series crosses
+        # 100 in the fake data, so the lightly-polluted colour must appear;
+        # without the series it must not.
+        from runemap import panorama as PN
+        orange = PN.aqi_band(120)[1]
+        cols = lambda b: {c for _, c in Image.open(io.BytesIO(b)).convert("RGB").getcolors(1 << 20)}
+        wx = fake_weather()
+        wx["result"]["daily"]["air_quality"]["aqi"] = [{"max": {"chn": 60}}] * 5
+        self.assertIn(orange, cols(PN.render(wx, None, "X")))
+        del wx["result"]["hourly"]["air_quality"]
+        self.assertNotIn(orange, cols(PN.render(wx, None, "X")))
+        self.assertEqual([PN.aqi_band(v)[0] for v in (50, 51, 100, 101, 201, 301)],
+                         ["excellent", "good", "good", "lightly polluted", "heavily polluted", "severely polluted"])
 
     def test_cards_survive_the_palette(self):
         # the first live render lost every card: page grey and card white
@@ -230,7 +274,7 @@ class Panorama(unittest.TestCase):
         from runemap import panorama as PN
         body = PN.render(fake_weather(), None, "X", radar_note="not yet")
         cols = {c for _, c in Image.open(io.BytesIO(body)).convert("RGB").getcolors(1 << 20)}
-        for c in PN.FIXED:
+        for c in PN.UI:
             self.assertIn(c, cols)
 
     def test_missing_radar_is_said_not_dropped(self):
