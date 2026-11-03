@@ -136,10 +136,29 @@ class Motion(unittest.TestCase):
             self.assertEqual(RI.draw_motion(d, mo, RI.SIZE, 200), [], mo)
 
     def test_the_hit_test_can_fail(self):
-        # positive control: a box straddling the arrow must count as a hit
+        # positive control: a box straddling the arrow must count as a hit.
+        # Eastbound echo => the arrow comes in from the WEST of the marker.
         segs = self.marks(1, 0)
         c = RI.SIZE / 2
-        self.assertTrue(RI._hits((c + 20, c - 8, c + 90, c + 8), segs))
+        self.assertTrue(RI._hits((c - 90, c - 8, c - 20, c + 8), segs))
+        self.assertFalse(RI._hits((c + 20, c - 8, c + 90, c + 8), segs))
+
+    def test_the_arrow_points_at_the_asker(self):
+        # bob 11-03: an arrow leaving the marker reads as "going away". The
+        # only arrowhead must sit next to the marker, on the upwind side.
+        from PIL import ImageDraw
+        for vx, vy in self.DIRS:
+            im = Image.new("RGB", (RI.SIZE, RI.SIZE), (255, 255, 255))
+            n = math.hypot(vx, vy)
+            RI.draw_motion(ImageDraw.Draw(im), {"kind": "moving", "vx": vx / n * 50,
+                           "vy": vy / n * 50, "kmh": 50}, RI.SIZE, 200)
+            a = np.asarray(im).astype(int)
+            c = RI.SIZE // 2
+            ux, uy = vx / n, vy / n
+            up = a[int(c - uy * 20), int(c - ux * 20)]     # inside the arrowhead
+            down = a[int(c + uy * 40), int(c + ux * 40)]   # where the old arrow was
+            self.assertTrue((up < 200).all(), "no arrowhead upwind for %r" % ((vx, vy),))
+            self.assertTrue((down > 250).all(), "something drawn downwind for %r" % ((vx, vy),))
 
 
 class Route(unittest.TestCase):

@@ -692,10 +692,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(503, "radar frame not fetched yet for %s -- ask again in ~30s.\n"
                                    "The text map at the same address (without .png) says why.\n" % label)
         png, ts, bbox, base, imgs = got
-        # Motion from the same cache the text map's motion line reads; never
-        # waited for (a picture without the arrow is still a picture).
+        # Motion from the same cache and the same bounded join the text map
+        # uses. The first version only peeked, so an image link opened before
+        # anyone had asked for the text map came back with no motion at all --
+        # which is exactly how a link gets opened.
         try:
-            mo = R._motion_peek(imgs, lon, lat)
+            mo = R._motion_join_budgeted(R._motion_start(imgs, lon, lat))
         except Exception as e:
             sys.stderr.write("PNG-MOTION-PEEK %r\n" % (e,))
             mo = None

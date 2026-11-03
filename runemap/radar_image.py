@@ -264,10 +264,9 @@ def when_text(frame_ts, obs_ts=None):
 # --- motion -----------------------------------------------------------------
 #
 # What the reader wants from a motion vector is "when does that rain get here",
-# so the main mark is a dashed line from the asker UPWIND, ticked in time:
-# rain lying on the "1 h" tick now reaches the marker in about an hour if it
-# keeps moving like this. A short red arrow at the marker says which way it is
-# going. Same vector the text map prints (vx east+, vy SOUTH+, km/h -- image
+# so the mark is one dashed arrow coming in from UPWIND and ending on the
+# asker, ticked in time: rain lying on the "1 h" tick now reaches the marker
+# in about an hour if it keeps moving like this. Same vector the text map prints (vx east+, vy SOUTH+, km/h -- image
 # rows), so the two cannot disagree. It assumes the echo translates rigidly;
 # the box says where the vector came from, and says no more than the text line.
 
@@ -299,12 +298,20 @@ def draw_motion(d, mo, size, span_km):
     segs = []
     shown = [(h, lab) for h, lab in TICKS if h * sp * ppk <= lim]
     L = (shown[-1][0] * sp * ppk) if shown else lim
-    # dashes, starting outside the marker ring
-    a = 14.0
+    # One arrow, pointing AT the asker: it comes in from upwind and its head
+    # stops on the marker ring. The first version had the dashes upwind plus
+    # a red arrow leaving the marker downwind -- bob: that reads as "going
+    # away", while what the picture means is "arriving here".
+    head0, head1 = 13.0, 30.0                 # tip on the ring, base further out
+    a = head1
     while a < L:
         b = min(a + 10.0, L)
         d.line((c - ux * a, c - uy * a, c - ux * b, c - uy * b), fill=col, width=3)
-        a += 20.0
+        a += 18.0
+    tip = (c - ux * head0, c - uy * head0)
+    base = (c - ux * head1, c - uy * head1)
+    d.polygon([tip, (base[0] + nx * 8, base[1] + ny * 8),
+               (base[0] - nx * 8, base[1] - ny * 8)], fill=col)
     segs.append(((c, c), (c - ux * L, c - uy * L), 14))
     ft = _font(14)
     for h, lab in shown:
@@ -319,13 +326,6 @@ def draw_motion(d, mo, size, span_km):
         d.text((lx, ly), lab, font=ft, fill=MOTION_COL, stroke_width=2,
                stroke_fill=PAL["white"])
         segs.append(((lx, ly), (lx + tw, ly + 16), 0))
-    # arrow: where the echo is going
-    a0, a1 = 16.0, 50.0
-    d.line((c + ux * a0, c + uy * a0, c + ux * a1, c + uy * a1), fill=PAL["mark"], width=3)
-    tip = (c + ux * (a1 + 9), c + uy * (a1 + 9))
-    d.polygon([tip, (c + ux * a1 + nx * 7, c + uy * a1 + ny * 7),
-               (c + ux * a1 - nx * 7, c + uy * a1 - ny * 7)], fill=PAL["mark"])
-    segs.append(((c, c), tip, 9))
     return segs
 
 
@@ -371,7 +371,7 @@ def motion_box(d, mo, basis, size):
     if kind == "moving":
         head = "echo moving %s ~%.0f km/h" % (mo.get("dir_en", "?"), float(mo["kmh"]))
         sub = ["basis: %s" % basis if basis else None,
-               "dashes: when rain there reaches you"]
+               "arrow: rain on it reaches you at the time marked"]
     elif kind == "stationary":
         head, sub = "echo stationary (<5 km/h)", ["basis: %s" % basis if basis else None]
     elif kind == "undetermined":
