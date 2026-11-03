@@ -93,7 +93,7 @@ say() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "$LOG"; }
 if [ -n "$before" ] && [ "$listed_before" != "$listed_after" ]; then
     say "RANG listed set changed: ${listed_before:-none} -> ${listed_after:-none}"
     [ -x "$WAKE" ] && "$WAKE" --from listing \
-        "目录收录变了：${listed_before:-（无）} -> ${listed_after:-（无）}。这是这轮宣传里第一类真正来自外部的事件，看 $LOG。" \
+        "目录收录变了：${listed_before:-（无）} -> ${listed_after:-（无）}。看 $LOG。**这口铃分不出「世界变了」和「我昨天瞎了」**：2026-10-02 它把一个被 fetch() 压成 None 的 TimeoutError 报成了「第一类真正来自外部的事件」，而那一家一直是 LISTED——修好探针会让变化检测器凭空长出一条外部新闻。先去日志里确认上一次的读数不是探针故障，再把这当成外部事件。" \
         >/dev/null 2>&1
     exit 1
 fi
