@@ -1,0 +1,377 @@
+"""Radar as a picture: the same window as the text map, for readers that can see.
+
+bob 2026-11-03: vision models are good now, so offer the radar as an image
+behind a link -- the text stays the product, the picture is one line in it.
+
+What is drawn, and why each choice:
+
+* The window is the text product's window (``ascii_radar_centered``): a square
+  ``span_km`` on a side, centred on the asker, not on the radar station.  Same
+  question, same answer, two renderings -- if they disagreed about where the
+  rain is, the reader could not tell which one to believe.
+* Caiyun's frame is a transparent overlay in Web Mercator (measured: lon span
+  4.808 deg vs mercator-lat span 4.810 deg on the Shanghai frame).  Our window
+  is Web Mercator too, so station -> window is one affine map, no resampling
+  of the projection.
+* Where the window runs past the station's image there is no radar at all.
+  That area is hatched, the picture's version of the text map's ``?``.  Inside
+  the station image, "no rain" and "out of the radar's reach" are both
+  transparent upstream; we cannot tell them apart and do not pretend to.
+* Basemap is Natural Earth 10m (public domain), cut offline into 10-degree
+  tiles (``data/ne/*.npz``) so a request reads only the tiles its window
+  touches.  This box has ~1 GB of RAM and other people's traffic on it; the
+  full land layer costs 130 MB to parse, one tile costs almost nothing.
+* Legend: the colours present in THIS frame, ordered weak -> strong by how deep
+  inside an echo they sit, each blended exactly as on the map.  No mm/h labels:
+  we do not know Caiyun's thresholds, and a confident number we made up would
+  be worse than an honest "weaker / stronger".
+* Text is English only: no CJK font is installed, and a label of tofu boxes is
+  a label that says nothing.
+"""
+import io
+import math
+import os
+import threading
+import time
+from collections import OrderedDict
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ne")
+TILE = 10            # degrees; must match the offline cutter
+SIZE = 800
+ALPHA = 0.9
+
+PAL = dict(sea=(214, 223, 231), land=(246, 244, 238), lake=(214, 223, 231),
+           coast=(150, 162, 175), border=(120, 128, 140), city=(70, 76, 86),
+           text=(40, 44, 52), dim=(90, 96, 106), mark=(200, 30, 30),
+           marktext=(160, 20, 20), white=(255, 255, 255))
+
+
+# --- projection -------------------------------------------------------------
+
+def merc_y(lat):
+    lat = np.clip(np.asarray(lat, float), -85.0, 85.0)
+    return np.degrees(np.log(np.tan(np.pi / 4 + np.radians(lat) / 2)))
+
+
+def inv_merc_y(y):
+    return math.degrees(2 * math.atan(math.exp(math.radians(y))) - math.pi / 2)
+
+
+def window(lon, lat, span_km):
+    """-> (lat0, lon0, lat1, lon1): a Mercator-square window, span_km across at lat."""
+    h = (span_km / 2.0) / (111.32 * math.cos(math.radians(lat)))
+    yc = float(merc_y(lat))
+    return (inv_merc_y(yc - h), lon - h, inv_merc_y(yc + h), lon + h)
+
+
+class _Proj:
+    def __init__(self, wb, size):
+        self.lat0, self.lon0, self.lat1, self.lon1 = wb
+        self.x0, self.x1 = self.lon0, self.lon1
+        self.y0, self.y1 = float(merc_y(self.lat0)), float(merc_y(self.lat1))
+        self.s = size
+
+    def __call__(self, lon, lat):
+        x = (np.asarray(lon, float) - self.x0) / (self.x1 - self.x0) * self.s
+        y = (self.y1 - merc_y(lat)) / (self.y1 - self.y0) * self.s
+        return x, y
+
+
+# --- Natural Earth tiles ----------------------------------------------------
+
+_NPZ = {}
+_NPZ_LOCK = threading.Lock()
+_PLACES = None
+
+
+def _layer(name):
+    with _NPZ_LOCK:
+        z = _NPZ.get(name)
+        if z is None:
+            # np.load on an npz is lazy: each key is decompressed on access.
+            z = _NPZ[name] = np.load(os.path.join(DATA, name + ".npz"))
+        return z
+
+
+def _tiles(wb):
+    lat0, lon0, lat1, lon1 = wb
+    for tx in range(int(math.floor(lon0 / TILE)) * TILE, int(math.ceil(lon1 / TILE)) * TILE, TILE):
+        for ty in range(int(math.floor(lat0 / TILE)) * TILE, int(math.ceil(lat1 / TILE)) * TILE, TILE):
+            yield "%d_%d" % (tx, ty)
+
+
+def _rings(name, wb):
+    """Yield (int32 milli-degree coords Nx2, is_hole) for rings near the window."""
+    z = _layer(name)
+    keys = set(z.files)
+    lat0, lon0, lat1, lon1 = wb
+    m = 0.05
+    for k in _tiles(wb):
+        if k + "_xy" not in keys:
+            continue
+        xy, ns, hs = z[k + "_xy"], z[k + "_n"], z[k + "_h"]
+        off = 0
+        for n, h in zip(ns.tolist(), hs.tolist()):
+            a = xy[off:off + n]; off += n
+            lo, la = a[:, 0] / 1000.0, a[:, 1] / 1000.0
+            if lo.max() < lon0 - m or lo.min() > lon1 + m or la.max() < lat0 - m or la.min() > lat1 + m:
+                continue
+            yield a, h
+
+
+def _not_tile_edge(a):
+    """Mask of segments that are real coastline, not a cut made by the tiler.
+
+    Polygons were clipped to 10-degree squares offline; drawn as-is, every tile
+    border would show up as a straight 'coast'.  A cut segment runs exactly
+    along x or y == k*TILE (in milli-degrees, an exact integer), both ends."""
+    t = TILE * 1000
+    x0, y0, x1, y1 = a[:-1, 0], a[:-1, 1], a[1:, 0], a[1:, 1]
+    cut = ((x0 == x1) & (x0 % t == 0)) | ((y0 == y1) & (y0 % t == 0))
+    return ~cut
+
+
+def _polys(d, P, name, fill, hole_fill, outline):
+    for a, hole in _rings(name, P.wb):
+        x, y = P(a[:, 0] / 1000.0, a[:, 1] / 1000.0)
+        pts = list(zip(x.tolist(), y.tolist()))
+        if len(pts) < 3:
+            continue
+        d.polygon(pts, fill=hole_fill if hole else fill)
+        if outline:
+            closed = np.vstack([a, a[:1]])
+            keep = _not_tile_edge(closed)
+            cx, cy = P(closed[:, 0] / 1000.0, closed[:, 1] / 1000.0)
+            for i in np.nonzero(keep)[0].tolist():
+                d.line((cx[i], cy[i], cx[i + 1], cy[i + 1]), fill=outline, width=1)
+
+
+def _lines(d, P, name, color, width):
+    for a, _ in _rings(name, P.wb):
+        x, y = P(a[:, 0] / 1000.0, a[:, 1] / 1000.0)
+        d.line(list(zip(x.tolist(), y.tolist())), fill=color, width=width)
+
+
+def _places():
+    global _PLACES
+    if _PLACES is None:
+        import json
+        with open(os.path.join(DATA, "places.json"), encoding="utf-8") as f:
+            _PLACES = json.load(f)       # [lon, lat, name, scalerank]
+    return _PLACES
+
+
+def _font(n):
+    return ImageFont.load_default(size=n)
+
+
+_BASE = OrderedDict()
+_BASE_LOCK = threading.Lock()
+_BASE_MAX = 6          # 800x800 RGB ~ 1.9 MB each
+
+
+def basemap(lon, lat, span_km, size=SIZE):
+    """Land/lakes/borders/towns for the window. Cached per window: the basemap
+    does not change between frames, and drawing it is most of the work."""
+    key = (round(lon, 2), round(lat, 2), round(span_km), size)
+    with _BASE_LOCK:
+        im = _BASE.get(key)
+        if im is not None:
+            _BASE.move_to_end(key)
+            return im
+    wb = window(lon, lat, span_km)
+    P = _Proj(wb, size); P.wb = wb
+    im = Image.new("RGB", (size, size), PAL["sea"])
+    d = ImageDraw.Draw(im)
+    _polys(d, P, "land", PAL["land"], PAL["sea"], PAL["coast"])
+    _polys(d, P, "lakes", PAL["lake"], PAL["land"], PAL["coast"])
+    _lines(d, P, "admin_0_boundary_lines_land", PAL["border"], 2)
+    # Towns: more of them in a small window, only the big ones in a wide one.
+    rank = 6 if span_km <= 300 else 4
+    fc = _font(15)
+    for clon, clat, name, sr in _places():
+        if sr > rank or not (wb[1] < clon < wb[3] and wb[0] < clat < wb[2]):
+            continue
+        # the asker's own point gets the red marker; a town dot on top of it
+        # would hide it
+        if abs(clon - lon) < 0.15 and abs(clat - lat) < 0.15:
+            continue
+        x, y = (float(v) for v in P(clon, clat))
+        d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=PAL["city"])
+        d.text((x + 6, y - 9), name, font=fc, fill=PAL["text"],
+               stroke_width=2, stroke_fill=PAL["white"])
+    with _BASE_LOCK:
+        _BASE[key] = im
+        while len(_BASE) > _BASE_MAX:
+            _BASE.popitem(last=False)
+    return im
+
+
+# --- legend -----------------------------------------------------------------
+
+_LEG = OrderedDict()
+_LEG_LOCK = threading.Lock()
+
+
+def legend_colours(st, cache_key=None):
+    """Colours present in this frame, weak -> strong by depth inside the echo."""
+    if cache_key is not None:
+        with _LEG_LOCK:
+            if cache_key in _LEG:
+                return _LEG[cache_key]
+    raw = np.asarray(st).astype(np.int16)
+    wet = raw[..., 3] > 50
+    depth = np.zeros(wet.shape, np.int16)
+    cur = wet.copy(); k = 0
+    while cur.any() and k < 60:
+        k += 1; depth[cur] = k; n = cur.copy()
+        n[1:] &= cur[:-1]; n[:-1] &= cur[1:]; n[:, 1:] &= cur[:, :-1]; n[:, :-1] &= cur[:, 1:]
+        cur = n
+    q = (raw[..., 0] // 32) * 64 + (raw[..., 1] // 32) * 8 + (raw[..., 2] // 32)
+    out = []
+    for v in np.unique(q[wet]):
+        m = wet & (q == v)
+        if m.sum() < 150:
+            continue
+        rgb = np.median(raw[m][:, :3], axis=0)
+        al = float(np.median(raw[m][:, 3])) / 255 * ALPHA
+        out.append((float(np.median(depth[m])),
+                    tuple(int(c * al + l * (1 - al)) for c, l in zip(rgb, PAL["land"]))))
+    out.sort()
+    cols = [c for _, c in out]
+    if cache_key is not None:
+        with _LEG_LOCK:
+            _LEG[cache_key] = cols
+            while len(_LEG) > 32:
+                _LEG.popitem(last=False)
+    return cols
+
+
+# --- the picture ------------------------------------------------------------
+
+def when_text(frame_ts, obs_ts=None):
+    """A frame extrapolated from an older observation is not "observed"."""
+    hm = lambda t: time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(t))
+    if obs_ts is not None and abs(float(frame_ts) - float(obs_ts)) >= 60:
+        return "radar predicted for %s from obs %s" % (
+            hm(frame_ts), time.strftime("%H:%MZ", time.gmtime(obs_ts)))
+    return "radar observed %s" % hm(frame_ts)
+
+
+def _hatch(size, step=14):
+    h = Image.new("RGBA", (size, size), (120, 126, 136, 70))
+    hd = ImageDraw.Draw(h)
+    for k in range(-size, size, step):
+        hd.line((k, size, k + size, 0), fill=(110, 116, 126, 150), width=2)
+    return h
+
+
+def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
+           size=SIZE, frame_key=None):
+    """-> (PNG bytes, fraction of the picture with no radar).
+
+    png       Caiyun frame bytes (transparent overlay, Web Mercator)
+    bbox      [lat0, lon0, lat1, lon1] of that frame, as upstream gives it
+    frame_ts  the time the frame depicts; obs_ts the observation it came from
+              (differ when the frame is extrapolated -- then the title says so)
+    """
+    span_km = float(span_km)
+    wb = window(lon, lat, span_km)
+    img = basemap(lon, lat, span_km, size).convert("RGBA")
+
+    st = Image.open(io.BytesIO(png)).convert("RGBA")
+    sw, sh = st.size
+    s_lat0, s_lon0, s_lat1, s_lon1 = (float(v) for v in bbox)
+    sx0, sx1 = s_lon0, s_lon1
+    sy0, sy1 = float(merc_y(s_lat0)), float(merc_y(s_lat1))
+    wx0, wx1 = wb[1], wb[3]
+    wy0, wy1 = float(merc_y(wb[0])), float(merc_y(wb[2]))
+    # output pixel -> station pixel (both Web Mercator: one affine map)
+    ax = (wx1 - wx0) / size / (sx1 - sx0) * sw
+    bx = (wx0 - sx0) / (sx1 - sx0) * sw
+    ay = (wy1 - wy0) / size / (sy1 - sy0) * sh
+    by = (sy1 - wy1) / (sy1 - sy0) * sh
+    radar = st.transform((size, size), Image.AFFINE, (ax, 0, bx, 0, ay, by),
+                         resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
+    radar.putalpha(radar.getchannel("A").point(lambda v: int(v * ALPHA)))
+    img = Image.alpha_composite(img, radar)
+
+    u = np.arange(size) + 0.5
+    sxp, syp = ax * u + bx, ay * u + by
+    outside = (~((sxp >= 0) & (sxp < sw)))[None, :] | (~((syp >= 0) & (syp < sh)))[:, None]
+    n_out = int(outside.sum())
+    if n_out:
+        # Blend, do not paste: paste() writes the hatch's own alpha (70) into
+        # the picture, and the RGB export then shows that layer opaque -- the
+        # first version drew "no radar" as a solid grey slab.
+        h = _hatch(size)
+        a = np.asarray(h.getchannel("A")).astype(np.uint16) * outside
+        h.putalpha(Image.fromarray(a.astype(np.uint8)))
+        img = Image.alpha_composite(img, h)
+
+    d = ImageDraw.Draw(img)
+    fs = _font(14)
+    c0, r = size / 2.0, 10
+    d.ellipse((c0 - r, c0 - r, c0 + r, c0 + r), outline=PAL["mark"], width=3)
+    d.line((c0 - r - 7, c0, c0 + r + 7, c0), fill=PAL["mark"], width=2)
+    d.line((c0, c0 - r - 7, c0, c0 + r + 7), fill=PAL["mark"], width=2)
+    # The marker gets the place's own name ("Shanghai"), not the whole
+    # gazetteer label ("Shanghai, Shanghai Municipality, Shanghai, CN"),
+    # which ran off the right edge on the first live render.
+    d.text((c0 + r + 9, c0 - 11), label.split(",")[0].strip(), font=_font(18), fill=PAL["marktext"],
+           stroke_width=3, stroke_fill=PAL["white"])
+
+    when = when_text(frame_ts, obs_ts)
+    d.rectangle((0, 0, size, 34), fill=PAL["white"] + (225,))
+    ft = _font(18)
+    parts = [x.strip() for x in label.split(",") if x.strip()] or [label]
+    while True:
+        # drop the middle of the label (region names) before the country,
+        # until the line fits: "Shanghai, CN" beats a title cut mid-word
+        name = ", ".join(parts)
+        title = "%s  -  %s  -  %d km square" % (name, when, round(span_km))
+        if ft.getlength(title) <= size - 24 or len(parts) <= 1:
+            break
+        parts = parts[:1] + parts[2:] if len(parts) > 2 else parts[:1]
+    d.text((12, 7), title, font=ft, fill=PAL["text"])
+
+    cols = legend_colours(st, frame_key)
+    bw = 28; lx, ly = 14, size - 24 - 62
+    d.rectangle((lx - 8, ly - 26, lx + max(bw * len(cols), 150) + 130, ly + 30),
+                fill=PAL["white"] + (225,))
+    if cols:
+        d.text((lx, ly - 22), "rain (caiyun colour scale)", font=fs, fill=PAL["text"])
+        for i, col in enumerate(cols):
+            d.rectangle((lx + i * bw, ly, lx + (i + 1) * bw - 2, ly + 14), fill=col + (255,))
+        d.text((lx, ly + 15), "weaker", font=fs, fill=PAL["text"])
+        if len(cols) > 3:
+            d.text((lx + bw * len(cols) - 56, ly + 15), "stronger", font=fs, fill=PAL["text"])
+    else:
+        d.text((lx, ly - 22), "no rain on this radar frame", font=fs, fill=PAL["text"])
+    hx = lx + max(bw * len(cols), 150) + 18
+    sample = Image.new("RGBA", (26, 14), (120, 126, 136, 70))
+    sd = ImageDraw.Draw(sample)
+    for k in range(-14, 26, 7):
+        sd.line((k, 14, k + 14, 0), fill=(110, 116, 126, 170), width=2)
+    img.paste(sample, (hx, ly), sample)
+    d.text((hx + 32, ly), "no radar", font=fs, fill=PAL["text"])
+
+    bar = 50 if span_km <= 400 else 100
+    ppk = size / span_km
+    bxp, byp = size - 30 - bar * ppk, size - 46
+    d.rectangle((bxp - 8, byp - 22, size - 14, byp + 10), fill=PAL["white"] + (225,))
+    d.line((bxp, byp, bxp + bar * ppk, byp), fill=PAL["text"], width=3)
+    for xx in (bxp, bxp + bar * ppk):
+        d.line((xx, byp - 5, xx, byp + 5), fill=PAL["text"], width=2)
+    d.text((bxp, byp - 21), "%d km" % bar, font=fs, fill=PAL["text"])
+
+    d.rectangle((0, size - 24, size, size), fill=PAL["white"] + (225,))
+    d.text((12, size - 20), "radar: caiyunapp.com  |  basemap: Natural Earth (public domain)  |  echorune.net",
+           font=fs, fill=PAL["dim"])
+
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, "PNG", optimize=True)
+    return buf.getvalue(), n_out / float(size * size)

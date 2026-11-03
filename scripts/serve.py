@@ -174,6 +174,28 @@ _PROBE_EXT = ("txt", "ico", "xml", "json", "php", "html", "htm", "css", "js",
 
 _CY_LANG = {"en": "en_US", "zh": "zh_CN", "ja": "ja"}
 
+# Words that mark a .png request as a browser/crawler asset fetch, not a place.
+_PNG_NOT_A_PLACE = ("icon", "logo", "touch", "banner", "badge", "thumb",
+                    "image", "img", "static", "asset", "wp-", "og-", "sprite")
+
+# Default edge of the picture: the text map's window when one is configured
+# (dev runs 200), else 200 -- the distance rain covers in about two hours.
+_PNG_SPAN = float(os.environ.get("RUNEMAP_SPAN_KM", "0") or 0) or 200.0
+_PNG_WAIT = 4.0      # seconds a cold sky may hold an image request
+
+
+def png_place(path):
+    """'/shanghai.png' -> 'shanghai'; None when the .png request is not a place.
+
+    One segment only, never a static-asset probe, never an icon-ish name."""
+    if not path.lower().endswith(".png"):
+        return None
+    stem = unquote(path[:-4]).strip("/").strip()
+    if (not stem or "/" in stem or _is_file_probe(stem)
+            or any(w in stem.lower() for w in _PNG_NOT_A_PLACE)):
+        return None
+    return stem
+
 
 #: The language suffixes this service actually serves. `bare_language_suffix`
 #: is narrow on purpose: only strings that already mean something in our own
@@ -634,10 +656,91 @@ class H(BaseHTTPRequestHandler):
             "error": {"code": -32601, "message": "method not found: %s" % method}}),
             ctype="application/json")
 
+    def _caiyun_frame(self, lon, lat, wait=0.0):
+        """-> (png bytes, ts, bbox, obs_ts) from the disk pool, or None.
+
+        The same list and the same frame choice the text map uses
+        (R._pick_frames), so the picture and the characters describe one
+        frame. A miss starts the same single-flight warm the text path starts,
+        and waits at most `wait` for it."""
+        def peek():
+            raw = R._peek(R._radar_list_url(TOKEN, lon, lat))
+            if raw is None:
+                return None
+            try:
+                imgs = json.loads(raw).get("images") or []
+            except Exception:
+                return None
+            cands, base = R._pick_frames(imgs, R._kind_for(lon, lat))
+            for c in cands[:2]:
+                png = R._peek(c[0])
+                if png is not None:
+                    return png, float(c[1]), c[2], base
+            return None
+        got = peek()
+        if got is None and wait > 0:
+            ev = R._radar_start(R._sky_key(lon, lat), lon, lat, TOKEN)
+            ev.wait(wait)
+            got = peek()
+        return got
+
+    def _send_png(self, lon, lat, label, span):
+        got = self._caiyun_frame(lon, lat, wait=_PNG_WAIT)
+        if got is None:
+            # Not "no radar here": we have not got the frame yet, and that is
+            # a claim about us. Same promise the text map makes.
+            return self._send(503, "radar frame not fetched yet for %s -- ask again in ~30s.\n"
+                                   "The text map at the same address (without .png) says why.\n" % label)
+        png, ts, bbox, base = got
+        try:
+            from runemap import radar_image as RI
+            body, _frac = RI.render(png, bbox, lon, lat, label, ts, base, span,
+                                    frame_key=(round(lon, 2), round(lat, 2), ts))
+        except Exception as e:
+            HITS["err"] += 1
+            sys.stderr.write("PNG-RENDER-FAILED %r\n%s" % (e, traceback.format_exc()))
+            return self._send(502, "could not draw the radar image: %s\n" % type(e).__name__)
+        HITS["n"] += 1
+        return self._send(200, body, ctype="image/png")
+
+    def _with_image_link(self, out, lon, lat, spec, span):
+        """One line pointing at the picture, only when there is a Caiyun frame
+        to draw: a link that answers 503 is a promise we already know we will
+        break. Placed above the data/attribution footer."""
+        try:
+            if self._caiyun_frame(lon, lat) is None:
+                return out
+        except Exception:
+            return out
+        from urllib.parse import quote
+        host = (self.headers.get("Host") or "echorune.net").split(",")[0].strip()
+        scheme = "https" if host.endswith("echorune.net") else "http"
+        # the .png route takes one segment; a multi-part name goes by coordinates
+        path = (quote(spec, safe=",.-") if spec and "/" not in spec
+                else "%.3f,%.3f" % (lon, lat))
+        url = "%s://%s/%s.png%s" % (scheme, host, path,
+                                    ("?span=%d" % round(span)) if span else "")
+        line = "radar image: %s\n" % url
+        i = out.rfind("\ndata:")
+        return out[:i + 1] + line + out[i + 1:] if i >= 0 else out + line
+
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         guessed = False
+        # /<place>.png -- the radar as a picture (bob 2026-11-03: vision models
+        # can read an image now, so give them one behind a link). One path
+        # segment only, and never an icon-ish name: `.png` used to be a probe
+        # extension that always 404'd, and the requests that end in .png today
+        # are favicons and touch icons. Let those into the fuzzy place matcher
+        # and each one would warm Caiyun frames for whatever town it matched.
+        want_png = u.path.lower().endswith(".png")
+        if want_png:
+            stem = png_place(u.path)
+            if stem is None:
+                return self._send(404, "no such path: %s\n\n" % u.path[:60] + HOME)
+            u = u._replace(path="/" + stem)
+            q["lang"] = ["en"]       # the picture's labels are Latin-only (no CJK font)
         small = (q.get("size", [""])[0] or "").lower() == "s"
         # ?span=<km> -- EDGE LENGTH of the centred window, not radius: span=200
         # is radius 100.  km/char == span/48.  Set on every request, including
@@ -826,6 +929,8 @@ class H(BaseHTTPRequestHandler):
             tzh = G.tz_offset(near.get("tz")) if near else None
             if tzh is None:
                 tzh = round(lon / 15.0)     # fallback: no settlement nearby
+        if want_png:
+            return self._send_png(lon, lat, label, _sp or _PNG_SPAN)
         code = ((q.get("code", ["><"])[0]) + "><")[:2]   # two cells; render_scene._mark keeps it single-width ASCII
         import urllib.parse
         c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
@@ -904,6 +1009,8 @@ class H(BaseHTTPRequestHandler):
             if _t_wx + _t_rb + _t_bd > 2.0:
                 sys.stderr.write("SLOW %s wx=%.2f radar=%.2f build=%.2f total=%.2f\n"
                                  % (label, _t_wx, _t_rb, _t_bd, _t_wx + _t_rb + _t_bd))
+            out = self._with_image_link(out, lon, lat,
+                                        q["q"][0] if q.get("q") else None, _sp)
             if guessed:
                 out += _guess_note(lang, label)
             HITS["n"] += 1
