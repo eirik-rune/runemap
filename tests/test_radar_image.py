@@ -162,9 +162,12 @@ class Motion(unittest.TestCase):
 
 
 class Route(unittest.TestCase):
-    def test_places_are_images(self):
-        for p, want in (("/shanghai.png", "shanghai"), ("/121.47,31.23.png", "121.47,31.23"),
-                        ("/%E4%B8%8A%E6%B5%B7.png", "上海"), ("/st.petersburg.png", "st.petersburg")):
+    def test_places_are_pictures(self):
+        for p, want in (("/shanghai.png", ("shanghai", "all")),
+                        ("/shanghai/radar.png", ("shanghai", "radar")),
+                        ("/121.47,31.23.png", ("121.47,31.23", "all")),
+                        ("/%E4%B8%8A%E6%B5%B7/radar.png", ("\u4e0a\u6d77", "radar")),
+                        ("/st.petersburg.png", ("st.petersburg", "all"))):
             self.assertEqual(S.png_place(p), want, p)
 
     def test_asset_fetches_are_not_places(self):
@@ -172,8 +175,70 @@ class Route(unittest.TestCase):
         # fuzzy matcher would warm Caiyun frames for some town it matched.
         for p in ("/favicon.png", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png",
                   "/logo.png", "/static/x.png", "/wp-content/uploads/a.png", "/.png",
-                  "/og-image.png", "/images/banner.png"):
+                  "/og-image.png", "/images/banner.png", "/radar.png", "/a/b/radar.png",
+                  "/icon/radar.png"):
             self.assertIsNone(S.png_place(p), p)
+
+
+def fake_weather(now=1762182000):
+    hours = [{"datetime": "2026-11-03T%02d:00+08:00" % ((23 + i) % 24), "value": 18 + (i % 5)} for i in range(24)]
+    hp = [{"datetime": h["datetime"], "value": 0.3 if i < 6 else 0.0, "probability": 80 if i < 6 else 0}
+          for i, h in enumerate(hours)]
+    sk = [{"datetime": h["datetime"], "value": "LIGHT_RAIN" if i < 6 else "CLOUDY"} for i, h in enumerate(hours)]
+    days = ["2026-11-%02dT00:00+08:00" % (3 + k) for k in range(5)]
+    return {"server_time": now, "tzshift": 28800, "result": {
+        "realtime": {"temperature": 19, "apparent_temperature": 19, "humidity": .67, "skycon": "LIGHT_RAIN",
+                     "wind": {"speed": 3, "direction": 100}, "air_quality": {"aqi": {"chn": 55}}},
+        "minutely": {"description": "rain stops in an hour", "precipitation_2h": [0.5] * 60 + [0.0] * 60,
+                     "probability": [.98, .9, .4, 0]},
+        "hourly": {"temperature": hours, "precipitation": hp, "skycon": sk},
+        "daily": {"temperature": [{"date": d, "min": 13 + k, "max": 20 + k} for k, d in enumerate(days)],
+                  "precipitation": [{"date": d, "probability": 60} for d in days],
+                  "skycon": [{"date": d, "value": "CLOUDY"} for d in days],
+                  "astro": [{"date": d, "sunrise": {"time": "06:11"}, "sunset": {"time": "17:04"}} for d in days]}}}
+
+
+class Panorama(unittest.TestCase):
+    def test_is_a_long_phone_width_png(self):
+        from runemap import panorama as PN
+        bb = station_box(LON, LAT, 3)
+        body = PN.render(fake_weather(), dict(png=frame(bb, blob=(LON, LAT, 20)), bbox=bb, ts=time.time(),
+                                              obs_ts=time.time(), lon=LON, lat=LAT, key="t"),
+                         "Shanghai, CN", {"kind": "moving", "vx": 40, "vy": 0, "kmh": 40, "dir_en": "E"}, "x")
+        im = Image.open(io.BytesIO(body))
+        self.assertEqual(im.format, "PNG")
+        self.assertEqual(im.size[0], PN.W)
+        self.assertGreater(im.size[1], 2 * im.size[0])
+
+    def test_planned_height_is_what_gets_drawn(self):
+        # the canvas is allocated at height() to avoid an oversized canvas and
+        # a crop copy; if a block changes and height() does not, this goes red
+        from runemap import panorama as PN
+        bb = station_box(LON, LAT, 3)
+        rd = dict(png=frame(bb), bbox=bb, ts=time.time(), obs_ts=time.time(), lon=LON, lat=LAT, key="h")
+        wx = fake_weather()
+        for radar, note in ((rd, None), (None, "not yet"), (None, None)):
+            PN.render(wx, radar, "X", radar_note=note)
+            self.assertEqual(PN._render.last_y, PN.height(wx, radar, note), (radar is None, note))
+        wx["result"]["minutely"]["description"] = ""
+        PN.render(wx, rd, "X")
+        self.assertEqual(PN._render.last_y, PN.height(wx, rd))
+
+    def test_cards_survive_the_palette(self):
+        # the first live render lost every card: page grey and card white
+        # were merged into one palette entry
+        from runemap import panorama as PN
+        body = PN.render(fake_weather(), None, "X", radar_note="not yet")
+        cols = {c for _, c in Image.open(io.BytesIO(body)).convert("RGB").getcolors(1 << 20)}
+        for c in PN.FIXED:
+            self.assertIn(c, cols)
+
+    def test_missing_radar_is_said_not_dropped(self):
+        # a picture that silently lacks its radar block reads as "no rain"
+        from runemap import panorama as PN
+        a = PN.render(fake_weather(), None, "X")
+        b = PN.render(fake_weather(), None, "X", radar_note="radar frame not fetched yet")
+        self.assertGreater(Image.open(io.BytesIO(b)).size[1], Image.open(io.BytesIO(a)).size[1])
 
 
 if __name__ == "__main__":

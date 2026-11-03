@@ -86,7 +86,10 @@ def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
     return "".join(BARS[min(int(v / vmax * 7.999), 7)] if v > 0 else " " for v in vals)
 
-def weather(lng, lat, token, lang):
+def weather_full(lng, lat, token, lang):
+    """The whole response -- server_time and tzshift included, which the
+    picture needs to say when its data is from. weather() below is this minus
+    the envelope: same URL, same cache entry, one upstream request."""
     # unit=metric:v2 or the number is a lie. Under the DEFAULT `metric`,
     # `precipitation.local.intensity` is Caiyun's radar precipitation INDEX on
     # a 0~1 scale -- their documentation says so in as many words -- and we were
@@ -106,7 +109,11 @@ def weather(lng, lat, token, lang):
     d = json.loads(_get("https://api.caiyunapp.com/v2.6/%s/%s,%s/weather?hourlysteps=24&lang=%s&unit=metric:v2" % (token, lng, lat, lang)))
     if d.get("status") != "ok":
         raise RuntimeError("weather api %s" % d.get("status"))
-    return d["result"]
+    return d
+
+
+def weather(lng, lat, token, lang):
+    return weather_full(lng, lat, token, lang)["result"]
 
 _MO_CACHE = {}
 _MO_TTL = 600

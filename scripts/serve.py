@@ -185,16 +185,23 @@ _PNG_WAIT = 4.0      # seconds a cold sky may hold an image request
 
 
 def png_place(path):
-    """'/shanghai.png' -> 'shanghai'; None when the .png request is not a place.
+    """'/shanghai.png' -> ('shanghai', 'all'); '/shanghai/radar.png' ->
+    ('shanghai', 'radar'); None when the .png request is not a place.
 
-    One segment only, never a static-asset probe, never an icon-ish name."""
+    One place segment only, never a static-asset probe, never an icon-ish
+    name."""
     if not path.lower().endswith(".png"):
         return None
     stem = unquote(path[:-4]).strip("/").strip()
-    if (not stem or "/" in stem or _is_file_probe(stem)
+    kind = "all"
+    if stem.lower().endswith("/radar"):
+        stem, kind = stem[:-len("/radar")].strip("/").strip(), "radar"
+    # "/radar.png" is the route's own word, not a place: fuzzy-matched, it
+    # would answer with some town and warm frames for it (the test caught it)
+    if (not stem or "/" in stem or _is_file_probe(stem) or stem.lower() == "radar"
             or any(w in stem.lower() for w in _PNG_NOT_A_PLACE)):
         return None
-    return stem
+    return stem, kind
 
 
 #: The language suffixes this service actually serves. `bare_language_suffix`
@@ -713,15 +720,42 @@ class H(BaseHTTPRequestHandler):
         HITS["n"] += 1
         return self._send(200, body, ctype="image/png")
 
-    def _with_image_link(self, out, lon, lat, spec, span):
-        """One line pointing at the picture, only when there is a Caiyun frame
-        to draw: a link that answers 503 is a promise we already know we will
-        break. Placed above the data/attribution footer."""
+    def _send_panorama(self, lon, lat, label, span):
+        """The whole weather as one long phone-width picture (bob 11-03)."""
         try:
-            if self._caiyun_frame(lon, lat) is None:
-                return out
-        except Exception:
-            return out
+            with net_budget.request_budget(SCENE_BUDGET):
+                wx = R.weather_full(lon, lat, TOKEN, "en_US")
+        except Exception as e:
+            return self._send(503, "weather not available right now (%s) -- ask again in ~30s.\n"
+                                   % type(e).__name__)
+        got = self._caiyun_frame(lon, lat, wait=_PNG_WAIT)
+        radar = mo = note = None
+        if got is not None:
+            png, ts, bbox, base, imgs = got
+            radar = dict(png=png, bbox=bbox, ts=ts, obs_ts=base, lon=lon, lat=lat,
+                         key=(round(lon, 2), round(lat, 2), ts))
+            try:
+                mo = R._motion_join_budgeted(R._motion_start(imgs, lon, lat))
+            except Exception as e:
+                sys.stderr.write("PANO-MOTION %r\n" % (e,))
+        else:
+            # not "no radar here": we have not got the frame yet
+            note = "radar frame not fetched yet -- ask again in ~30s"
+        try:
+            from runemap import panorama as PN
+            body = PN.render(wx, radar, label, mo, R._MO_BASIS_EN, span, radar_note=note)
+        except Exception as e:
+            HITS["err"] += 1
+            sys.stderr.write("PANO-RENDER-FAILED %r\n%s" % (e, traceback.format_exc()))
+            return self._send(502, "could not draw the picture: %s\n" % type(e).__name__)
+        HITS["n"] += 1
+        return self._send(200, body, ctype="image/png")
+
+    def _with_image_link(self, out, lon, lat, spec, span):
+        """One line pointing at the picture, above the data/attribution footer.
+        The text map only reaches here with weather in hand, and the picture
+        needs nothing more (it says so itself when the radar frame is not in
+        yet), so the link is not conditional any more."""
         from urllib.parse import quote
         host = (self.headers.get("Host") or "echorune.net").split(",")[0].strip()
         scheme = "https" if host.endswith("echorune.net") else "http"
@@ -730,7 +764,7 @@ class H(BaseHTTPRequestHandler):
                 else "%.3f,%.3f" % (lon, lat))
         url = "%s://%s/%s.png%s" % (scheme, host, path,
                                     ("?span=%d" % round(span)) if span else "")
-        line = "radar image: %s\n" % url
+        line = "picture: %s\n" % url
         i = out.rfind("\ndata:")
         return out[:i + 1] + line + out[i + 1:] if i >= 0 else out + line
 
@@ -745,10 +779,12 @@ class H(BaseHTTPRequestHandler):
         # are favicons and touch icons. Let those into the fuzzy place matcher
         # and each one would warm Caiyun frames for whatever town it matched.
         want_png = u.path.lower().endswith(".png")
+        png_kind = None
         if want_png:
-            stem = png_place(u.path)
-            if stem is None:
+            got = png_place(u.path)
+            if got is None:
                 return self._send(404, "no such path: %s\n\n" % u.path[:60] + HOME)
+            stem, png_kind = got
             u = u._replace(path="/" + stem)
             q["lang"] = ["en"]       # the picture's labels are Latin-only (no CJK font)
         small = (q.get("size", [""])[0] or "").lower() == "s"
@@ -939,8 +975,10 @@ class H(BaseHTTPRequestHandler):
             tzh = G.tz_offset(near.get("tz")) if near else None
             if tzh is None:
                 tzh = round(lon / 15.0)     # fallback: no settlement nearby
-        if want_png:
+        if png_kind == "radar":
             return self._send_png(lon, lat, label, _sp or _PNG_SPAN)
+        if png_kind == "all":
+            return self._send_panorama(lon, lat, label, _sp or _PNG_SPAN)
         code = ((q.get("code", ["><"])[0]) + "><")[:2]   # two cells; render_scene._mark keeps it single-width ASCII
         import urllib.parse
         c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"

@@ -173,10 +173,10 @@ _BASE_LOCK = threading.Lock()
 _BASE_MAX = 6          # 800x800 RGB ~ 1.9 MB each
 
 
-def basemap(lon, lat, span_km, size=SIZE):
+def basemap(lon, lat, span_km, size=SIZE, ui=1.0):
     """Land/lakes/borders/towns for the window. Cached per window: the basemap
     does not change between frames, and drawing it is most of the work."""
-    key = (round(lon, 2), round(lat, 2), round(span_km), size)
+    key = (round(lon, 2), round(lat, 2), round(span_km), size, round(ui, 2))
     with _BASE_LOCK:
         im = _BASE.get(key)
         if im is not None:
@@ -188,10 +188,10 @@ def basemap(lon, lat, span_km, size=SIZE):
     d = ImageDraw.Draw(im)
     _polys(d, P, "land", PAL["land"], PAL["sea"], PAL["coast"])
     _polys(d, P, "lakes", PAL["lake"], PAL["land"], PAL["coast"])
-    _lines(d, P, "admin_0_boundary_lines_land", PAL["border"], 2)
+    _lines(d, P, "admin_0_boundary_lines_land", PAL["border"], max(2, round(2 * ui)))
     # Towns: more of them in a small window, only the big ones in a wide one.
     rank = 6 if span_km <= 300 else 4
-    fc = _font(15)
+    fc = _font(round(15 * ui))
     for clon, clat, name, sr in _places():
         if sr > rank or not (wb[1] < clon < wb[3] and wb[0] < clat < wb[2]):
             continue
@@ -200,9 +200,10 @@ def basemap(lon, lat, span_km, size=SIZE):
         if abs(clon - lon) < 0.15 and abs(clat - lat) < 0.15:
             continue
         x, y = (float(v) for v in P(clon, clat))
-        d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=PAL["city"])
-        d.text((x + 6, y - 9), name, font=fc, fill=PAL["text"],
-               stroke_width=2, stroke_fill=PAL["white"])
+        rr = 3 * ui
+        d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=PAL["city"])
+        d.text((x + 2 * rr, y - 9 * ui), name, font=fc, fill=PAL["text"],
+               stroke_width=max(2, round(2 * ui)), stroke_fill=PAL["white"])
     with _BASE_LOCK:
         _BASE[key] = im
         while len(_BASE) > _BASE_MAX:
@@ -274,7 +275,7 @@ MOTION_COL = (30, 60, 110)
 TICKS = ((0.5, "30 min"), (1, "1 h"), (2, "2 h"), (3, "3 h"))
 
 
-def draw_motion(d, mo, size, span_km):
+def draw_motion(d, mo, size, span_km, ui=1.0, inner=None):
     """Draw the upwind ticks and the arrow; -> list of segments drawn, for
     the label placer. Nothing is drawn unless the echo is moving."""
     if not mo or mo.get("kind") != "moving":
@@ -290,7 +291,7 @@ def draw_motion(d, mo, size, span_km):
     # How far upwind the dashes may run: to the inner map area, along THIS
     # direction -- a fixed radius let a southbound line run up into the title
     # bar. Inner box keeps clear of the title (top) and the legend (bottom).
-    x0, y0, x1, y1 = 24.0, 60.0, size - 24.0, size - 110.0
+    x0, y0, x1, y1 = inner or (24.0, 60.0, size - 24.0, size - 110.0)
     tx = ((x0 - c) / -ux if ux > 0 else (x1 - c) / -ux) if ux else float("inf")
     ty = ((y0 - c) / -uy if uy > 0 else (y1 - c) / -uy) if uy else float("inf")
     lim = min(tx, ty)
@@ -302,30 +303,33 @@ def draw_motion(d, mo, size, span_km):
     # stops on the marker ring. The first version had the dashes upwind plus
     # a red arrow leaving the marker downwind -- bob: that reads as "going
     # away", while what the picture means is "arriving here".
-    head0, head1 = 13.0, 30.0                 # tip on the ring, base further out
+    head0, head1 = 13.0 * ui, 30.0 * ui       # tip on the ring, base further out
+    lw = max(3, round(3 * ui))
     a = head1
     while a < L:
-        b = min(a + 10.0, L)
-        d.line((c - ux * a, c - uy * a, c - ux * b, c - uy * b), fill=col, width=3)
-        a += 18.0
+        b = min(a + 10.0 * ui, L)
+        d.line((c - ux * a, c - uy * a, c - ux * b, c - uy * b), fill=col, width=lw)
+        a += 18.0 * ui
     tip = (c - ux * head0, c - uy * head0)
     base = (c - ux * head1, c - uy * head1)
-    d.polygon([tip, (base[0] + nx * 8, base[1] + ny * 8),
-               (base[0] - nx * 8, base[1] - ny * 8)], fill=col)
-    segs.append(((c, c), (c - ux * L, c - uy * L), 14))
-    ft = _font(14)
+    hw = 8 * ui
+    d.polygon([tip, (base[0] + nx * hw, base[1] + ny * hw),
+               (base[0] - nx * hw, base[1] - ny * hw)], fill=col)
+    segs.append(((c, c), (c - ux * L, c - uy * L), 14 * ui))
+    ft = _font(round(14 * ui))
     for h, lab in shown:
         rr = h * sp * ppk
         x, y = c - ux * rr, c - uy * rr
-        d.line((x - nx * 8, y - ny * 8, x + nx * 8, y + ny * 8), fill=col, width=3)
+        d.line((x - nx * hw, y - ny * hw, x + nx * hw, y + ny * hw), fill=col, width=lw)
         # tick label on one fixed side of the line, never on the line itself
         tw = ft.getlength(lab)
-        lx, ly = x + nx * 14, y + ny * 14
+        th = 16 * ui
+        lx, ly = x + nx * 14 * ui, y + ny * 14 * ui
         lx -= tw / 2 * (1 - nx)               # left-align when the side points right
-        ly -= 8 * (1 - ny)
-        d.text((lx, ly), lab, font=ft, fill=MOTION_COL, stroke_width=2,
+        ly -= th / 2 * (1 - ny)
+        d.text((lx, ly), lab, font=ft, fill=MOTION_COL, stroke_width=max(2, round(2 * ui)),
                stroke_fill=PAL["white"])
-        segs.append(((lx, ly), (lx + tw, ly + 16), 0))
+        segs.append(((lx, ly), (lx + tw, ly + th), 0))
     return segs
 
 
@@ -391,26 +395,45 @@ def motion_box(d, mo, basis, size):
         d.text((x0 + 10, y0 + 28 + 18 * i), t, font=fs, fill=PAL["dim"])
 
 
-def _hatch(size, step=14):
+def _hatch(size, step=14, width=2):
     h = Image.new("RGBA", (size, size), (120, 126, 136, 70))
     hd = ImageDraw.Draw(h)
     for k in range(-size, size, step):
-        hd.line((k, size, k + size, 0), fill=(110, 116, 126, 150), width=2)
+        hd.line((k, size, k + size, 0), fill=(110, 116, 126, 150), width=width)
     return h
 
 
+def _scale_bar(d, size, span_km, fs, ui, bottom=None):
+    bar = 50 if span_km <= 400 else 100
+    ppk = size / span_km
+    byp = size - (bottom if bottom is not None else 30 * ui)
+    bxp = size - 30 * ui - bar * ppk
+    th = fs.getbbox("0")[3]
+    d.rectangle((bxp - 8 * ui, byp - th - 10 * ui, size - 14 * ui, byp + 10 * ui), fill=PAL["white"] + (225,))
+    d.line((bxp, byp, bxp + bar * ppk, byp), fill=PAL["text"], width=max(3, round(3 * ui)))
+    for xx in (bxp, bxp + bar * ppk):
+        d.line((xx, byp - 5 * ui, xx, byp + 5 * ui), fill=PAL["text"], width=max(2, round(2 * ui)))
+    d.text((bxp, byp - th - 7 * ui), "%d km" % bar, font=fs, fill=PAL["text"])
+
+
 def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
-           size=SIZE, frame_key=None, motion=None, basis=None):
+           size=SIZE, frame_key=None, motion=None, basis=None, ui=1.0, bare=False,
+           as_image=False):
     """-> (PNG bytes, fraction of the picture with no radar).
 
     png       Caiyun frame bytes (transparent overlay, Web Mercator)
     bbox      [lat0, lon0, lat1, lon1] of that frame, as upstream gives it
     frame_ts  the time the frame depicts; obs_ts the observation it came from
               (differ when the frame is extrapolated -- then the title says so)
+    ui        scale for text, lines and marks, independent of size: a picture
+              read on a phone needs its labels ~2x larger RELATIVE to the map,
+              which an upscale cannot give (it grows the map with them)
+    bare      map only (basemap, radar, hatch, marker, motion arrow, scale bar):
+              the caller draws title, legend and motion words itself
     """
     span_km = float(span_km)
     wb = window(lon, lat, span_km)
-    img = basemap(lon, lat, span_km, size).convert("RGBA")
+    img = basemap(lon, lat, span_km, size, ui).convert("RGBA")
 
     st = Image.open(io.BytesIO(png)).convert("RGBA")
     sw, sh = st.size
@@ -437,28 +460,37 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
         # Blend, do not paste: paste() writes the hatch's own alpha (70) into
         # the picture, and the RGB export then shows that layer opaque -- the
         # first version drew "no radar" as a solid grey slab.
-        h = _hatch(size)
+        h = _hatch(size, step=round(14 * ui), width=max(2, round(2 * ui)))
         a = np.asarray(h.getchannel("A")).astype(np.uint16) * outside
         h.putalpha(Image.fromarray(a.astype(np.uint8)))
         img = Image.alpha_composite(img, h)
 
     d = ImageDraw.Draw(img)
-    fs = _font(14)
-    c0, r = size / 2.0, 10
-    segs = draw_motion(d, motion, size, span_km) if motion else []
-    d.ellipse((c0 - r, c0 - r, c0 + r, c0 + r), outline=PAL["mark"], width=3)
-    d.line((c0 - r - 7, c0, c0 + r + 7, c0), fill=PAL["mark"], width=2)
-    d.line((c0, c0 - r - 7, c0, c0 + r + 7), fill=PAL["mark"], width=2)
+    fs = _font(round(14 * ui))
+    c0, r = size / 2.0, 10 * ui
+    inner = (24.0 * ui, 24.0 * ui, size - 24.0 * ui, size - 80.0 * ui) if bare else None
+    segs = draw_motion(d, motion, size, span_km, ui, inner) if motion else []
+    d.ellipse((c0 - r, c0 - r, c0 + r, c0 + r), outline=PAL["mark"], width=max(3, round(3 * ui)))
+    d.line((c0 - r - 7 * ui, c0, c0 + r + 7 * ui, c0), fill=PAL["mark"], width=max(2, round(2 * ui)))
+    d.line((c0, c0 - r - 7 * ui, c0, c0 + r + 7 * ui), fill=PAL["mark"], width=max(2, round(2 * ui)))
     # The marker gets the place's own name ("Shanghai"), not the whole
     # gazetteer label ("Shanghai, Shanghai Municipality, Shanghai, CN"),
     # which ran off the right edge on the first live render. It goes wherever
     # the motion marks are not: the first mock put it to the east, right
     # under an eastbound arrow.
     name = label.split(",")[0].strip()
-    fm = _font(18)
-    box = place_label(fm.getbbox(name, stroke_width=3), c0, r, segs, size)
+    fm = _font(round(18 * ui))
+    sw_ = max(3, round(3 * ui))
+    box = place_label(fm.getbbox(name, stroke_width=sw_), c0, r, segs, size)
     d.text((box[0], box[1]), name, font=fm, fill=PAL["marktext"],
-           stroke_width=3, stroke_fill=PAL["white"])
+           stroke_width=sw_, stroke_fill=PAL["white"])
+    if bare:
+        _scale_bar(d, size, span_km, fs, ui)
+        if as_image:          # the caller composites it; encoding here is wasted
+            return img.convert("RGB"), n_out / float(size * size)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "PNG", optimize=True)
+        return buf.getvalue(), n_out / float(size * size)
     if motion:
         motion_box(d, motion, basis, size)
 
@@ -497,14 +529,7 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     img.paste(sample, (hx, ly), sample)
     d.text((hx + 32, ly), "no radar", font=fs, fill=PAL["text"])
 
-    bar = 50 if span_km <= 400 else 100
-    ppk = size / span_km
-    bxp, byp = size - 30 - bar * ppk, size - 46
-    d.rectangle((bxp - 8, byp - 22, size - 14, byp + 10), fill=PAL["white"] + (225,))
-    d.line((bxp, byp, bxp + bar * ppk, byp), fill=PAL["text"], width=3)
-    for xx in (bxp, bxp + bar * ppk):
-        d.line((xx, byp - 5, xx, byp + 5), fill=PAL["text"], width=2)
-    d.text((bxp, byp - 21), "%d km" % bar, font=fs, fill=PAL["text"])
+    _scale_bar(d, size, span_km, fs, 1.0, bottom=46)
 
     d.rectangle((0, size - 24, size, size), fill=PAL["white"] + (225,))
     d.text((12, size - 20), "radar: caiyunapp.com  |  basemap: Natural Earth (public domain)  |  echorune.net",
