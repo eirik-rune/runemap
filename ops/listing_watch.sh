@@ -90,15 +90,42 @@ listed_after=$(printf '%s' "$after"  | tr ' ' '\n' | grep '=LISTED$' | sort | tr
 
 say() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "$LOG"; }
 
-if [ -n "$before" ] && [ "$listed_before" != "$listed_after" ]; then
-    say "RANG listed set changed: ${listed_before:-none} -> ${listed_after:-none}"
-    [ -x "$WAKE" ] && "$WAKE" --from listing \
-        "目录收录变了：${listed_before:-（无）} -> ${listed_after:-（无）}。看 $LOG。**这口铃分不出「世界变了」和「我昨天瞎了」**：2026-10-02 它把一个被 fetch() 压成 None 的 TimeoutError 报成了「第一类真正来自外部的事件」，而那一家一直是 LISTED——修好探针会让变化检测器凭空长出一条外部新闻。先去日志里确认上一次的读数不是探针故障，再把这当成外部事件。" \
-        >/dev/null 2>&1
-    exit 1
+# 2026-11-03: the decision lives in ops/listing_decide.py now, so it can be
+# fired without a network and so that the rule written at the top of this file
+# is finally the rule the code runs. Eleven of this bell's first twelve rings
+# were my own blindness: a directory sliding from LISTED into any can't-tell
+# verdict left the `=LISTED$` set and was read as a delisting. The measurement
+# and the replay are in that file's header.
+if [ -n "$before" ]; then
+    decision=$("$PY" ops/listing_decide.py "$before" "$after" 2>&1)
+    drc=$?
+    printf '%s\n' "$decision" | while IFS= read -r line; do
+        [ -n "$line" ] && say "$line"
+    done
+    if [ "$drc" = 1 ]; then
+        say "RANG listed set changed: ${listed_before:-none} -> ${listed_after:-none}"
+        [ -x "$WAKE" ] && "$WAKE" --from listing \
+            "目录收录变了：${listed_before:-（无）} -> ${listed_after:-（无）}。看 $LOG。**这口铃分不出「世界变了」和「我昨天瞎了」**：2026-11-03 起「判不出」（NO-SIGNAL／BLIND／NO-CONTROL／UNREACHABLE）的转换只记日志、不响，所以这条铃意味着两次都判得出；但探针也可能用一个「判得出」的词撒谎——10-01 它就把一个被 fetch() 压成 None 的 TimeoutError 印成了 ABSENT，第二天那条「第一类真正来自外部的事件」就是这么来的。先去日志里核对上一次的读数不是探针故障，再把这当成外部事件。" \
+            >/dev/null 2>&1
+        exit 1
+    fi
+    if [ "$drc" != 0 ]; then
+        # A decider that cannot run is not an all-clear. Ring, and leave by the
+        # "could not ask" door rather than the quiet one.
+        say "BROKEN-DECIDER rc=$drc -- cannot tell whether to ring, so ringing"
+        [ -x "$WAKE" ] && "$WAKE" --from listing \
+            "收录判据自己跑不起来（ops/listing_decide.py rc=$drc），所以这口铃现在既不能说变了也不能说没变，看 $LOG。" \
+            >/dev/null 2>&1
+        exit 2
+    fi
 fi
 if [ -z "$before" ]; then
     say "QUIET first run -- baseline only, a self-announcing baseline would ring on every new machine"
+elif [ "$listed_before" != "$listed_after" ]; then
+    # The set DID move; it moved across a verdict I cannot act on. Saying
+    # "unchanged" here would be the one lie this file could still tell, and it
+    # would be the lie I would read first when asking why nothing rang.
+    say "QUIET listed set moved only across verdicts I cannot act on: ${listed_before:-none} -> ${listed_after:-none} (the HELD line above names which)"
 else
     say "QUIET listed set unchanged: ${listed_after:-none}"
 fi
