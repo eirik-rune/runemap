@@ -185,23 +185,27 @@ _PNG_WAIT = 4.0      # seconds a cold sky may hold an image request
 
 
 def png_place(path):
-    """'/shanghai.png' -> ('shanghai', 'all'); '/shanghai/radar.png' ->
-    ('shanghai', 'radar'); None when the .png request is not a place.
+    """'/shanghai.png' -> ('shanghai', 'all', None); '/上海/zh.png' ->
+    ('上海', 'all', 'zh'); '/shanghai/radar.png' -> ('shanghai', 'radar',
+    None); None when the .png request is not a place.
 
-    One place segment only, never a static-asset probe, never an icon-ish
-    name."""
+    The language suffix is the text map's own (/<place>/<lang>), placed the
+    same way. One place segment only, never a static-asset probe, never an
+    icon-ish name."""
     if not path.lower().endswith(".png"):
         return None
     stem = unquote(path[:-4]).strip("/").strip()
-    kind = "all"
+    kind, lang = "all", None
     if stem.lower().endswith("/radar"):
         stem, kind = stem[:-len("/radar")].strip("/").strip(), "radar"
+    elif "/" in stem and stem.rsplit("/", 1)[1].lower() in LANGS:
+        stem, lang = stem.rsplit("/", 1)[0].strip(), stem.rsplit("/", 1)[1].lower()
     # "/radar.png" is the route's own word, not a place: fuzzy-matched, it
     # would answer with some town and warm frames for it (the test caught it)
     if (not stem or "/" in stem or _is_file_probe(stem) or stem.lower() == "radar"
             or any(w in stem.lower() for w in _PNG_NOT_A_PLACE)):
         return None
-    return stem, kind
+    return stem, kind, lang
 
 
 #: The language suffixes this service actually serves. `bare_language_suffix`
@@ -720,11 +724,12 @@ class H(BaseHTTPRequestHandler):
         HITS["n"] += 1
         return self._send(200, body, ctype="image/png")
 
-    def _send_panorama(self, lon, lat, label, span):
-        """The whole weather as one long phone-width picture (bob 11-03)."""
+    def _send_panorama(self, lon, lat, label, span, lang="en", spec=None, asked_span=None):
+        """The whole weather as one long phone-width picture (bob 11-03), in
+        the reader's language, with a QR code back to this same picture."""
         try:
             with net_budget.request_budget(SCENE_BUDGET):
-                wx = R.weather_full(lon, lat, TOKEN, "en_US")
+                wx = R.weather_full(lon, lat, TOKEN, _CY_LANG.get(lang, "en_US"))
         except Exception as e:
             return self._send(503, "weather not available right now (%s) -- ask again in ~30s.\n"
                                    % type(e).__name__)
@@ -740,10 +745,15 @@ class H(BaseHTTPRequestHandler):
                 sys.stderr.write("PANO-MOTION %r\n" % (e,))
         else:
             # not "no radar here": we have not got the frame yet
-            note = "radar frame not fetched yet -- ask again in ~30s"
+            note = "pending"
         try:
             from runemap import panorama as PN
-            body = PN.render(wx, radar, label, mo, R._MO_BASIS_EN, span, radar_note=note)
+            if note:
+                note = PN.text(lang, "radar_pending")
+            basis = {"zh": R._MO_BASIS_ZH, "ja": R._MO_BASIS_JA}.get(lang, R._MO_BASIS_EN)
+            sky = {"zh": R.SKY_ZH, "ja": R.SKY_JA}.get(lang)
+            body = PN.render(wx, radar, label, mo, basis, span, radar_note=note, lang=lang, sky=sky,
+                             qr=self._picture_url(lon, lat, spec, asked_span, lang))
         except Exception as e:
             HITS["err"] += 1
             sys.stderr.write("PANO-RENDER-FAILED %r\n%s" % (e, traceback.format_exc()))
@@ -751,19 +761,26 @@ class H(BaseHTTPRequestHandler):
         HITS["n"] += 1
         return self._send(200, body, ctype="image/png")
 
-    def _with_image_link(self, out, lon, lat, spec, span):
-        """One line pointing at the picture, above the data/attribution footer.
-        The text map only reaches here with weather in hand, and the picture
-        needs nothing more (it says so itself when the radar frame is not in
-        yet), so the link is not conditional any more."""
+    def _picture_url(self, lon, lat, spec, span, lang=None):
+        """The address of the long picture for this place. One builder for
+        both places that print it -- the text map's `picture:` line and the
+        QR code drawn into the picture itself -- so the two cannot drift."""
         from urllib.parse import quote
         host = (self.headers.get("Host") or "echorune.net").split(",")[0].strip()
         scheme = "https" if host.endswith("echorune.net") else "http"
         # the .png route takes one segment; a multi-part name goes by coordinates
         path = (quote(spec, safe=",.-") if spec and "/" not in spec
                 else "%.3f,%.3f" % (lon, lat))
-        url = "%s://%s/%s.png%s" % (scheme, host, path,
-                                    ("?span=%d" % round(span)) if span else "")
+        return "%s://%s/%s%s.png%s" % (scheme, host, path, ("/" + lang) if lang else "",
+                                       ("?span=%d" % round(span)) if span else "")
+
+    def _with_image_link(self, out, lon, lat, spec, span, lang="en"):
+        """One line pointing at the picture, above the data/attribution footer.
+        The text map only reaches here with weather in hand, and the picture
+        needs nothing more (it says so itself when the radar frame is not in
+        yet), so the link is not conditional any more. A Chinese or Japanese
+        text map links to the picture in the same language."""
+        url = self._picture_url(lon, lat, spec, span, lang if lang != "en" else None)
         line = "picture: %s\n" % url
         i = out.rfind("\ndata:")
         return out[:i + 1] + line + out[i + 1:] if i >= 0 else out + line
@@ -784,9 +801,13 @@ class H(BaseHTTPRequestHandler):
             got = png_place(u.path)
             if got is None:
                 return self._send(404, "no such path: %s\n\n" % u.path[:60] + HOME)
-            stem, png_kind = got
+            stem, png_kind, png_lang = got
             u = u._replace(path="/" + stem)
-            q["lang"] = ["en"]       # the picture's labels are Latin-only (no CJK font)
+            if png_kind == "radar":
+                q["lang"] = ["en"]   # the radar-only picture's title and notes are English
+            elif png_lang:
+                q["lang"] = [png_lang]
+            # otherwise the same rule as the text map: Accept-Language, then en
         small = (q.get("size", [""])[0] or "").lower() == "s"
         # ?span=<km> -- EDGE LENGTH of the centred window, not radius: span=200
         # is radius 100.  km/char == span/48.  Set on every request, including
@@ -948,6 +969,8 @@ class H(BaseHTTPRequestHandler):
         # got English -- a difference the caller never asked for.
         lang = (q.get("lang", [""])[0] or _accept_lang(self.headers.get("Accept-Language")) or "en").lower()
         lang = lang if lang in ("en", "zh", "ja") else "en"
+        if png_kind == "all" and not __import__("runemap.radar_image", fromlist=["x"]).can_draw(lang):
+            lang = "en"              # no CJK face installed: English, not empty boxes
         # Resolved BEFORE the place lookup, because the lookup now needs it:
         # a /zh caller must get the place's Chinese name, and that decision
         # cannot be made after the label has already been built.
@@ -978,7 +1001,8 @@ class H(BaseHTTPRequestHandler):
         if png_kind == "radar":
             return self._send_png(lon, lat, label, _sp or _PNG_SPAN)
         if png_kind == "all":
-            return self._send_panorama(lon, lat, label, _sp or _PNG_SPAN)
+            return self._send_panorama(lon, lat, label, _sp or _PNG_SPAN, lang,
+                                       q["q"][0] if q.get("q") else None, _sp)
         code = ((q.get("code", ["><"])[0]) + "><")[:2]   # two cells; render_scene._mark keeps it single-width ASCII
         import urllib.parse
         c_qs = f"lat={lat:.3f}&lon={lon:.3f}&lang={lang}&label={urllib.parse.quote(label)}&tz={tzh}&code={urllib.parse.quote(code)}"
@@ -1058,7 +1082,7 @@ class H(BaseHTTPRequestHandler):
                 sys.stderr.write("SLOW %s wx=%.2f radar=%.2f build=%.2f total=%.2f\n"
                                  % (label, _t_wx, _t_rb, _t_bd, _t_wx + _t_rb + _t_bd))
             out = self._with_image_link(out, lon, lat,
-                                        q["q"][0] if q.get("q") else None, _sp)
+                                        q["q"][0] if q.get("q") else None, _sp, lang)
             if guessed:
                 out += _guess_note(lang, label)
             HITS["n"] += 1

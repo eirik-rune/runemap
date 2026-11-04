@@ -11,7 +11,9 @@ license = { text = "MIT" }
 requires-python = ">=3.8"
 authors = [{ name = "echorune" }]
 keywords = ["weather", "radar", "ascii", "llm", "agents", "terminal"]
-dependencies = ["numpy>=1.20", "pillow>=8"]
+# segno draws the QR code in the long picture (/<place>.png). A dependency, not
+# an extra: 76 KB of pure Python with no dependencies of its own.
+dependencies = ["numpy>=1.20", "pillow>=8", "segno>=1.5"]
 
 [project.optional-dependencies]
 image = ["pillow>=8"]   # retained as alias; pillow is required since 0.3

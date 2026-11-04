@@ -25,8 +25,9 @@ What is drawn, and why each choice:
   inside an echo they sit, each blended exactly as on the map.  No mm/h labels:
   we do not know Caiyun's thresholds, and a confident number we made up would
   be worse than an honest "weaker / stronger".
-* Text is English only: no CJK font is installed, and a label of tofu boxes is
-  a label that says nothing.
+* Text in en, zh or ja.  Chinese and Japanese need Noto Sans CJK
+  (fonts-noto-cjk); without it `can_draw()` says no and the caller falls back
+  to English, because a label of tofu boxes is a label that says nothing.
 """
 import io
 import math
@@ -170,24 +171,49 @@ _FONT_FILES = {False: ("/usr/share/fonts/truetype/liberation/LiberationSans-Regu
                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
                True: ("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                       "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")}
+# Chinese and Japanese: Noto Sans CJK (fonts-noto-cjk). One .ttc holds every
+# region's glyph forms; the face index picks the one the reader expects
+# (the same character is drawn differently in Simplified Chinese and Japanese).
+_CJK = {False: "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        True: "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"}
+_CJK_FACE = {"ja": 0, "zh": 2}
 _FONTS = {}
 
 
-def font(px, bold=False):
-    f = _FONTS.get((px, bold))
+def can_draw(lang):
+    """Is there a face on this box for `lang`? Without one, CJK text would
+    come out as empty boxes -- a picture that looks rendered and says nothing."""
+    return lang not in _CJK_FACE or os.path.exists(_CJK[False]) and os.path.exists(_CJK[True])
+
+
+def font(px, bold=False, lang="en"):
+    key = (px, bold, lang if lang in _CJK_FACE else "en")
+    f = _FONTS.get(key)
     if f is None:
-        for path in _FONT_FILES[bold]:
-            if os.path.exists(path):
-                f = ImageFont.truetype(path, px)
-                break
+        if key[2] != "en":
+            if not can_draw(key[2]):
+                raise LookupError("no %s font installed (fonts-noto-cjk)" % key[2])
+            f = ImageFont.truetype(_CJK[bold], px, index=_CJK_FACE[key[2]])
         else:
-            f = ImageFont.load_default(size=px)
-        _FONTS[(px, bold)] = f
+            for path in _FONT_FILES[bold]:
+                if os.path.exists(path):
+                    f = ImageFont.truetype(path, px)
+                    break
+            else:
+                f = ImageFont.load_default(size=px)
+        _FONTS[key] = f
     return f
 
 
-def _font(n):
-    return font(n)
+def _font(n, lang="en"):
+    return font(n, False, lang)
+
+
+def place_name(row, lang):
+    """A town's name in the reader's language when the data has one
+    (Natural Earth name_zh / name_ja), its own name otherwise."""
+    i = {"zh": 4, "ja": 5}.get(lang)
+    return (row[i] if i is not None and len(row) > i and row[i] else row[2])
 
 
 _BASE = OrderedDict()
@@ -195,10 +221,10 @@ _BASE_LOCK = threading.Lock()
 _BASE_MAX = 6          # 800x800 RGB ~ 1.9 MB each
 
 
-def basemap(lon, lat, span_km, size=SIZE, ui=1.0):
+def basemap(lon, lat, span_km, size=SIZE, ui=1.0, lang="en"):
     """Land/lakes/borders/towns for the window. Cached per window: the basemap
     does not change between frames, and drawing it is most of the work."""
-    key = (round(lon, 2), round(lat, 2), round(span_km), size, round(ui, 2))
+    key = (round(lon, 2), round(lat, 2), round(span_km), size, round(ui, 2), lang)
     with _BASE_LOCK:
         im = _BASE.get(key)
         if im is not None:
@@ -213,8 +239,10 @@ def basemap(lon, lat, span_km, size=SIZE, ui=1.0):
     _lines(d, P, "admin_0_boundary_lines_land", PAL["border"], max(2, round(2 * ui)))
     # Towns: more of them in a small window, only the big ones in a wide one.
     rank = 6 if span_km <= 300 else 4
-    fc = _font(round(15 * ui))
-    for clon, clat, name, sr in _places():
+    fc = _font(round(15 * ui), lang)
+    for row in _places():
+        clon, clat, sr = row[0], row[1], row[3]
+        name = place_name(row, lang)
         if sr > rank or not (wb[1] < clon < wb[3] and wb[0] < clat < wb[2]):
             continue
         # the asker's own point gets the red marker; a town dot on top of it
@@ -295,9 +323,12 @@ def when_text(frame_ts, obs_ts=None):
 
 MOTION_COL = (30, 60, 110)
 TICKS = ((0.5, "30 min"), (1, "1 h"), (2, "2 h"), (3, "3 h"))
+TICKS_L = {"en": TICKS,
+           "zh": ((0.5, "30分钟"), (1, "1小时"), (2, "2小时"), (3, "3小时")),
+           "ja": ((0.5, "30分"), (1, "1時間"), (2, "2時間"), (3, "3時間"))}
 
 
-def draw_motion(d, mo, size, span_km, ui=1.0, inner=None):
+def draw_motion(d, mo, size, span_km, ui=1.0, inner=None, lang="en"):
     """Draw the upwind ticks and the arrow; -> list of segments drawn, for
     the label placer. Nothing is drawn unless the echo is moving."""
     if not mo or mo.get("kind") != "moving":
@@ -319,7 +350,7 @@ def draw_motion(d, mo, size, span_km, ui=1.0, inner=None):
     lim = min(tx, ty)
     col = MOTION_COL + (235,)
     segs = []
-    shown = [(h, lab) for h, lab in TICKS if h * sp * ppk <= lim]
+    shown = [(h, lab) for h, lab in TICKS_L.get(lang, TICKS) if h * sp * ppk <= lim]
     L = (shown[-1][0] * sp * ppk) if shown else lim
     # One arrow, pointing AT the asker: it comes in from upwind and its head
     # stops on the marker ring. The first version had the dashes upwind plus
@@ -338,17 +369,32 @@ def draw_motion(d, mo, size, span_km, ui=1.0, inner=None):
     d.polygon([tip, (base[0] + nx * hw, base[1] + ny * hw),
                (base[0] - nx * hw, base[1] - ny * hw)], fill=col)
     segs.append(((c, c), (c - ux * L, c - uy * L), 14 * ui))
-    ft = _font(round(14 * ui))
+    ft = _font(round(14 * ui), lang)
+    placed = []
     for h, lab in shown:
         rr = h * sp * ppk
         x, y = c - ux * rr, c - uy * rr
         d.line((x - nx * hw, y - ny * hw, x + nx * hw, y + ny * hw), fill=col, width=lw)
-        # tick label on one fixed side of the line, never on the line itself
+        # tick label beside the line, never on it. One side by default; the
+        # other side when it would run into the previous label -- "1小时" and
+        # "30分钟" are wider than "1 h" and "30 min", and on a slow-enough
+        # vector the first Chinese render printed them as one word.
+        # When both sides are taken -- a slow vector puts the ticks closer
+        # together than a label is wide (Tokyo, 2026-11-04: "2時間" printed on
+        # top of "1時間") -- the tick keeps its mark and loses its words. Two
+        # labels drawn over each other read as neither.
         tw = ft.getlength(lab)
         th = 16 * ui
-        lx, ly = x + nx * 14 * ui, y + ny * 14 * ui
-        lx -= tw / 2 * (1 - nx)               # left-align when the side points right
-        ly -= th / 2 * (1 - ny)
+        for sx, sy in ((nx, ny), (-nx, -ny)):
+            lx, ly = x + sx * 14 * ui, y + sy * 14 * ui
+            lx -= tw / 2 * (1 - sx)           # left-align when the side points right
+            ly -= th / 2 * (1 - sy)
+            box = (lx - 4 * ui, ly - 2 * ui, lx + tw + 4 * ui, ly + th + 2 * ui)
+            if not any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in placed):
+                break
+        else:
+            continue
+        placed.append(box)
         d.text((lx, ly), lab, font=ft, fill=MOTION_COL, stroke_width=max(2, round(2 * ui)),
                stroke_fill=PAL["white"])
         segs.append(((lx, ly), (lx + tw, ly + th), 0))
@@ -440,7 +486,7 @@ def _scale_bar(d, size, span_km, fs, ui, bottom=None):
 
 def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
            size=SIZE, frame_key=None, motion=None, basis=None, ui=1.0, bare=False,
-           as_image=False):
+           as_image=False, lang="en"):
     """-> (PNG bytes, fraction of the picture with no radar).
 
     png       Caiyun frame bytes (transparent overlay, Web Mercator)
@@ -455,7 +501,7 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     """
     span_km = float(span_km)
     wb = window(lon, lat, span_km)
-    img = basemap(lon, lat, span_km, size, ui).convert("RGBA")
+    img = basemap(lon, lat, span_km, size, ui, lang).convert("RGBA")
 
     st = Image.open(io.BytesIO(png)).convert("RGBA")
     sw, sh = st.size
@@ -491,7 +537,7 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     fs = _font(round(14 * ui))
     c0, r = size / 2.0, 10 * ui
     inner = (24.0 * ui, 24.0 * ui, size - 24.0 * ui, size - 80.0 * ui) if bare else None
-    segs = draw_motion(d, motion, size, span_km, ui, inner) if motion else []
+    segs = draw_motion(d, motion, size, span_km, ui, inner, lang) if motion else []
     d.ellipse((c0 - r, c0 - r, c0 + r, c0 + r), outline=PAL["mark"], width=max(3, round(3 * ui)))
     d.line((c0 - r - 7 * ui, c0, c0 + r + 7 * ui, c0), fill=PAL["mark"], width=max(2, round(2 * ui)))
     d.line((c0, c0 - r - 7 * ui, c0, c0 + r + 7 * ui), fill=PAL["mark"], width=max(2, round(2 * ui)))
@@ -501,7 +547,7 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     # the motion marks are not: the first mock put it to the east, right
     # under an eastbound arrow.
     name = label.split(",")[0].strip()
-    fm = _font(round(18 * ui))
+    fm = _font(round(18 * ui), lang)
     sw_ = max(3, round(3 * ui))
     box = place_label(fm.getbbox(name, stroke_width=sw_), c0, r, segs, size)
     d.text((box[0], box[1]), name, font=fm, fill=PAL["marktext"],

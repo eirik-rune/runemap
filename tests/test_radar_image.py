@@ -112,6 +112,25 @@ class Motion(unittest.TestCase):
         im = Image.new("RGB", (RI.SIZE, RI.SIZE)); d = ImageDraw.Draw(im)
         return RI.draw_motion(d, mo, RI.SIZE, 200)
 
+    def test_tick_labels_never_overlap(self):
+        # Tokyo 2026-11-04, ja: a slow vector put "2時間" on top of "1時間".
+        # Every speed from crawling to fast, every direction, every language:
+        # the label boxes draw_motion reports are pairwise apart.
+        from PIL import ImageDraw
+        for lang in ("en", "zh", "ja"):
+            if not RI.can_draw(lang):
+                continue
+            for kmh in (6, 9, 12, 18, 28, 50):
+                for vx, vy in self.DIRS:
+                    n = math.hypot(vx, vy)
+                    mo = {"kind": "moving", "vx": vx / n * kmh, "vy": vy / n * kmh, "kmh": kmh, "dir_en": "?"}
+                    im = Image.new("RGB", (RI.SIZE, RI.SIZE))
+                    labs = [sg for sg in RI.draw_motion(ImageDraw.Draw(im), mo, RI.SIZE, 200, lang=lang) if sg[2] == 0]
+                    for i, a in enumerate(labs):
+                        for b in labs[i + 1:]:
+                            apart = a[1][0] <= b[0][0] or b[1][0] <= a[0][0] or a[1][1] <= b[0][1] or b[1][1] <= a[0][1]
+                            self.assertTrue(apart, (lang, kmh, vx, vy, a, b))
+
     def test_name_never_sits_on_a_motion_mark(self):
         f = RI._font(18)
         for vx, vy in self.DIRS:
@@ -163,12 +182,30 @@ class Motion(unittest.TestCase):
 
 class Route(unittest.TestCase):
     def test_places_are_pictures(self):
-        for p, want in (("/shanghai.png", ("shanghai", "all")),
-                        ("/shanghai/radar.png", ("shanghai", "radar")),
-                        ("/121.47,31.23.png", ("121.47,31.23", "all")),
-                        ("/%E4%B8%8A%E6%B5%B7/radar.png", ("\u4e0a\u6d77", "radar")),
-                        ("/st.petersburg.png", ("st.petersburg", "all"))):
+        for p, want in (("/shanghai.png", ("shanghai", "all", None)),
+                        ("/shanghai/radar.png", ("shanghai", "radar", None)),
+                        ("/121.47,31.23.png", ("121.47,31.23", "all", None)),
+                        ("/%E4%B8%8A%E6%B5%B7/radar.png", ("\u4e0a\u6d77", "radar", None)),
+                        ("/%E4%B8%8A%E6%B5%B7/zh.png", ("\u4e0a\u6d77", "all", "zh")),
+                        ("/tokyo/JA.png", ("tokyo", "all", "ja")),
+                        ("/121.47,31.23/en.png", ("121.47,31.23", "all", "en")),
+                        ("/st.petersburg.png", ("st.petersburg", "all", None))):
             self.assertEqual(S.png_place(p), want, p)
+        # a language we do not serve is not a suffix, and two segments are
+        # not a place
+        self.assertIsNone(S.png_place("/shanghai/ko.png"))
+
+    def test_qr_and_link_share_one_address(self):
+        # the text map's picture: line and the QR in the picture come from
+        # one builder; the QR always names its language, so a scan by a phone
+        # set to another language still gets the picture it was printed on
+        class Req:
+            headers = {"Host": "dev.echorune.net"}
+        url = S.H._picture_url(Req(), 121.47, 31.23, "\u4e0a\u6d77", None, "zh")
+        self.assertEqual(url, "https://dev.echorune.net/%E4%B8%8A%E6%B5%B7/zh.png")
+        self.assertEqual(S.png_place(url.split("dev.echorune.net", 1)[1]), ("\u4e0a\u6d77", "all", "zh"))
+        self.assertEqual(S.H._picture_url(Req(), 121.47, 31.23, "a/b", 300, "en"),
+                         "https://dev.echorune.net/121.470,31.230/en.png?span=300")
 
     def test_asset_fetches_are_not_places(self):
         # The .png requests that already arrive are icons. Each one let into the
@@ -239,19 +276,21 @@ class Panorama(unittest.TestCase):
         # font loader, so the radar's own labels are held to it too.
         from runemap import panorama as PN, radar_image as RI
         seen, real = [], RI.font
-        def spy(px, bold=False):
-            seen.append(px)
-            return real(px, bold)
+        def spy(px, bold=False, lang="en"):
+            seen.append((px, lang))
+            return real(px, bold, lang)
         RI.font = spy
         try:
             bb = station_box(LON, LAT, 3)
-            PN.render(fake_weather(), dict(png=frame(bb, blob=(LON, LAT, 20)), bbox=bb, ts=time.time(),
-                                           obs_ts=time.time() - 600, lon=LON, lat=LAT, key="f"),
-                      "Shanghai, CN", {"kind": "moving", "vx": 40, "vy": 0, "kmh": 40, "dir_en": "E"}, "x")
+            for lang in ("en", "zh"):
+                PN.render(fake_weather(), dict(png=frame(bb, blob=(LON, LAT, 20)), bbox=bb, ts=time.time(),
+                                               obs_ts=time.time() - 600, lon=LON, lat=LAT, key="f" + lang),
+                          "Shanghai, CN", {"kind": "moving", "vx": 40, "vy": 0, "kmh": 40, "dir_en": "E"}, "x",
+                          lang=lang, qr="https://echorune.net/shanghai/%s.png" % lang)
         finally:
             RI.font = real
-        self.assertTrue(seen)
-        self.assertGreaterEqual(min(seen), round(14 * PN.W / 390.0))
+        self.assertEqual({lg for _, lg in seen}, {"en", "zh"})
+        self.assertGreaterEqual(min(px for px, _ in seen), round(14 * PN.W / 390.0))
 
     def test_air_quality_forecast_is_drawn(self):
         # bob 11-03: "no air-quality forecast". The hourly series crosses
@@ -268,6 +307,60 @@ class Panorama(unittest.TestCase):
         self.assertEqual([PN.aqi_band(v)[0] for v in (50, 51, 100, 101, 201, 301)],
                          ["excellent", "good", "good", "lightly polluted", "heavily polluted", "severely polluted"])
 
+    def _texts(self, wx, lang="en", **kw):
+        """Every (x, y, string, pt, bold, anchor) the long picture draws."""
+        from runemap import panorama as PN
+        got, real = [], PN._Page.text
+        def spy(pg, x, y, s, pt, fill=PN.INK, bold=False, anchor="la"):
+            if pg.im is not None:
+                got.append((x, y, s, pt, bold, anchor, pg))
+            return real(pg, x, y, s, pt, fill, bold, anchor)
+        PN._Page.text = spy
+        try:
+            PN.render(wx, None, "X", lang=lang, **kw)
+        finally:
+            PN._Page.text = real
+        return got
+
+    def test_zero_aqi_is_missing_not_excellent(self):
+        # Tokyo 2026-11-04: Caiyun put the air now at 11 and every hour and
+        # every day after it at 0. Drawn as given that was five green
+        # "0 excellent" pills -- a forecast we made up.
+        from runemap import panorama as PN
+        wx = fake_weather()
+        res = wx["result"]
+        for k, a in enumerate(res["hourly"]["air_quality"]["aqi"]):
+            a["value"]["chn"] = 11 if k == 0 else 0
+        for a in res["daily"]["air_quality"]["aqi"]:
+            a["max"]["chn"] = 0
+        for lang in PN.LANGS:
+            if not __import__("runemap.radar_image", fromlist=["x"]).can_draw(lang):
+                continue
+            drawn = [t[2] for t in self._texts(wx, lang)]
+            self.assertNotIn("0", drawn, lang)
+            self.assertIn(PN.text(lang, "aq_none")[:6], "".join(drawn), lang)
+            self.assertNotIn(PN.text(lang, "days_note"), drawn, lang)
+        # and a whole series stays drawn as a series
+        drawn = [t[2] for t in self._texts(fake_weather())]
+        self.assertNotIn(PN.text("en", "aq_none")[:6], "".join(drawn))
+
+    def test_no_text_runs_past_its_card(self):
+        # "北東の風 9 km/h" ran past the right edge of the first card. A
+        # property, not a sentence: every left-, centre- and right-anchored
+        # string ends inside the card it is drawn on, in every language,
+        # with the longest values the cells can get.
+        from runemap import panorama as PN
+        wx = fake_weather()
+        wx["result"]["realtime"]["wind"] = {"speed": 108, "direction": 45}
+        right = PN.PT_W - PN.M - PN.P + 0.5
+        for lang in PN.LANGS:
+            if not __import__("runemap.radar_image", fromlist=["x"]).can_draw(lang):
+                continue
+            for x, y, s, pt, bold, anchor, pg in self._texts(wx, lang, qr="https://echorune.net/%E4%B8%8A%E6%B5%B7/zh.png"):
+                w = pg.width(s, pt, bold)
+                end = {"l": x + w, "m": x + w / 2, "r": x}[anchor[0]]
+                self.assertLessEqual(end, right, "%s %r at %d pt ends at %.1f > %.1f" % (lang, s, pt, end, right))
+
     def test_cards_survive_the_palette(self):
         # the first live render lost every card: page grey and card white
         # were merged into one palette entry
@@ -276,6 +369,37 @@ class Panorama(unittest.TestCase):
         cols = {c for _, c in Image.open(io.BytesIO(body)).convert("RGB").getcolors(1 << 20)}
         for c in PN.UI:
             self.assertIn(c, cols)
+
+    def test_every_language_says_everything(self):
+        # a key missing from one language only fails when that language is
+        # drawn -- i.e. in front of its first reader
+        from runemap import panorama as PN
+        for lang in PN.LANGS:
+            self.assertEqual(set(PN.T[lang]), set(PN.T["en"]), lang)
+            self.assertEqual(len(PN.T[lang]["axis"]), 5)
+            self.assertEqual(len(PN.T[lang]["compass"]), 8)
+        for lang in ("zh", "ja"):
+            self.assertTrue(RI.can_draw(lang), "fonts-noto-cjk is not installed")
+            body = PN.render(fake_weather(), None, "\u4e0a\u6d77", lang=lang, radar_note=PN.text(lang, "radar_pending"),
+                             qr="https://echorune.net/x/%s.png" % lang)
+            self.assertEqual(*PN.render.last)
+            self.assertEqual(Image.open(io.BytesIO(body)).size[0], PN.W)
+
+    def test_qr_is_drawn_module_for_module(self):
+        # sampled at every module centre against the encoder's own matrix:
+        # a blurred, misplaced or palette-merged code fails here (and the
+        # whole picture was decoded by an independent reader, zxing-cpp, at
+        # 100/50/36 % scale before this shipped)
+        from runemap import panorama as PN
+        url = "https://echorune.net/%E4%B8%8A%E6%B5%B7/zh.png"
+        body = PN.render(fake_weather(), None, "X", qr=url)
+        x0, y0, mp, n = PN.render.qr_at
+        a = np.asarray(Image.open(io.BytesIO(body)).convert("L"))
+        mx = PN._qr_matrix(url)
+        self.assertEqual(len(mx), n)
+        got = [[int(a[y0 + r * mp + mp // 2, x0 + c * mp + mp // 2] < 128) for c in range(n)] for r in range(n)]
+        self.assertEqual(got, [list(row) for row in mx])
+        self.assertGreaterEqual(mp, 6)
 
     def test_missing_radar_is_said_not_dropped(self):
         # a picture that silently lacks its radar block reads as "no rain"
