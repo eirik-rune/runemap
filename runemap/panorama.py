@@ -22,6 +22,7 @@ import io
 import math
 import os
 import threading
+import unicodedata
 from datetime import datetime, timezone
 
 import numpy as np
@@ -130,6 +131,18 @@ def font(pt, bold=False, lang="en"):
     return RI.font(max(8, round(pt * K)), bold, lang)
 
 
+def _face(s, lang):
+    """The face that can draw `s` on a `lang` page. English pages use
+    Liberation, which has no CJK glyphs, and a missing glyph is not an error:
+    PIL draws an empty box. 2026-11-04, /北京/en.png printed its own address
+    as "echorune.net/[][]/en.png". A string with CJK in it borrows the CJK
+    face (kana -> the Japanese forms, otherwise the Chinese ones); every
+    other string is drawn exactly as before."""
+    if lang == "en" and any(unicodedata.east_asian_width(c) in "WF" for c in s):
+        return "ja" if any("\u3040" <= c <= "\u30ff" for c in s) else "zh"
+    return lang
+
+
 SKY = {"CLEAR_DAY": "clear", "CLEAR_NIGHT": "clear", "PARTLY_CLOUDY_DAY": "partly cloudy",
        "PARTLY_CLOUDY_NIGHT": "partly cloudy", "CLOUDY": "cloudy", "LIGHT_HAZE": "light haze",
        "MODERATE_HAZE": "haze", "HEAVY_HAZE": "heavy haze", "LIGHT_RAIN": "light rain",
@@ -153,8 +166,9 @@ class _Page:
         self.im, self.d, self.lang = im, d, lang
 
     def text(self, x, y, s, pt, fill=INK, bold=False, anchor="la"):
-        f = font(pt, bold, self.lang)
-        if anchor[1] == "a" and self.lang != "en":
+        face = _face(s, self.lang)
+        f = font(pt, bold, face)
+        if anchor[1] == "a" and face != "en":
             # Noto CJK's ascender is ~25% of the em taller than Liberation's,
             # so top-anchored text sat a quarter-line low (the temperature
             # nearly touched the line under it). Shift by the measured
@@ -163,7 +177,7 @@ class _Page:
         self.d.text((x * K, y * K), s, font=f, fill=fill, anchor=anchor)
 
     def width(self, s, pt, bold=False):
-        return font(pt, bold, self.lang).getlength(s) / K
+        return font(pt, bold, _face(s, self.lang)).getlength(s) / K
 
     def rrect(self, x0, y0, x1, y1, r, fill=None, outline=None, w=1):
         self.d.rounded_rectangle((x0 * K, y0 * K, x1 * K, y1 * K), radius=r * K,

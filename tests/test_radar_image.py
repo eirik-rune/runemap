@@ -449,3 +449,67 @@ class Panorama(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class CjkOnAnEnglishPage(unittest.TestCase):
+    """2026-11-04: /北京/en.png printed its own address as
+    echorune.net/[][]/en.png. The English face has no CJK glyphs, and PIL
+    draws a missing glyph as the same empty box every time."""
+
+    def setUp(self):
+        from runemap import panorama as PN
+        self.PN = PN
+        if not RI.can_draw("zh"):
+            self.skipTest("fonts-noto-cjk not installed")
+
+    @staticmethod
+    def same_glyph(f, a, b):
+        return bytes(f.getmask(a)) == bytes(f.getmask(b))
+
+    def test_the_english_face_really_boxes_them(self):
+        # the control: without it, the test below could pass because the two
+        # characters happen to draw alike in every face
+        self.assertTrue(self.same_glyph(self.PN.font(14, False, "en"), "北", "京"))
+
+    def test_a_chinese_name_in_an_english_picture_gets_real_glyphs(self):
+        face = self.PN._face("https://echorune.net/北京/en.png", "en")
+        self.assertFalse(self.same_glyph(self.PN.font(14, False, face), "北", "京"))
+
+    def test_the_page_draws_and_measures_with_the_borrowed_face(self):
+        seen = []
+        class D:
+            def text(self, xy, s, font=None, fill=None, anchor=None):
+                seen.append(font)
+        pg = self.PN._Page(None, D(), "en")
+        s = "https://echorune.net/北京/en.png"
+        pg.text(0, 0, s, 14)
+        want = self.PN.font(14, False, "zh")
+        self.assertIs(seen[0], want)
+        self.assertEqual(pg.width(s, 14), want.getlength(s) / self.PN.K)
+
+    def test_latin_strings_and_cjk_pages_are_untouched(self):
+        self.assertEqual(self.PN._face("https://echorune.net/shanghai/en.png", "en"), "en")
+        self.assertEqual(self.PN._face("Zürich", "en"), "en")
+        self.assertEqual(self.PN._face("東京", "zh"), "zh")
+        self.assertEqual(self.PN._face("東京", "ja"), "ja")
+        self.assertEqual(self.PN._face("とうきょう", "en"), "ja")
+
+
+class ThePictureSpeaksTheLanguageOfTheName(unittest.TestCase):
+    """bob 2026-11-04: /北京.png on an English phone came back in English. A
+    name written in Chinese or Japanese now picks the picture's language."""
+
+    def test_han_is_chinese(self):
+        self.assertEqual(S.script_lang("北京"), "zh")
+        self.assertEqual(S.script_lang("北京", "en-US,en;q=0.9"), "zh")
+
+    def test_han_on_a_japanese_phone_is_japanese(self):
+        self.assertEqual(S.script_lang("東京", "ja-JP,ja;q=0.9,en;q=0.8"), "ja")
+
+    def test_kana_is_japanese_whatever_the_phone(self):
+        self.assertEqual(S.script_lang("とうきょう", "zh-CN"), "ja")
+        self.assertEqual(S.script_lang("シドニー"), "ja")
+
+    def test_latin_and_coordinates_say_nothing(self):
+        for name in ("beijing", "Zürich", "121.47,31.23", ""):
+            self.assertEqual(S.script_lang(name, "zh-CN"), "", name)
