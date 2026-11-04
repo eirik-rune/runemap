@@ -653,6 +653,9 @@ UI = (BG, CARD, TINT, INK, DIM, FAINT, TEMP, RAIN, RAIN_L)
 FIXED = UI + tuple(c for _, _, c in AQI_BANDS)
 
 
+_STRIP = 256        # rows per strip in quantize_pinned
+
+
 def quantize_pinned(img):
     """256-colour PNG with the UI colours kept exact.
 
@@ -668,10 +671,20 @@ def quantize_pinned(img):
     for c in FIXED:
         pal += list(c)
     idx = np.array(q)
-    rgb = np.asarray(img)
-    key = (rgb[..., 0].astype(np.uint32) << 16) | (rgb[..., 1].astype(np.uint32) << 8) | rgb[..., 2]
-    for k, c in enumerate(FIXED):
-        idx[key == ((c[0] << 16) | (c[1] << 8) | c[2])] = n + k
+    # In strips, not over the whole page: a long picture is ~7.7M pixels, and
+    # the packed uint32 key plus its shifted temporaries were five full-page
+    # arrays at once -- +131 MB of peak on one render (2026-11-04, measured
+    # per phase), on a 961 MB box with two service processes. Same mapping,
+    # same order of assignment, so the same bytes; only the working set is
+    # one strip.
+    want = [((c[0] << 16) | (c[1] << 8) | c[2], n + k) for k, c in enumerate(FIXED)]
+    for y0 in range(0, img.height, _STRIP):
+        y1 = min(img.height, y0 + _STRIP)
+        rgb = np.asarray(img.crop((0, y0, img.width, y1)))
+        key = (rgb[..., 0].astype(np.uint32) << 16) | (rgb[..., 1].astype(np.uint32) << 8) | rgb[..., 2]
+        sub = idx[y0:y1]
+        for v, j in want:
+            sub[key == v] = j
     out = Image.fromarray(idx, "P")
     out.putpalette(pal)
     return out

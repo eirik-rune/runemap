@@ -378,6 +378,27 @@ class Panorama(unittest.TestCase):
                 end = {"l": x + w, "m": x + w / 2, "r": x}[anchor[0]]
                 self.assertLessEqual(end, right, "%s %r at %d pt ends at %.1f > %.1f" % (lang, s, pt, end, right))
 
+    def test_the_palette_step_works_in_strips(self):
+        # 2026-11-04, measured per phase: quantize_pinned built its packed
+        # colour key over the whole page at once -- 16 x (width x height)
+        # bytes of numpy at its peak, 125 MB for one long picture, on a box
+        # with 961 MB and two service processes. In strips it is 2.0 x. The
+        # line is 4 x: room for noise, a quarter of the old peak.
+        import tracemalloc
+        from runemap import panorama as PN
+        W, H = 1080, 7200
+        a = np.random.default_rng(1).integers(0, 256, (H, W, 3), dtype=np.uint8)
+        a[: H // 2] = PN.BG
+        img = Image.fromarray(a, "RGB")
+        del a
+        tracemalloc.start()
+        try:
+            PN.quantize_pinned(img)
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertLess(peak, 4 * W * H, "%.1f x W*H" % (peak / (W * H)))
+
     def test_cards_survive_the_palette(self):
         # the first live render lost every card: page grey and card white
         # were merged into one palette entry
