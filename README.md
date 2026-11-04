@@ -4,9 +4,10 @@
 key, no account. It renders in a terminal, in a prompt, or in a log line -- so a
 person and a program read the same answer.
 
-Measured: 1.8 KB for a quiet sky, 2.8 KB for a busy one, and 0.4 KB for
-Reykjavik, where we have no radar and the reply says so in one line instead of
-drawing an empty grid.
+Measured 2026-11-04, in English, with the next 24 hours and 5 days included:
+2.4 KB for Taipei under a clear sky, 5.2 KB for Shanghai in rain, and 1.3 KB
+for Reykjavik, where we have no radar and the reply says so in one line instead
+of drawing an empty grid.
 
     curl echorune.net/taipei
 
@@ -19,48 +20,66 @@ for 48x24.
 
 ```
 # Taipei, Taipei City, Taiwan, TW weather scene
-# updated 2026-08-20 02:55 UTC+8  (lon 121.52639, lat 25.05306)
-now: CLOUDY  26C  humidity 90%  wind 7km/h  precip 0.00mm/h
-Rain intensity gradually increases. After 21 minute, shifts to moderate rain, but after one hour, rain intensity will again decrease
+# updated 2026-11-04 08:45 UTC+8  (lon 121.52639, lat 25.05306)
+now: CLEAR_DAY  25C  humidity 72%  wind 14km/h  precip 0.00mm/h
+feels 26C  today 23~30C  wind E 14km/h
+AQI(CN) 65 good  sunrise 06:03  sunset 17:11
+The nearest area experiencing rain is to the NE, 94 km away
 
-rain curve (next 2h, 6min/bucket):
-▁▁▃██▆▆██▅▄▄▃▂▁▁▁▁▁▁
-├────┼────┼────┼────┤
-0   30   60   90 120min
+rain curve (next 2h): no precipitation expected
 
-radar: predict 03:00  obs age: 25min stale
-~6km/char, [><]=Taipei, Taipei City, Taiwan, TW
+radar: predict 08:40  obs age: 15min ok  obs at: 00:30Z
+~4km/char, [><]=Taipei, Taipei City, Taiwan, TW
                                                 
                                                 
                                                 
                                                 
-░░                                              
-░░░                                             
-░░░                                             
-░        ░░░░░░░                                
-         ░░░░░░░▒▓▒░░                           
-       ░░░▒▓▓░░▒▓█▓▓▒░                          
-    ░▒▓▒▒░▒▓▓░░▒▓▓▓▓▒░     ░░░░▒                
-    ░▓▓▒░░░░░▒▓▒▒▒▒░░    ░░░░░▒▒                
-    ░░░░░   ░░▒▒▒░░░░   ><░▒░▒▒░                
-             ░░░░░░░▒░░░░░▒▒░░░       ░░░░░░░░░░
-                ░░░░░░░░░░▓▓░░        ░▒▒░░░▒▓▒▓
-                ░░░░░░░░░░░░░░        ░▒▒░░▒▒▓▓▓
-▓░              ░░░░░░░  ░░░░░░       ░░░░░▓▓▓▓▒
-▓░              ░░░░░░   ░░░░░░       ░░░▒▓▓▓▓▓▒
-                     ░░░░░░░        ░░░░░▒▒▒▒▒▒▒
-                     ░░░░░░░░▒▓▓░░░░░░░░░▒▒▒▒▒▒▒
-                   ░░░░░░░░░▓█▓▓░░░░░░░░░░▒▒▒▒▒▓
-                 ░░░░░░░░░▒▓▓▓▓░░░ ░░░░░░░▓▓▓▒▒▒
-                ░░░░░░░░░░░▒▓▓▓▒░░ ░░░░░░░▓▓▓▒▒░
-              ░░░░░░░░░░░░░░░▒▒░░░ ▒▒░░░ ░░▒▓▒▒░
-↗ NE ~16 km/h   echo motion, upstream forecast
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                        ><                      
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+                                                
+= echo motion: undetermined (echo too sparse to track)
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm  blank=no echo
 
+next 24h (local time, every 3h):
+08:00   25C  CLEAR_DAY
+11:00   29C  CLEAR_DAY
+14:00   30C  PARTLY_CLOUDY_DAY
+17:00   27C  CLEAR_NIGHT
+20:00   25C  CLEAR_NIGHT
+23:00   24C  CLEAR_NIGHT
+02:00   23C  CLEAR_NIGHT
+05:00   23C  CLEAR_NIGHT
+AQI forecast: the source gives none for this place
+
+next 5 days (AQI: the day's highest):
+11-04 Wed  23~30C  CLEAR_DAY             AQI 65 good
+11-05 Thu  23~28C  CLEAR_DAY
+11-06 Fri  23~26C  LIGHT_RAIN  rain 60%
+11-07 Sat  23~27C  LIGHT_RAIN  rain 60%
+11-08 Sun  23~30C  CLEAR_DAY
+
+picture: https://echorune.net/taipei.png
 data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)
 ```
 
-*Frozen sample: Taipei, 2026-08-20 02:55 UTC+8.* Deliberately not live -- a
+*Frozen sample: Taipei, 2026-11-04 08:45 UTC+8.* Deliberately not live -- a
 pasted "live" reading starts lying six minutes after it is pasted. What freezing
 protects is the weather, **not the format**: this sample sat unchanged from
 2026-07-29 while the header, the radar line and the legend all moved, so anyone

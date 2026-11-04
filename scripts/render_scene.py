@@ -86,7 +86,10 @@ def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
     return "".join(BARS[min(int(v / vmax * 7.999), 7)] if v > 0 else " " for v in vals)
 
-def weather(lng, lat, token, lang):
+def weather_full(lng, lat, token, lang):
+    """The whole response -- server_time and tzshift included, which the
+    picture needs to say when its data is from. weather() below is this minus
+    the envelope: same URL, same cache entry, one upstream request."""
     # unit=metric:v2 or the number is a lie. Under the DEFAULT `metric`,
     # `precipitation.local.intensity` is Caiyun's radar precipitation INDEX on
     # a 0~1 scale -- their documentation says so in as many words -- and we were
@@ -106,7 +109,11 @@ def weather(lng, lat, token, lang):
     d = json.loads(_get("https://api.caiyunapp.com/v2.6/%s/%s,%s/weather?hourlysteps=24&lang=%s&unit=metric:v2" % (token, lng, lat, lang)))
     if d.get("status") != "ok":
         raise RuntimeError("weather api %s" % d.get("status"))
-    return d["result"]
+    return d
+
+
+def weather(lng, lat, token, lang):
+    return weather_full(lng, lat, token, lang)["result"]
 
 _MO_CACHE = {}
 _MO_TTL = 600
@@ -1554,6 +1561,173 @@ def _coherence_sample(name, rt, art, kmcol, marker, obs_age=None, age_tok=None,
         pass
 
 
+# ---------------------------------------------------------------------------
+# The rest of the forecast, in text. bob 2026-11-04: "让文字版也丰富一些" -- the
+# long picture had grown feels-like, today's range, wind direction, air
+# quality, sunrise/sunset, the half-hour chances, 24 hours and five days, all
+# from the same /weather call this page already makes (hourlysteps=24), and
+# the text printed none of it. Nothing here asks upstream for anything more.
+#
+# Every existing line above stays byte-for-byte what it was: most readers are
+# agents, and a line they already grep is an interface. These are NEW lines.
+# One record per line, never a column table: CJK glyphs are two terminal
+# cells wide and a table aligned by len() shears in exactly the terminals I
+# cannot reproduce. Each line fits 79 cells in every language with the
+# longest values the fields can take (tests/test_text_forecast.py).
+# AQI 0 is "no data" (runemap.words.aqi_value), the same rule the picture uses.
+from runemap import words as _W
+import datetime as _dtm
+import unicodedata as _ud
+
+_TX = {
+    "en": dict(feel="feels {v}C", today="today {lo}~{hi}C", wind="wind {d} {v}km/h",
+               aqi="AQI(CN) {v} {b}", sun="sunrise {r}  sunset {s}",
+               peak="peak {v}mm/h {w}", now="now", inm="in {m}min",
+               chance="chance per 30min: {a}",
+               hours="next 24h (local time, every 3h):", rain="rain {p}%",
+               aqi_none="AQI forecast: the source gives none for this place",
+               days="next {n} days:", days_aqi="next {n} days (AQI: the day's highest):",
+               broken="(the rest of the forecast could not be read from the source's answer)"),
+    "zh": dict(feel="体感 {v}C", today="今日 {lo}~{hi}C", wind="{d}风 {v}km/h",
+               aqi="AQI(CN) {v} {b}", sun="日出 {r}  日落 {s}",
+               peak="最大 {v}mm/h {w}", now="(现在)", inm="({m}分钟后)",
+               chance="每半小时降水概率: {a}",
+               hours="未来24小时(当地时间, 每3小时):", rain="降水 {p}%",
+               aqi_none="空气质量预报: 数据源没有给出这里的",
+               days="未来{n}天:", days_aqi="未来{n}天(AQI 为当天最高):",
+               broken="(其余预报没能从数据源的回答里读出来)"),
+    "ja": dict(feel="体感 {v}C", today="今日 {lo}~{hi}C", wind="{d}の風 {v}km/h",
+               aqi="AQI(CN) {v} {b}", sun="日の出 {r}  日の入り {s}",
+               peak="最大 {v}mm/h {w}", now="(現在)", inm="({m}分後)",
+               chance="30分ごとの降水確率: {a}",
+               hours="今後24時間(現地時間, 3時間ごと):", rain="降水 {p}%",
+               aqi_none="大気質予報: データ元からの提供なし",
+               days="今後{n}日間:", days_aqi="今後{n}日間(AQIは日最高値):",
+               broken="(残りの予報はデータ元の応答から読み取れませんでした)"),
+}
+
+
+def cells(s):
+    """Terminal width of `s`: CJK wide and fullwidth glyphs take two cells."""
+    return sum(2 if _ud.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def _padc(s, w):
+    return s + " " * max(0, w - cells(s))
+
+
+def _sky_word(sky, lang):
+    if lang == "zh":
+        return SKY_ZH.get(sky, sky)
+    if lang == "ja":
+        return SKY_JA.get(sky, sky)
+    return sky                        # en prints the token, as `now:` does
+
+
+def detail_lines(lang, wx):
+    """Two short lines under `now:` -- what the picture's first card says."""
+    X = _TX.get(lang, _TX["en"])
+    rt = wx.get("realtime") or {}
+    dy = wx.get("daily") or {}
+    a, b = [], []
+    if rt.get("apparent_temperature") is not None:
+        a.append(X["feel"].format(v="%.0f" % rt["apparent_temperature"]))
+    t0 = (dy.get("temperature") or [None])[0]
+    if t0:
+        a.append(X["today"].format(lo="%.0f" % t0["min"], hi="%.0f" % t0["max"]))
+    w = rt.get("wind") or {}
+    if w.get("direction") is not None and w.get("speed") is not None:
+        a.append(X["wind"].format(d=_W.compass(w["direction"], lang), v="%.0f" % w["speed"]))
+    v = _W.aqi_value(((rt.get("air_quality") or {}).get("aqi") or {}).get("chn"))
+    if v:
+        b.append(X["aqi"].format(v=v, b=_W.aqi_band(v, lang)[0]))
+    st = (dy.get("astro") or [None])[0]
+    if st:
+        b.append(X["sun"].format(r=st["sunrise"]["time"], s=st["sunset"]["time"]))
+    return ["  ".join(x) for x in (a, b) if x]
+
+
+def chance_line(lang, wx):
+    """Under the two-hour curve: its peak, and the four half-hour chances."""
+    X = _TX.get(lang, _TX["en"])
+    mi = wx.get("minutely") or {}
+    out = []
+    p = mi.get("precipitation_2h") or []
+    if p and max(p) > 0:
+        i = max(range(len(p)), key=lambda k: p[k])
+        # two decimals, as `now:` prints intensity: Reykjavik 2026-11-04 had a
+        # peak of a few hundredths and "%.1f" printed it as "peak 0.0mm/h"
+        out.append(X["peak"].format(v="%.2f" % p[i], w=X["now"] if i == 0 else X["inm"].format(m=i)))
+    pr = mi.get("probability") or []
+    if pr and max(pr) >= 0.1:
+        out.append(X["chance"].format(a=" ".join("%d%%" % round(x * 100) for x in pr)))
+    return "  ".join(out) or None
+
+
+def forecast_lines(lang, wx):
+    """24 hours every 3 h, then the coming days. One record per line."""
+    X = _TX.get(lang, _TX["en"])
+    hr = wx.get("hourly") or {}
+    dy = wx.get("daily") or {}
+    L = []
+    T = hr.get("temperature") or []
+    if T:
+        sk = hr.get("skycon") or []
+        pc = hr.get("precipitation") or []
+        aq = [_W.aqi_value((a.get("value") or {}).get("chn"))
+              for a in (hr.get("air_quality") or {}).get("aqi") or []]
+        # a series that is mostly holes is not a forecast (same rule as the picture)
+        aq_ok = bool(aq) and sum(1 for x in aq if x) * 2 >= len(aq)
+        idx = list(range(0, len(T), 3))
+        skies = [_sky_word(sk[i]["value"], lang) if i < len(sk) else "" for i in idx]
+        sw = max(cells(x) for x in skies)
+        rains = []
+        for i in idx:
+            q = pc[i] if i < len(pc) else {}
+            pp = q.get("probability") or 0
+            r = X["rain"].format(p=pp) if pp >= 10 else ""
+            if r and (q.get("value") or 0) >= 0.1:
+                r += " %.1fmm/h" % q["value"]
+            rains.append(r)
+        rw = max(cells(x) for x in rains)
+        L.append(X["hours"])
+        for n, i in enumerate(idx):
+            row = "%s  %4s  %s" % (T[i]["datetime"][11:16], "%.0fC" % T[i]["value"], _padc(skies[n], sw))
+            if rw:
+                row += "  " + _padc(rains[n], rw)
+            if aq_ok and i < len(aq) and aq[i]:
+                row += "  AQI %d" % aq[i]
+            L.append(row.rstrip())
+        if aq and not aq_ok:
+            L.append(X["aqi_none"])
+    days = dy.get("temperature") or []
+    if days:
+        sk = dy.get("skycon") or []
+        pc = dy.get("precipitation") or []
+        daq = [_W.aqi_value((a.get("max") or {}).get("chn"))
+               for a in (dy.get("air_quality") or {}).get("aqi") or []]
+        skies = [_sky_word(sk[k]["value"], lang) if k < len(sk) else "" for k in range(len(days))]
+        sw = max(cells(x) for x in skies)
+        rains = [X["rain"].format(p=pc[k].get("probability") or 0)
+                 if k < len(pc) and (pc[k].get("probability") or 0) >= 10 else "" for k in range(len(days))]
+        rw = max(cells(x) for x in rains)
+        wds = [_W.weekday(_dtm.datetime.strptime(t["date"][:10], "%Y-%m-%d"), lang) for t in days]
+        ww = max(cells(x) for x in wds)
+        tts = ["%.0f~%.0fC" % (t["min"], t["max"]) for t in days]
+        tw = max(cells(x) for x in tts)
+        if L:
+            L.append("")
+        L.append((X["days_aqi"] if any(daq) else X["days"]).format(n=len(days)))
+        for k, t in enumerate(days):
+            row = "%s %s  %s  %s" % (t["date"][5:10], _padc(wds[k], ww), _padc(tts[k], tw), _padc(skies[k], sw))
+            if rw:
+                row += "  " + _padc(rains[k], rw)
+            if k < len(daq) and daq[k]:
+                row += "  AQI %d %s" % (daq[k], _W.aqi_band(daq[k], lang)[0])
+            L.append(row.rstrip())
+    return L
+
+
 def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
           ambiguous=None, alt_hint=None, unmatched_hint=None,
           radar_state=None):
@@ -1601,6 +1775,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
+    L.extend(detail_lines(lang, wx))
     if kp:
         L.append(kp)
     mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
@@ -1669,6 +1844,9 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("rain curve (next 2h): no precipitation expected" if lang == "en"
                  else "雨量曲線(今後2h): 降水なし" if lang == "ja"
                  else "\u96e8\u91cf\u66f2\u7ebf(\u672a\u67652h): \u65e0\u964d\u6c34")
+    _ch = chance_line(lang, wx)
+    if _ch:
+        L.append(_ch)
     L.append("")
     if rb:
         art, kmcol, ts = rb[0], rb[1], rb[2]
@@ -1790,6 +1968,16 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         # is already 79 cells, so anything appended must wrap. A wrapped line is
         # not a line an agent can grep, and this text exists for the reader who
         # got no map. Same token in every language for exactly that reason.
+    try:
+        _fc = forecast_lines(lang, wx)
+    except Exception as e:
+        # a reader who already has the map and the curve keeps them; the
+        # part we could not read says so instead of vanishing
+        sys.stderr.write("FORECAST-LINES-FAILED %r\n" % (e,))
+        _fc = [_TX.get(lang, _TX["en"])["broken"]]
+    if _fc:
+        L.append("")
+        L.extend(_fc)
     L.append("")
     # Whoever's data drew the radar is named here. When the fallback drew it,
     # the primary did not, and saying "Caiyun" would be taking credit for a map

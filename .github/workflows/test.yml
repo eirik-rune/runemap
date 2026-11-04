@@ -49,6 +49,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: CJK font for the picture tests
+        # The long picture draws Chinese and Japanese with Noto Sans CJK and
+        # falls back to English without it. The tests that prove zh/ja are
+        # really drawn need the face, and fail loudly here rather than skip.
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends fonts-noto-cjk
       - name: Install with test deps
         run: pip install .
       - name: Run the suite

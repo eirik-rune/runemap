@@ -689,6 +689,20 @@ class TheObservationInstantIsStatedAbsolutely(unittest.TestCase):
     An absolute instant cannot drift no matter how long the response sits.
     """
 
+    def _obs_at(self, line, base):
+        """`obs at` names `base`, as a bare clock or with its own date.
+
+        Which of the two is printed depends on whether `base` falls on
+        today's UTC date -- a separate property, pinned by
+        ABareClockStopsBeingEnoughWhenTheFrameIsOld below. Asserting the bare
+        form here made these tests red in the first half hour after every
+        UTC midnight (CI, 2026-11-04 00:26Z: 'obs at: 11-03T23:56Z') and green
+        the rest of the day: a test that reads the clock it is not about."""
+        g = _time.gmtime(base)
+        forms = ("obs at: " + _time.strftime("%H:%MZ", g),
+                 "obs at: " + _time.strftime("%m-%dT%H:%MZ", g))
+        self.assertTrue(any(f in line for f in forms), (forms, line))
+
     def _radar_line(self, base_ts, ts=None):
         rb = (ART, 12.0, ts if ts is not None else base_ts, None, base_ts, "REDEMET/DECEA")
         b = body(rb)
@@ -698,8 +712,7 @@ class TheObservationInstantIsStatedAbsolutely(unittest.TestCase):
         import time as _t
         base = _t.time() - 900
         line = self._radar_line(base)
-        want = _t.strftime("%H:%MZ", _t.gmtime(base))
-        self.assertIn("obs at: " + want, line)
+        self._obs_at(line, base)
 
     def test_it_is_the_observation_and_not_the_extrapolation_target(self):
         """The one that would be wrong if somebody reached for `ts`: an
@@ -708,7 +721,7 @@ class TheObservationInstantIsStatedAbsolutely(unittest.TestCase):
         import time as _t
         base = _t.time() - 1800
         line = self._radar_line(base, ts=base + 1200)
-        self.assertIn("obs at: " + _t.strftime("%H:%MZ", _t.gmtime(base)), line)
+        self._obs_at(line, base)
         self.assertNotIn(_t.strftime("%H:%MZ", _t.gmtime(base + 1200)), line)
 
     def test_it_is_zulu_and_not_the_local_clock(self):

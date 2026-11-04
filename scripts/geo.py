@@ -121,10 +121,53 @@ def cjk_name(pid):
     return best
 
 
+_NE_PLACES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "runemap", "data", "ne", "places.json")
+_NE_JA = None
+
+
+def ja_name(row):
+    """-> the place's Japanese name from Natural Earth (NAME_JA), or None.
+
+    The alias table cannot answer this one: it carries no language, and for
+    Tokyo it holds 東京, 东京 and 東京都 side by side. cjk_name() picks the
+    shortest and then the lowest code point, which is 东京 -- right for a zh
+    reader, wrong for a ja one, and nothing in the data says which is which.
+    `curl echorune.net/tokyo/ja` answered "# Tokyo, Tokyo, JP 天気一覧" until
+    2026-11-04, while the picture of the same request labelled 横浜市 in
+    Japanese right next to it, from Natural Earth.
+
+    So the Japanese name comes from the one source here that says it is
+    Japanese: the places the basemap already ships (7,342, public domain).
+    A row counts only with the same name AND within half a degree, so a
+    Springfield never borrows another Springfield's name. Places outside that
+    list keep the romanized name -- not a guess dressed as a translation."""
+    global _NE_JA
+    if _NE_JA is None:
+        idx = {}
+        try:
+            import json
+            with open(_NE_PLACES, encoding="utf-8") as f:
+                for r in json.load(f):
+                    if len(r) > 5 and r[5]:
+                        idx.setdefault(norm(r[2]), []).append((r[0], r[1], r[5]))
+        except (OSError, ValueError) as e:
+            print("geo: no Japanese place names: %r" % (e,), file=sys.stderr)
+        _NE_JA = idx
+    best = None
+    for lon, lat, ja in _NE_JA.get(norm(row["name"]), ()):
+        dd = math.hypot(lon - row["lon"], lat - row["lat"])
+        if dd <= 0.5 and (best is None or dd < best[0]):
+            best = (dd, ja)
+    return best[1] if best else None
+
+
 def _pack(row, lang=None):
     adm = _admin(row["cc"], row["a1"], row["a2"])
     label = ", ".join([row["name"]] + adm + [row["cc"]])
     zh = cjk_name(row["id"]) if (lang or "").startswith("zh") else None
+    if not zh and (lang or "").startswith("ja"):
+        zh = ja_name(row)            # one slot: "the name in the reader's script"
     if zh:
         # The admin chain stays romanized because it CANNOT be translated from
         # this data: 0 of 51,414 admin rows carry a CJK name. Emitting

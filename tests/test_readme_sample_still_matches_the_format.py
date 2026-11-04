@@ -33,6 +33,8 @@ import unittest
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 README = os.path.join(_ROOT, "README.md")
 RENDERER = os.path.join(_ROOT, "scripts", "render_scene.py")
+#: serve.py appends the `picture:` line to what render_scene builds.
+RENDERERS = (RENDERER, os.path.join(_ROOT, "scripts", "serve.py"))
 
 #: Labels are pulled out of the sample rather than listed here, so a field added
 #: to the sample later is covered without anyone remembering this file. These
@@ -42,7 +44,13 @@ RENDERER = os.path.join(_ROOT, "scripts", "render_scene.py")
 #: that moved were INSIDE the radar line (`obs age:` -> something else), while
 #: the line still began with `radar:`, which still exists. It passed on the real
 #: regression until it was fired against it.
-_LABEL = re.compile(r"(?P<k>[a-z][a-z ]{1,18}):")
+#: A label starts at a word boundary and never spans the two-space gap that
+#: separates fields: "obs age: 15min ok  obs at: 00:30Z" holds the labels
+#: `obs age:` and `obs at:`. The first version took "min ok  obs at:" -- from
+#: the middle of "15min", across the gap -- the day a re-frozen sample first
+#: carried `obs at:` (2026-11-04). On the previous sample both shapes pull out
+#: the same five labels.
+_LABEL = re.compile(r"(?<![0-9A-Za-z])(?P<k>[a-z](?:[a-z]| (?! ))*):")
 _EXTRA = ("weather scene", "km/char", "echo motion", "blank=no echo")
 
 
@@ -58,7 +66,7 @@ def frozen_sample():
 class TheSampleNamesFieldsWeStillPrint(unittest.TestCase):
     def setUp(self):
         self.sample = frozen_sample()
-        self.src = open(RENDERER, encoding="utf-8").read()
+        self.src = "".join(open(f, encoding="utf-8").read() for f in RENDERERS)
 
     def test_the_sample_is_findable_at_all(self):
         """If the sample stops being findable this whole file goes quiet while
