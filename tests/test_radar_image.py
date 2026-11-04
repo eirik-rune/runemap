@@ -207,6 +207,23 @@ class Route(unittest.TestCase):
         self.assertEqual(S.H._picture_url(Req(), 121.47, 31.23, "a/b", 300, "en"),
                          "https://dev.echorune.net/121.470,31.230/en.png?span=300")
 
+    def test_the_link_sits_above_the_attribution_in_every_language(self):
+        # 2026-11-04: it looked for "\ndata:" only, so in zh and ja (数据: /
+        # データ:) the picture line fell after the footer instead.
+        import render_scene as RS
+        class Req:
+            headers = {"Host": "echorune.net"}
+            _picture_url = S.H._picture_url
+        wx = {"realtime": {"skycon": "CLOUDY", "temperature": 20.0, "humidity": 0.5,
+                           "wind": {"speed": 5.0}, "precipitation": {"local": {"intensity": 0.0}}},
+              "minutely": {"precipitation_2h": [0.0] * 120, "description": ""}, "forecast_keypoint": ""}
+        for lang in ("en", "zh", "ja"):
+            out = RS.build(lang, "X", "CLOUDY", "X", 121.47, 31.23, 8, wx, None)
+            lines = S.H._with_image_link(Req(), out, 121.47, 31.23, "x", None, lang).splitlines()
+            k = next(i for i, l in enumerate(lines) if l.startswith("picture: "))
+            self.assertTrue(lines[k + 1].startswith(S._FOOTERS), (lang, lines[k:]))
+            self.assertEqual(sum(l.startswith(S._FOOTERS) for l in lines), 1, lang)
+
     def test_asset_fetches_are_not_places(self):
         # The .png requests that already arrive are icons. Each one let into the
         # fuzzy matcher would warm Caiyun frames for some town it matched.
@@ -377,7 +394,7 @@ class Panorama(unittest.TestCase):
         for lang in PN.LANGS:
             self.assertEqual(set(PN.T[lang]), set(PN.T["en"]), lang)
             self.assertEqual(len(PN.T[lang]["axis"]), 5)
-            self.assertEqual(len(PN.T[lang]["compass"]), 8)
+            self.assertEqual(len(PN.COMPASS[lang]), 8)
         for lang in ("zh", "ja"):
             self.assertTrue(RI.can_draw(lang), "fonts-noto-cjk is not installed")
             body = PN.render(fake_weather(), None, "\u4e0a\u6d77", lang=lang, radar_note=PN.text(lang, "radar_pending"),

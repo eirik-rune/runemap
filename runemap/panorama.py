@@ -28,6 +28,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from . import radar_image as RI
+from .words import AQI_BANDS, AQI_NAMES, COMPASS, aqi_band, compass, weekday as _weekday, WEEK as _WEEK
+from .words import aqi_value as _aqi
 
 PT_W = 390.0                 # design width, phone points
 W = 1080                     # output width, pixels
@@ -39,22 +41,6 @@ RADAR_UI = K                 # map labels at the same point sizes as the page
 INK = (24, 28, 36); DIM = (84, 90, 102); FAINT = (222, 226, 232)
 BG = (240, 242, 245); CARD = (255, 255, 255); TINT = (226, 238, 252)
 TEMP = (214, 96, 52); RAIN = (36, 104, 184); RAIN_L = (186, 212, 240)
-
-# China AQI bands (HJ 633-2012); the index Caiyun gives as "chn".
-AQI_BANDS = ((50, "excellent", (0, 190, 80)), (100, "good", (240, 200, 0)),
-             (150, "lightly polluted", (255, 126, 0)), (200, "moderately polluted", (230, 30, 30)),
-             (300, "heavily polluted", (153, 0, 76)), (10 ** 9, "severely polluted", (126, 0, 35)))
-
-
-def aqi_band(v, lang="en"):
-    for i, (hi, name, col) in enumerate(AQI_BANDS):
-        if v <= hi:
-            return (AQI_NAMES[lang][i] if lang in AQI_NAMES else name), col
-
-
-# The same six bands, in the words Chinese and Japanese readers use for them.
-AQI_NAMES = {"zh": ("优", "良", "轻度污染", "中度污染", "重度污染", "严重污染"),
-             "ja": ("優", "良", "軽度汚染", "中度汚染", "重度汚染", "深刻な汚染")}
 
 # Everything the picture says in its own voice. Weather words (sky names, the
 # two-hour sentence, the motion basis) come from the caller -- the same tables
@@ -81,8 +67,7 @@ T = {
             qr_how="Long-press the code (or scan it) to open the latest picture for this place.",
             qr_this="This one is from {t}.",
             foot1="weather, radar & air: caiyunapp.com",
-            foot2="basemap: Natural Earth · echorune.net",
-            compass=("N", "NE", "E", "SE", "S", "SW", "W", "NW")),
+            foot2="basemap: Natural Earth · echorune.net"),
  "zh": dict(asof="{t} 更新", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
             humidity="湿度", wind="风", wind_v="{d}风 {v} km/h", air="空气质量",
             sun="日出 – 日落", radar="雷达", around="周围 {km} 公里",
@@ -103,8 +88,7 @@ T = {
             qr_how="长按识别（或扫一扫）二维码，打开这里最新的天气图。",
             qr_this="这一张是 {t} 的。",
             foot1="天气、雷达、空气质量：彩云天气 caiyunapp.com",
-            foot2="底图：Natural Earth · echorune.net",
-            compass=("北", "东北", "东", "东南", "南", "西南", "西", "西北")),
+            foot2="底图：Natural Earth · echorune.net"),
  "ja": dict(asof="{t} 時点", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
             humidity="湿度", wind="風", wind_v="{d}の風 {v} km/h", air="大気質",
             sun="日の出 – 日の入り", radar="レーダー", around="周辺 {km} km",
@@ -125,11 +109,8 @@ T = {
             qr_how="QRコードを長押し（または読み取り）すると、この場所の最新の天気図が開きます。",
             qr_this="この画像は {t} 時点です。",
             foot1="天気・レーダー・大気質：caiyunapp.com",
-            foot2="地図：Natural Earth · echorune.net",
-            compass=("北", "北東", "東", "南東", "南", "南西", "西", "北西")),
+            foot2="地図：Natural Earth · echorune.net"),
 }
-_WEEK = {"zh": ("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
-         "ja": ("月", "火", "水", "木", "金", "土", "日")}
 LANGS = tuple(T)
 
 
@@ -145,14 +126,6 @@ def _date_line(dt, lang):
     return dt.strftime("%a %d %b")
 
 
-def _weekday(dt, lang):
-    if lang == "zh":
-        return _WEEK["zh"][dt.weekday()]
-    if lang == "ja":
-        return _WEEK["ja"][dt.weekday()] + "曜"
-    return dt.strftime("%a")
-
-
 def font(pt, bold=False, lang="en"):
     return RI.font(max(8, round(pt * K)), bold, lang)
 
@@ -164,7 +137,6 @@ SKY = {"CLEAR_DAY": "clear", "CLEAR_NIGHT": "clear", "PARTLY_CLOUDY_DAY": "partl
        "FOG": "fog", "LIGHT_SNOW": "light snow", "MODERATE_SNOW": "snow",
        "HEAVY_SNOW": "heavy snow", "STORM_SNOW": "snowstorm", "DUST": "dust",
        "SAND": "sand", "WIND": "windy"}
-COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 
 class _Measure:
@@ -313,21 +285,6 @@ def _card_h(pg, body, title=True, sub=()):
     return 16 + (28 if title else 0) + 20 * len(sub) + (6 if (title or sub) else 0) + body + 16
 
 
-def _aqi(x):
-    """An AQI the source gave -> int, or None when it gave nothing.
-
-    0 is how the source says "no data": for Tokyo on 2026-11-04 every daily
-    MAX from tomorrow on was 0 and 23 of the 24 hours were 0, while the same
-    response put the air right now at 11. A day whose worst hour is 0 is not
-    air that clean, it is a forecast that is not there -- and drawn as a
-    green "0 excellent" it became a reading we made up."""
-    try:
-        v = int(x)
-    except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
-
-
 def _pill(pg, x, y, v, pt=15, right=False):
     """An AQI value on its band colour; -> its far edge."""
     _, col = aqi_band(v)
@@ -375,7 +332,7 @@ def _layout(pg, wx_full, radar, label, motion, basis, span_km, radar_note, sky, 
             else L["feel0"].format(fl=fl))
     pg.text(X0, y + 142, feel, 17, DIM)
     wind = rt.get("wind") or {}
-    wdir = L["compass"][int((float(wind.get("direction", 0)) + 22.5) // 45) % 8]
+    wdir = compass(wind.get("direction", 0), pg.lang)
     cw = (X1 - X0) / 2
     cells = [(L["humidity"], "%d%%" % round(rt["humidity"] * 100)),
              (L["wind"], L["wind_v"].format(d=wdir, v="%.0f" % float(wind.get("speed", 0))))]
@@ -436,7 +393,7 @@ def _layout(pg, wx_full, radar, label, motion, basis, span_km, radar_note, sky, 
         yy = top + side + 12
         if kind == "moving":
             d_en = motion.get("dir_en", "?")
-            d = L["compass"][T["en"]["compass"].index(d_en)] if d_en in T["en"]["compass"] else d_en
+            d = COMPASS[pg.lang][COMPASS["en"].index(d_en)] if d_en in COMPASS["en"] else d_en
             pg.text(X0, yy, L["moving"].format(d=d, v="%.0f" % float(motion["kmh"])), 17, INK, bold=True)
         elif kind in ("stationary", "undetermined"):
             pg.text(X0, yy, L[kind], 17, INK, bold=True)

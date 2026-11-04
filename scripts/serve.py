@@ -184,6 +184,10 @@ _PNG_SPAN = float(os.environ.get("RUNEMAP_SPAN_KM", "0") or 0) or 200.0
 _PNG_WAIT = 4.0      # seconds a cold sky may hold an image request
 
 
+# How the attribution line starts in each language of R.build().
+_FOOTERS = ("data:", "\u6570\u636e:", "\u30c7\u30fc\u30bf:")
+
+
 def png_place(path):
     """'/shanghai.png' -> ('shanghai', 'all', None); '/上海/zh.png' ->
     ('上海', 'all', 'zh'); '/shanghai/radar.png' -> ('shanghai', 'radar',
@@ -782,7 +786,9 @@ class H(BaseHTTPRequestHandler):
         text map links to the picture in the same language."""
         url = self._picture_url(lon, lat, spec, span, lang if lang != "en" else None)
         line = "picture: %s\n" % url
-        i = out.rfind("\ndata:")
+        # The footer is localised ("数据:", "データ:"); looking for the English
+        # one only put the link above it in en and after it everywhere else.
+        i = max(out.rfind("\n" + f) for f in _FOOTERS)
         return out[:i + 1] + line + out[i + 1:] if i >= 0 else out + line
 
     def do_GET(self):
