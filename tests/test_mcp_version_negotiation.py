@@ -116,3 +116,55 @@ class TheLogAndTheReplyCannotDisagree(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheToolReplyLinksAPublicPicture(unittest.TestCase):
+    """2026-11-04: the tool asks this server for the page over 127.0.0.1, and
+    the page's `picture:` line is built from Host -- so without passing the
+    caller's Host on, every tool reply linked http://127.0.0.1:8788/x.png."""
+
+    def setUp(self):
+        import serve
+        self.serve = serve
+
+    def call(self, host):
+        import urllib.request as ur
+        seen = []
+
+        class Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b"ok"
+
+        def fake(req, timeout=None):
+            seen.append(req)
+            return Resp()
+
+        class Me:
+            headers = {"Host": host} if host else {}
+
+            class server:
+                server_address = ("127.0.0.1", 8788)
+        orig = ur.urlopen
+        ur.urlopen = fake
+        try:
+            self.serve.H._mcp_scene(Me(), "osaka", "ja")
+        finally:
+            ur.urlopen = orig
+        self.assertEqual(len(seen), 1)
+        return seen[0]
+
+    def test_the_callers_host_goes_along(self):
+        req = self.call("echorune.net")
+        self.assertEqual(req.full_url, "http://127.0.0.1:8788/osaka/ja")
+        self.assertEqual(req.get_header("Host"), "echorune.net")
+        self.assertEqual(self.call("dev.echorune.net").get_header("Host"),
+                         "dev.echorune.net")
+
+    def test_no_host_still_names_the_public_one(self):
+        self.assertEqual(self.call(None).get_header("Host"), "echorune.net")
