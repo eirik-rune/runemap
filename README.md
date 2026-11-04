@@ -86,6 +86,13 @@ protects is the weather, **not the format**: this sample sat unchanged from
 following it would have compared their real answer against fields we no longer
 print. It is re-frozen when the format changes. Run the curl above for today.
 
+A person on a phone gets the same weather as one picture instead:
+`echorune.net/taipei.png` (or `/taipei/zh.png`, `/taipei/ja.png`), sized for a
+phone screen, in one request like the text. A QR code at the bottom opens the
+latest picture for the same place, so whoever receives a forwarded copy can get
+a fresh one. Every text reply links it on its second-to-last line, so an agent
+can hand a person the picture without knowing the route.
+
 
 ## install it as an Agent Skill
 
@@ -130,8 +137,9 @@ share a misunderstanding, and nothing else.
 
     curl echorune.net                 # your location, guessed from your IP
     curl echorune.net/bangkok         # by name
-    curl echorune.net/bangkok/zh      # language suffix: en (default) | zh
+    curl echorune.net/bangkok/zh      # language suffix: en (default) | zh | ja
     curl echorune.net/100.50,13.75    # by coordinate (lon first)
+    curl -o bkk.png echorune.net/bangkok.png    # the same, as one picture
     curl echorune.net/help            # full door plate
     curl echorune.net/healthz
 

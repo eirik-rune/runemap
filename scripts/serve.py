@@ -111,8 +111,12 @@ QUICK START (no arguments; your location is guessed from your IP)
 
 USAGE
   curl echorune.net/<place>         e.g. echorune.net/bangkok
-  curl echorune.net/<place>/zh      language suffix: en (default) or zh
+  curl echorune.net/<place>/zh      language suffix: en (default), zh or ja
   curl echorune.net/<lon>,<lat>     e.g. echorune.net/100.50,13.75   (longitude first)
+  echorune.net/<place>.png          one phone-width picture of the same
+                                   weather, for a person; also /<place>/zh.png,
+                                   /<place>/ja.png and /<lon>,<lat>.png. Its QR
+                                   code reopens the latest picture.
   curl echorune.net/help
   curl echorune.net/healthz
   curl echorune.net/status         availability, measured every minute
@@ -138,9 +142,12 @@ POLLING
     watch -n 30 curl -s echorune.net/bangkok
 
 WHAT YOU GET
-  One screen: current conditions, a plain-language forecast, a 2h rain
-  sparkline, and a 48x24 character radar map with lon/lat axes, plus the
-  measured motion of the echo over the last hour.
+  One screen: current conditions with feels-like, wind direction, air quality
+  and sunrise/sunset; a plain-language forecast; a 2h rain sparkline with the
+  peak and the chance of rain per half hour; a 48x24 character radar map with
+  lon/lat axes, plus the measured motion of the echo over the last hour; then
+  the next 24 hours every 3 hours and the next 5 days. The line before the
+  source credit links the same place as a picture.
 
 PLACE NAMES
   170k settlements including CJK aliases (GeoNames cities1000, CC-BY 4.0).
@@ -497,9 +504,12 @@ class H(BaseHTTPRequestHandler):
                         "idempotentHint": True, "openWorldHint": True},
         "description": ("Live weather for any place on earth, including the radar "
                         "echo drawn as text characters rather than an image: "
-                        "current conditions, a short forecast, a 2-hour rain "
-                        "sparkline, and a character radar map with the measured "
-                        "motion of the echo."),
+                        "current conditions and air quality, a short "
+                        "forecast, a 2-hour rain sparkline, a character radar "
+                        "map with the measured motion of the echo, and the "
+                        "next 24 hours and 5 days. The reply also links the same "
+                        "weather as a phone-width picture, for showing a "
+                        "person."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -522,7 +532,12 @@ class H(BaseHTTPRequestHandler):
         if lang and lang != "en":
             path += "/" + lang
         url = "http://127.0.0.1:%d%s" % (self.server.server_address[1], path)
-        with _ur.urlopen(url, timeout=SCENE_BUDGET + 5) as r:
+        # The caller's Host goes along. The reply links its own picture and
+        # that link is built from Host; without it, from the #242 deploy
+        # (2026-11-04) to this fix, every tool reply said
+        # `picture: http://127.0.0.1:8788/...`, which opens only on this machine.
+        req = _ur.Request(url, headers={"Host": self.headers.get("Host") or "echorune.net"})
+        with _ur.urlopen(req, timeout=SCENE_BUDGET + 5) as r:
             return r.read().decode("utf-8", "replace")
 
     def _mcp_note(self, method, tool=None, extra=None):
