@@ -266,6 +266,23 @@ def _accept_lang(hdr):
     return best
 
 
+def script_lang(name, accept=None):
+    """The language a place name is written in, when its script says so, for
+    the picture only. Kana is Japanese. Han alone is Chinese, unless the
+    reader's own top language is Japanese: 東京 and 大阪 are written the same
+    way in both. "" when the script says nothing (Latin, digits, coordinates).
+
+    bob 2026-11-04: someone who types /北京.png should get the picture in
+    Chinese whatever the phone is set to ("既然输入是中文，怎么显示也是什么文").
+    The text map does not do this: it answers English unless asked, and the
+    programs that parse its `now:` lines would break the day /清迈 changed."""
+    if any("\u3040" <= c <= "\u30ff" for c in name):
+        return "ja"
+    if any("\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf" for c in name):
+        return "ja" if _accept_lang(accept) == "ja" else "zh"
+    return ""
+
+
 def _guess_note(lang, label):
     """A guess must never be embarrassing: say it is a guess, then hand over the
     one-line escape. GeoIP is wrong behind VPNs and carrier NAT by construction."""
@@ -828,6 +845,8 @@ class H(BaseHTTPRequestHandler):
                 q["lang"] = ["en"]   # the radar-only picture's title and notes are English
             elif png_lang:
                 q["lang"] = [png_lang]
+            elif not q.get("lang") and script_lang(stem, self.headers.get("Accept-Language")):
+                q["lang"] = [script_lang(stem, self.headers.get("Accept-Language"))]
             # otherwise the same rule as the text map: Accept-Language, then en
         small = (q.get("size", [""])[0] or "").lower() == "s"
         # ?span=<km> -- EDGE LENGTH of the centred window, not radius: span=200
