@@ -513,3 +513,134 @@ class ThePictureSpeaksTheLanguageOfTheName(unittest.TestCase):
     def test_latin_and_coordinates_say_nothing(self):
         for name in ("beijing", "Zürich", "121.47,31.23", ""):
             self.assertEqual(S.script_lang(name, "zh-CN"), "", name)
+
+
+class TownsGoAroundTheMarks(unittest.TestCase):
+    """2026-11-05: towns were drawn into the cached basemap, under everything
+    drawn after them -- "Soroca1 h" on Sao Paulo, the arrow head on Kobe's name
+    on Osaka. Now they are drawn last, around what is already there."""
+
+    def test_a_town_on_a_taken_spot_is_left_out_whole(self):
+        from PIL import ImageDraw
+        im = Image.new("RGB", (RI.SIZE, RI.SIZE), (255, 255, 255))
+        taken = [((300, 300), (400, 330), 0)]            # e.g. a "1 h" label
+        drawn = RI.draw_towns(ImageDraw.Draw(im), [(290, 310, "Sorocaba"), (100, 600, "Santos")],
+                              taken, RI.SIZE)
+        self.assertEqual(drawn, ["Santos"])
+        a = np.asarray(im).astype(int)
+        self.assertTrue((a[300:330, 250:299] > 250).all(), "the left-out town's dot was drawn")
+
+    def test_the_bigger_town_wins_a_shared_spot(self):
+        from PIL import ImageDraw
+        im = Image.new("RGB", (RI.SIZE, RI.SIZE))
+        drawn = RI.draw_towns(ImageDraw.Draw(im), [(200, 200, "Campinas"), (215, 204, "Americana")],
+                              [], RI.SIZE)
+        self.assertEqual(drawn, ["Campinas"])
+
+    def test_towns_come_biggest_first(self):
+        ranks = {r[2]: r[3] for r in RI._places()}
+        tw = RI.towns(-46.63, -23.55, 280.0, RI.SIZE)
+        got = [ranks[n] for _, _, n in tw if n in ranks]
+        self.assertGreater(len(got), 3)
+        self.assertEqual(got, sorted(got))
+
+    def test_a_name_off_the_edge_is_left_out_not_cut(self):
+        from PIL import ImageDraw
+        im = Image.new("RGB", (RI.SIZE, RI.SIZE))
+        self.assertEqual(RI.draw_towns(ImageDraw.Draw(im), [(RI.SIZE - 20, 300, "Nagoya")], [], RI.SIZE), [])
+
+    def test_render_hands_every_mark_to_the_towns(self):
+        # The placer can only avoid what it is given: the arrow, every tick
+        # label, the marker and its name must all be in `taken`.
+        seen = {}
+        real = RI.draw_towns
+
+        def spy(d, tw, taken, size, ui=1.0, lang="en"):
+            seen["taken"] = list(taken)
+            return real(d, tw, taken, size, ui, lang)
+        mo = {"kind": "moving", "vx": 26.0, "vy": -6.0, "kmh": 26.7, "dir_en": "E"}
+        lon, lat = -46.63, -23.55
+        bb = station_box(lon, lat, 3)
+        RI.draw_towns = spy
+        from PIL import ImageDraw
+        try:
+            RI.render(frame(bb), bb, lon, lat, "Sao Paulo", time.time(), time.time(), 280.0,
+                      motion=mo, bare=True, as_image=True)
+        finally:
+            RI.draw_towns = real
+        marks = RI.draw_motion(ImageDraw.Draw(Image.new("RGB", (RI.SIZE, RI.SIZE))), mo, RI.SIZE, 280.0,
+                               1.0, (24.0, 24.0, RI.SIZE - 24.0, RI.SIZE - 80.0))
+        self.assertTrue(marks)
+        for m in marks:
+            self.assertIn(m, seen["taken"])
+        c = RI.SIZE / 2
+        self.assertTrue(any(s[2] == 0 and s[0][0] < c < s[1][0] and s[0][1] < c < s[1][1]
+                            for s in seen["taken"]), "the marker itself is not in taken")
+
+
+class LegendFollowsTheScale(unittest.TestCase):
+    """2026-11-05: ordering by depth inside the echo put two greens after
+    yellow (Sapporo) and yellow after gold (Sao Paulo)."""
+
+    @staticmethod
+    def rings(cols, size=200):
+        # concentric rings, outermost first: depth increases with list order
+        a = np.zeros((size, size, 4), np.uint8)
+        yy, xx = np.mgrid[:size, :size]
+        r = np.hypot(xx - size / 2, yy - size / 2)
+        for i, c in enumerate(cols):
+            a[r < 90 - i * 14] = c + (255,)
+        return Image.fromarray(a, "RGBA")
+
+    def test_scale_order_whatever_the_geometry(self):
+        G, Y, GOLD, CY = (1, 255, 0), (255, 255, 0), (231, 192, 0), (0, 236, 236)
+        a = RI.legend_colours(self.rings([GOLD, Y, G, CY]))      # strongest outside
+        b = RI.legend_colours(self.rings([CY, G, Y, GOLD]))      # weakest outside
+        self.assertEqual(len(a), 4)
+        self.assertEqual(a, b)
+
+    def test_swatches_follow_the_ramp(self):
+        G1, G2, G3, Y = (1, 255, 0), (0, 200, 0), (1, 144, 0), (255, 255, 0)
+        st = self.rings([Y, G3, G2, G1])        # depth alone would say G1 strongest
+        got = RI.legend_colours(st)
+        want = [tuple(int(c * RI.ALPHA + l * (1 - RI.ALPHA)) for c, l in zip(rgb, RI.PAL["land"]))
+                for rgb in (G1, G2, G3, Y)]
+        self.assertEqual(got, want)
+
+    def test_a_colour_off_the_scale_is_still_shown(self):
+        got = RI.legend_colours(self.rings([(1, 255, 0), (120, 60, 200)]))
+        self.assertEqual(len(got), 2)
+
+    def test_the_ramp_has_what_was_measured(self):
+        for rgb in ((0, 236, 236), (1, 255, 0), (0, 200, 0), (1, 144, 0), (255, 255, 0),
+                    (231, 192, 0), (255, 144, 0), (255, 0, 0), (214, 0, 0)):
+            self.assertEqual(RI.ramp_index(rgb)[1], 0.0, rgb)
+        seen = [RI.CAIYUN_RAMP.index(c) for c in ((0, 236, 236), (1, 255, 0), (0, 200, 0), (1, 144, 0),
+                                                 (255, 255, 0), (231, 192, 0), (255, 144, 0),
+                                                 (255, 0, 0), (214, 0, 0))]
+        self.assertEqual(seen, sorted(seen))
+
+
+class TheMarkerStaysClear(unittest.TestCase):
+    def test_no_tick_label_on_the_crosshair(self):
+        # Sapporo 2026-11-05: on a slow vector "1時間" sat on the cross's arm.
+        from PIL import ImageDraw
+        c, mk = RI.SIZE / 2, 17
+        for lang in ("en", "zh", "ja"):
+            if not RI.can_draw(lang):
+                continue
+            for kmh in (6, 9, 14, 28, 50):
+                for vx, vy in Motion.DIRS:
+                    n = math.hypot(vx, vy)
+                    mo = {"kind": "moving", "vx": vx / n * kmh, "vy": vy / n * kmh, "kmh": kmh}
+                    labs = [s for s in RI.draw_motion(ImageDraw.Draw(Image.new("RGB", (RI.SIZE, RI.SIZE))),
+                                                      mo, RI.SIZE, 200, lang=lang) if s[2] == 0]
+                    for (x0, y0), (x1, y1), _ in labs:
+                        clear = x1 <= c - mk or x0 >= c + mk or y1 <= c - mk or y0 >= c + mk
+                        self.assertTrue(clear, (lang, kmh, vx, vy, x0, y0, x1, y1))
+
+    def test_a_town_name_off_the_bottom_is_left_out(self):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(Image.new("RGB", (RI.SIZE, RI.SIZE)))
+        self.assertEqual(RI.draw_towns(d, [(300, RI.SIZE - 4, "Hakodate")], [], RI.SIZE), [])
+        self.assertEqual(RI.draw_towns(d, [(300, 3, "Asahikawa")], [], RI.SIZE), [])

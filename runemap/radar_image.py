@@ -21,8 +21,9 @@ What is drawn, and why each choice:
   tiles (``data/ne/*.npz``) so a request reads only the tiles its window
   touches.  This box has ~1 GB of RAM and other people's traffic on it; the
   full land layer costs 130 MB to parse, one tile costs almost nothing.
-* Legend: the colours present in THIS frame, ordered weak -> strong by how deep
-  inside an echo they sit, each blended exactly as on the map.  No mm/h labels:
+* Legend: the colours present in THIS frame, ordered weak -> strong by their
+  step on Caiyun's colour scale (``CAIYUN_RAMP``), each blended exactly as on
+  the map.  No mm/h labels:
   we do not know Caiyun's thresholds, and a confident number we made up would
   be worse than an honest "weaker / stronger".
 * Text in en, zh or ja.  Chinese and Japanese need Noto Sans CJK
@@ -222,8 +223,14 @@ _BASE_MAX = 6          # 800x800 RGB ~ 1.9 MB each
 
 
 def basemap(lon, lat, span_km, size=SIZE, ui=1.0, lang="en"):
-    """Land/lakes/borders/towns for the window. Cached per window: the basemap
-    does not change between frames, and drawing it is most of the work."""
+    """Land/lakes/borders for the window. Cached per window: the basemap
+    does not change between frames, and drawing it is most of the work.
+
+    Towns are NOT in it any more (see ``towns`` / ``draw_towns``): drawn here,
+    first, they sat under everything drawn later, and on 2026-11-05 the motion
+    labels printed over them -- "Soroca1 h" on Sao Paulo, the arrow head on
+    top of Kobe's name on Osaka. Only the drawing that comes last can know
+    what is already on the map."""
     key = (round(lon, 2), round(lat, 2), round(span_km), size, round(ui, 2), lang)
     with _BASE_LOCK:
         im = _BASE.get(key)
@@ -237,12 +244,24 @@ def basemap(lon, lat, span_km, size=SIZE, ui=1.0, lang="en"):
     _polys(d, P, "land", PAL["land"], PAL["sea"], PAL["coast"])
     _polys(d, P, "lakes", PAL["lake"], PAL["land"], PAL["coast"])
     _lines(d, P, "admin_0_boundary_lines_land", PAL["border"], max(2, round(2 * ui)))
-    # Towns: more of them in a small window, only the big ones in a wide one.
+    with _BASE_LOCK:
+        _BASE[key] = im
+        while len(_BASE) > _BASE_MAX:
+            _BASE.popitem(last=False)
+    return im
+
+
+def towns(lon, lat, span_km, size=SIZE, ui=1.0, lang="en"):
+    """-> [(x, y, name)] for the window, biggest towns first (Natural Earth
+    scalerank: lower is bigger), so when two compete for the same spot the
+    one a reader is likelier to know keeps it."""
+    wb = window(lon, lat, span_km)
+    P = _Proj(wb, size); P.wb = wb
+    # more of them in a small window, only the big ones in a wide one
     rank = 6 if span_km <= 300 else 4
-    fc = _font(round(15 * ui), lang)
+    out = []
     for row in _places():
         clon, clat, sr = row[0], row[1], row[3]
-        name = place_name(row, lang)
         if sr > rank or not (wb[1] < clon < wb[3] and wb[0] < clat < wb[2]):
             continue
         # the asker's own point gets the red marker; a town dot on top of it
@@ -250,15 +269,34 @@ def basemap(lon, lat, span_km, size=SIZE, ui=1.0, lang="en"):
         if abs(clon - lon) < 0.15 and abs(clat - lat) < 0.15:
             continue
         x, y = (float(v) for v in P(clon, clat))
-        rr = 3 * ui
+        out.append((sr, x, y, place_name(row, lang)))
+    out.sort(key=lambda t: t[0])
+    return [(x, y, name) for _, x, y, name in out]
+
+
+def draw_towns(d, tw, taken, size, ui=1.0, lang="en"):
+    """Draw each town (dot + name) that touches nothing in `taken` (the same
+    segment list the marker's name is placed against, plus the marker's own
+    name box) and no town drawn before it. A town that would collide is left
+    out whole: a dot with no name is a mark nobody can read, and a name drawn
+    through an arrow label reads as neither. -> the towns drawn."""
+    fc = _font(round(15 * ui), lang)
+    sw = max(2, round(2 * ui))
+    rr = 3 * ui
+    segs = list(taken)
+    drawn = []
+    for x, y, name in tw:
+        tx, ty = x + 2 * rr, y - 9 * ui
+        b = fc.getbbox(name, stroke_width=sw)
+        box = (min(x - rr, tx + b[0]) - 2 * ui, min(y - rr, ty + b[1]) - 2 * ui,
+               tx + b[2] + 2 * ui, max(y + rr, ty + b[3]) + 2 * ui)
+        if box[0] < 0 or box[1] < 0 or box[2] > size or box[3] > size or _hits(box, segs):
+            continue
         d.ellipse((x - rr, y - rr, x + rr, y + rr), fill=PAL["city"])
-        d.text((x + 2 * rr, y - 9 * ui), name, font=fc, fill=PAL["text"],
-               stroke_width=max(2, round(2 * ui)), stroke_fill=PAL["white"])
-    with _BASE_LOCK:
-        _BASE[key] = im
-        while len(_BASE) > _BASE_MAX:
-            _BASE.popitem(last=False)
-    return im
+        d.text((tx, ty), name, font=fc, fill=PAL["text"], stroke_width=sw, stroke_fill=PAL["white"])
+        segs.append(((box[0], box[1]), (box[2], box[3]), 0))
+        drawn.append(name)
+    return drawn
 
 
 # --- legend -----------------------------------------------------------------
@@ -267,8 +305,39 @@ _LEG = OrderedDict()
 _LEG_LOCK = threading.Lock()
 
 
+# Caiyun's colour scale, weak -> strong. The first version ordered the legend
+# by how deep inside an echo each colour sits; on 2026-11-05 that put two
+# greens after yellow on Sapporo and yellow after tan on Sao Paulo -- depth
+# says where a colour happens to lie in THIS frame, not where it is on the
+# scale. Measured the same evening: every colour bucket of 150+ pixels in 11
+# cached Caiyun frames (~880k wet pixels) is one of the nine marked "seen", and they are the
+# standard reflectivity ramp (cyan, three greens, yellow, gold, orange, two
+# reds). The rest of that ramp is listed so a stronger storm still sorts after
+# red; those values are the common radar table's, not yet seen from Caiyun.
+CAIYUN_RAMP = ((0, 236, 236),                        # seen
+               (1, 160, 246), (0, 0, 246),           # not yet seen
+               (1, 255, 0), (0, 200, 0), (1, 144, 0),  # seen
+               (255, 255, 0), (231, 192, 0), (255, 144, 0),  # seen
+               (255, 0, 0), (214, 0, 0),             # seen
+               (192, 0, 0), (255, 0, 240), (150, 0, 180))  # not yet seen
+_RAMP = np.array(CAIYUN_RAMP, dtype=np.int32)
+RAMP_NEAR = 60         # RGB distance: further than this from every entry is "not on the scale"
+
+
+def ramp_index(rgb):
+    """-> (index on CAIYUN_RAMP, distance to it)."""
+    dd = np.sqrt(((_RAMP - np.asarray(rgb, dtype=np.int32)) ** 2).sum(axis=1))
+    i = int(dd.argmin())
+    return i, float(dd[i])
+
+
 def legend_colours(st, cache_key=None):
-    """Colours present in this frame, weak -> strong by depth inside the echo."""
+    """Colours present in this frame, weak -> strong, each blended as on the map.
+
+    Order comes from Caiyun's scale (``CAIYUN_RAMP``), one swatch per step of
+    it. A colour that is on no step (further than RAMP_NEAR from all of them)
+    is still shown -- dropping it would hide rain that is on the map -- placed
+    by its nearest step and, among equals, by depth inside the echo."""
     if cache_key is not None:
         with _LEG_LOCK:
             if cache_key in _LEG:
@@ -282,17 +351,20 @@ def legend_colours(st, cache_key=None):
         n[1:] &= cur[:-1]; n[:-1] &= cur[1:]; n[:, 1:] &= cur[:, :-1]; n[:, :-1] &= cur[:, 1:]
         cur = n
     q = (raw[..., 0] // 32) * 64 + (raw[..., 1] // 32) * 8 + (raw[..., 2] // 32)
-    out = []
+    best = {}                  # ramp step -> (pixels, depth, colour); off-scale colours keyed apart
     for v in np.unique(q[wet]):
         m = wet & (q == v)
-        if m.sum() < 150:
+        n = int(m.sum())
+        if n < 150:
             continue
         rgb = np.median(raw[m][:, :3], axis=0)
         al = float(np.median(raw[m][:, 3])) / 255 * ALPHA
-        out.append((float(np.median(depth[m])),
-                    tuple(int(c * al + l * (1 - al)) for c, l in zip(rgb, PAL["land"]))))
-    out.sort()
-    cols = [c for _, c in out]
+        i, dist = ramp_index(rgb)
+        k = (i, 0) if dist <= RAMP_NEAR else (i, 1 + int(v))
+        col = tuple(int(c * al + l * (1 - al)) for c, l in zip(rgb, PAL["land"]))
+        if k not in best or n > best[k][0]:
+            best[k] = (n, float(np.median(depth[m])), col)
+    cols = [c for _, (_, _, c) in sorted(best.items(), key=lambda kv: (kv[0][0], kv[1][1]))]
     if cache_key is not None:
         with _LEG_LOCK:
             _LEG[cache_key] = cols
@@ -370,7 +442,12 @@ def draw_motion(d, mo, size, span_km, ui=1.0, inner=None, lang="en"):
                (base[0] - nx * hw, base[1] - ny * hw)], fill=col)
     segs.append(((c, c), (c - ux * L, c - uy * L), 14 * ui))
     ft = _font(round(14 * ui), lang)
-    placed = []
+    # The marker (ring + cross arms, drawn after this) counts as taken: on a
+    # slow vector the first ticks sit under it, and a label printed across
+    # the crosshair hides the one point the picture is about (Sapporo
+    # 2026-11-05, "1時間" on the cross's top arm).
+    mk = 17 * ui
+    placed = [(c - mk, c - mk, c + mk, c + mk)]
     for h, lab in shown:
         rr = h * sp * ppk
         x, y = c - ux * rr, c - uy * rr
@@ -471,13 +548,18 @@ def _hatch(size, step=14, width=2):
     return h
 
 
-def _scale_bar(d, size, span_km, fs, ui, bottom=None):
+def _scale_geom(size, span_km, fs, ui, bottom=None):
     bar = 50 if span_km <= 400 else 100
     ppk = size / span_km
     byp = size - (bottom if bottom is not None else 30 * ui)
     bxp = size - 30 * ui - bar * ppk
     th = fs.getbbox("0")[3]
-    d.rectangle((bxp - 8 * ui, byp - th - 10 * ui, size - 14 * ui, byp + 10 * ui), fill=PAL["white"] + (225,))
+    return bar, ppk, byp, bxp, th, (bxp - 8 * ui, byp - th - 10 * ui, size - 14 * ui, byp + 10 * ui)
+
+
+def _scale_bar(d, size, span_km, fs, ui, bottom=None):
+    bar, ppk, byp, bxp, th, box = _scale_geom(size, span_km, fs, ui, bottom)
+    d.rectangle(box, fill=PAL["white"] + (225,))
     d.line((bxp, byp, bxp + bar * ppk, byp), fill=PAL["text"], width=max(3, round(3 * ui)))
     for xx in (bxp, bxp + bar * ppk):
         d.line((xx, byp - 5 * ui, xx, byp + 5 * ui), fill=PAL["text"], width=max(2, round(2 * ui)))
@@ -552,6 +634,16 @@ def render(png, bbox, lon, lat, label, frame_ts, obs_ts=None, span_km=200.0,
     box = place_label(fm.getbbox(name, stroke_width=sw_), c0, r, segs, size)
     d.text((box[0], box[1]), name, font=fm, fill=PAL["marktext"],
            stroke_width=sw_, stroke_fill=PAL["white"])
+    # Towns last, around everything already on the map: the motion marks and
+    # their labels, the marker and its name, and the boxes drawn over the map
+    # afterwards (scale bar; title and footer bands on the full picture).
+    taken = list(segs) + [((box[0], box[1]), (box[2], box[3]), 0),
+                          ((c0 - r - 7 * ui, c0 - r - 7 * ui), (c0 + r + 7 * ui, c0 + r + 7 * ui), 0)]
+    sb = _scale_geom(size, span_km, fs, ui if bare else 1.0, None if bare else 46)[-1]
+    taken.append(((sb[0], sb[1]), (sb[2], sb[3]), 0))
+    if not bare:
+        taken += [((0, 0), (size, 34), 0), ((0, size - 24), (size, size), 0)]
+    draw_towns(d, towns(lon, lat, span_km, size, ui, lang), taken, size, ui, lang)
     if bare:
         _scale_bar(d, size, span_km, fs, ui)
         if as_image:          # the caller composites it; encoding here is wasted
