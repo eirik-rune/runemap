@@ -520,13 +520,14 @@ class H(BaseHTTPRequestHandler):
         "annotations": {"readOnlyHint": True, "destructiveHint": False,
                         "idempotentHint": True, "openWorldHint": True},
         "description": ("Live weather for any place on earth, including the radar "
-                        "echo drawn as text characters rather than an image: "
+                        "echo drawn as text characters: "
                         "current conditions and air quality, a short "
                         "forecast, a 2-hour rain sparkline, a character radar "
                         "map with the measured motion of the echo, and the "
-                        "next 24 hours and 5 days. The reply also links the same "
-                        "weather as a phone-width picture, for showing a "
-                        "person."),
+                        "next 24 hours and 5 days. Each reply also carries the "
+                        "radar map as a PNG image and links the whole weather as "
+                        "a phone-width PNG picture; the text and the pictures "
+                        "are made to be read by a person or by a model."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -556,6 +557,70 @@ class H(BaseHTTPRequestHandler):
         req = _ur.Request(url, headers={"Host": self.headers.get("Host") or "echorune.net"})
         with _ur.urlopen(req, timeout=SCENE_BUDGET + 5) as r:
             return r.read().decode("utf-8", "replace")
+
+    def _mcp_radar_png(self, place):
+        """-> (PNG bytes, None) or (None, reason): the radar map as a picture,
+        from the same route a reader opens (/<place>/radar.png), asked over the
+        wire like _mcp_scene and with the caller's Host for the same reason.
+
+        bob 2026-11-05: the picture is for models too, not only for people. A
+        model whose only tool is this one cannot open a link, so the reply
+        carries the image itself. It is the square radar map, not the
+        phone-width page: a model's image input is scaled down to fit -- on
+        2026-11-05 the image reader of the session writing this showed a
+        1080x6957 page at 310x2000, still readable, but with the map in it
+        ~270 px across -- while this 800x800 map came through whole."""
+        import urllib.error as _ue
+        import urllib.parse as _up
+        import urllib.request as _ur
+        path = "/" + _up.quote(place.strip("/"), safe=",") + "/radar.png"
+        url = "http://127.0.0.1:%d%s" % (self.server.server_address[1], path)
+        req = _ur.Request(url, headers={"Host": self.headers.get("Host") or "echorune.net"})
+        try:
+            with _ur.urlopen(req, timeout=SCENE_BUDGET + 5) as r:
+                ctype = r.headers.get("Content-Type", "")
+                body = r.read()
+        except _ue.HTTPError as e:
+            # the route's own first line says why (e.g. "radar frame not
+            # fetched yet ... ask again in ~30s") -- pass it on, do not invent one
+            try:
+                first = e.read().decode("utf-8", "replace").strip().splitlines()
+            except Exception:
+                first = []
+            return None, (first[0] if first else "HTTP %d" % e.code)
+        except Exception as e:
+            return None, "could not ask for it (%s)" % type(e).__name__
+        if not ctype.startswith("image/png") or not body.startswith(b"\x89PNG"):
+            return None, "the radar route did not answer with a PNG"
+        return body, None
+
+    def _mcp_content(self, place, lang):
+        """-> the tools/call content list: the text, then the radar image or a
+        line saying why there is none. The two are asked for at the same time;
+        one after the other they cost the caller the sum (the image alone took
+        3.9 s from outside on 2026-11-05). Raises what _mcp_scene raises: the
+        text is the product, and without it there is no answer to give."""
+        import base64
+        import threading
+        got = {}
+
+        def picture():
+            try:
+                got["img"] = self._mcp_radar_png(place)
+            except Exception as e:
+                got["img"] = (None, "could not ask for it (%s)" % type(e).__name__)
+        t = threading.Thread(target=picture, daemon=True)
+        t.start()
+        text = self._mcp_scene(place, lang)
+        t.join(SCENE_BUDGET + 10)
+        img, why = got.get("img") or (None, "it did not come back in time")
+        content = [{"type": "text", "text": text}]
+        if img is not None:
+            content.append({"type": "image", "mimeType": "image/png",
+                            "data": base64.b64encode(img).decode("ascii")})
+        else:
+            content.append({"type": "text", "text": "radar image not attached: %s" % why})
+        return content
 
     def _mcp_note(self, method, tool=None, extra=None):
         """Record which JSON-RPC method was asked for, so that being listed and
@@ -694,11 +759,11 @@ class H(BaseHTTPRequestHandler):
                 return ok({"isError": True, "content": [{"type": "text",
                            "text": "place is required, e.g. tokyo or 139.7,35.7"}]})
             try:
-                text = self._mcp_scene(place, (a.get("lang") or "en").lower())
+                content = self._mcp_content(place, (a.get("lang") or "en").lower())
             except Exception as e:
                 return ok({"isError": True, "content": [{"type": "text",
                            "text": "could not render %r: %s" % (place, e)}]})
-            return ok({"content": [{"type": "text", "text": text}]})
+            return ok({"content": content})
         return self._send(200, json.dumps({"jsonrpc": "2.0", "id": rid,
             "error": {"code": -32601, "message": "method not found: %s" % method}}),
             ctype="application/json")

@@ -1,6 +1,6 @@
 ---
 name: echorune-radar
-description: "Reads live weather for any place on earth, including radar rendered as text characters instead of an image: current conditions and air quality, a short forecast, a 2-hour rain sparkline, a character radar map with the measured motion of the echo, and the next 24 hours and 5 days. Use when the user asks about weather, temperature or a forecast somewhere, whether it is raining, whether rain is coming, when it will start or stop, how far away a storm is or which way it is moving - and whenever answering well would otherwise mean looking at a radar picture."
+description: "Reads live weather for any place on earth, including radar rendered as text characters as well as a picture: current conditions and air quality, a short forecast, a 2-hour rain sparkline, a character radar map with the measured motion of the echo, and the next 24 hours and 5 days. Use when the user asks about weather, temperature or a forecast somewhere, whether it is raining, whether rain is coming, when it will start or stop, how far away a storm is or which way it is moving - and whenever answering well would otherwise mean looking at a radar picture."
 ---
 
 ```bash
@@ -36,5 +36,10 @@ picture: https://echorune.net/shanghai.png
 
 The last line before the source credit links the same weather as one
 phone-width picture (`echorune.net/tokyo.png`, `/tokyo/zh.png`, `/tokyo/ja.png`).
-It is for a person, not for you: hand them that link when they would rather see
-it than read it. Its QR code reopens the latest picture for the same place.
+Hand a person that link when they would rather see it than read it; its QR
+code reopens the latest picture for the same place. If you can read images,
+both pictures are for you too: download the page, or
+`echorune.net/<place>/radar.png` (800x800, the map the grid is drawn from, with
+towns, the motion arrow and a legend), and look. The square one is the sharper
+of the two for where the rain is: an image input is scaled down to fit, and the
+map inside the tall page shrinks with it.

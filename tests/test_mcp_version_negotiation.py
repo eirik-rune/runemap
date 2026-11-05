@@ -168,3 +168,112 @@ class TheToolReplyLinksAPublicPicture(unittest.TestCase):
 
     def test_no_host_still_names_the_public_one(self):
         self.assertEqual(self.call(None).get_header("Host"), "echorune.net")
+
+
+class TheToolReplyCarriesThePicture(unittest.TestCase):
+    """bob 2026-11-05: the picture is for models too. A model whose only tool
+    is ours cannot open a link, so the reply carries the image itself."""
+
+    PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 64
+
+    def setUp(self):
+        import serve
+        self.serve = serve
+
+    def me(self, host="echorune.net"):
+        class Me:
+            headers = {"Host": host}
+
+            class server:
+                server_address = ("127.0.0.1", 8788)
+        m = Me()
+        for name in ("_mcp_scene", "_mcp_radar_png", "_mcp_content"):
+            setattr(m, name, getattr(self.serve.H, name).__get__(m))
+        return m
+
+    def fetch(self, answer):
+        """_mcp_radar_png against a fake wire; -> (result, requests seen)."""
+        import urllib.request as ur
+        seen = []
+
+        def fake(req, timeout=None):
+            seen.append(req)
+            return answer(req)
+        orig = ur.urlopen
+        ur.urlopen = fake
+        try:
+            return self.me()._mcp_radar_png("osaka"), seen
+        finally:
+            ur.urlopen = orig
+
+    def ok(self, ctype, body):
+        class Resp:
+            headers = {"Content-Type": ctype}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return body
+        return lambda req: Resp()
+
+    def test_it_asks_the_radar_route_with_the_callers_host(self):
+        (img, why), seen = self.fetch(self.ok("image/png", self.PNG))
+        self.assertEqual((img, why), (self.PNG, None))
+        self.assertEqual(seen[0].full_url, "http://127.0.0.1:8788/osaka/radar.png")
+        self.assertEqual(seen[0].get_header("Host"), "echorune.net")
+
+    def test_the_routes_own_reason_comes_back_when_there_is_no_picture(self):
+        import io
+        import urllib.error as ue
+
+        def busy(req):
+            raise ue.HTTPError(req.full_url, 503, "busy", {},
+                               io.BytesIO(b"radar frame not fetched yet for Osaka -- ask again in ~30s.\nmore\n"))
+        (img, why), _ = self.fetch(busy)
+        self.assertIsNone(img)
+        self.assertEqual(why, "radar frame not fetched yet for Osaka -- ask again in ~30s.")
+
+    def test_something_that_is_not_a_png_is_not_passed_off_as_one(self):
+        (img, why), _ = self.fetch(self.ok("text/plain", b"hello"))
+        self.assertIsNone(img)
+        self.assertIn("PNG", why)
+
+    def content(self, img):
+        m = self.me()
+        m._mcp_scene = lambda place, lang: "the text map"
+        m._mcp_radar_png = lambda place: img
+        return m._mcp_content("osaka", "en")
+
+    def test_the_reply_is_the_text_then_the_image(self):
+        import base64
+        c = self.content((self.PNG, None))
+        self.assertEqual([x["type"] for x in c], ["text", "image"])
+        self.assertEqual(c[0]["text"], "the text map")
+        self.assertEqual(c[1]["mimeType"], "image/png")
+        self.assertEqual(base64.b64decode(c[1]["data"]), self.PNG)
+
+    def test_no_picture_is_said_not_dropped(self):
+        c = self.content((None, "radar frame not fetched yet"))
+        self.assertEqual([x["type"] for x in c], ["text", "text"])
+        self.assertIn("radar image not attached: radar frame not fetched yet", c[1]["text"])
+
+    def test_a_broken_picture_path_still_gives_the_text(self):
+        m = self.me()
+        m._mcp_scene = lambda place, lang: "the text map"
+
+        def boom(place):
+            raise RuntimeError("x")
+        m._mcp_radar_png = boom
+        c = m._mcp_content("osaka", "en")
+        self.assertEqual(c[0]["text"], "the text map")
+        self.assertIn("not attached", c[1]["text"])
+
+    def test_the_description_names_both_readers(self):
+        d = self.serve.H._MCP_TOOL["description"]
+        self.assertIn("image", d)
+        self.assertIn("model", d)
+        self.assertIn("person", d)

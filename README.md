@@ -1,9 +1,9 @@
 # runemap
 
-**A weather radar you can read as text.** One HTTP request, no API key, no
-account. It renders in a terminal, in a prompt, or in a log line -- so a person
-and a program read the same answer. Add `.png` and a person on a phone gets the
-same weather as one picture, in their language:
+**An LLM-friendly weather service.** Every answer comes as text and as PNG, and
+people and models can read both. One HTTP request, no API key, no account. The
+text renders in a terminal, in a prompt or in a log line; the picture is sized
+for a phone screen, in the reader's language:
 
 <p align="center">
   <img src="docs/pictures/hero.png" width="880" alt="Three phone screens side by side, all in rain: São Paulo in English, Wuhan in Chinese, Sapporo in Japanese. Each shows the temperature and conditions, a one-line forecast, and a radar map with an arrow for where the rain is moving.">
@@ -22,8 +22,8 @@ of drawing an empty grid.
 
     curl echorune.net/wuhan
 
-Radar is normally a picture, and a picture is the one thing most LLM agents
-cannot see. So when an agent asks *"is it about to rain on me, and from which
+Radar is normally a picture, and plenty of LLM agents still take only text. So
+when such an agent asks *"is it about to rain on me, and from which
 direction?"*, what comes back is a sentence somebody else already summarised,
 and the two-dimensional structure is gone. A character grid keeps it: **where
 the rain is, how strong it is, and which way it is moving** -- about 600 tokens
@@ -101,16 +101,22 @@ protects is the weather, **not the format**: this sample sat unchanged from
 following it would have compared their real answer against fields we no longer
 print. It is re-frozen when the format changes. Run the curl above for today.
 
-A person on a phone gets the same weather as one picture instead:
-`echorune.net/wuhan.png` (or `/wuhan/zh.png`, `/wuhan/ja.png`), sized for a
-phone screen, in one request like the text. A name written in Chinese or
+The same weather as one picture: `echorune.net/wuhan.png` (or `/wuhan/zh.png`,
+`/wuhan/ja.png`), sized for a phone screen, in one request like the text. A name written in Chinese or
 Japanese picks the language by itself: `/武汉.png` comes back in Chinese. Han
 characters alone read as Chinese unless the phone asks for Japanese, so for a
 Japanese picture write the name in kana or ask for it, as the Sapporo one above
 was: `/sapporo/ja.png`. A QR code at the bottom opens the
 latest picture for the same place, so whoever receives a forwarded copy can get
 a fresh one. Every text reply links it on its second-to-last line, so an agent
-can hand a person the picture without knowing the route.
+can hand it on without knowing the route.
+
+The radar map also comes on its own: `echorune.net/wuhan/radar.png`, 800x800,
+the map the text grid is drawn from, with towns, the motion arrow and a legend.
+A model reads the phone picture too, but an image input is scaled down to fit,
+and inside a 1080-wide page the map ends up a few hundred pixels across; the
+square one arrives at full size. The MCP tool attaches it to every reply; an
+agent with a shell can download either picture and look.
 
 
 ## install it as an Agent Skill
@@ -143,9 +149,11 @@ Point your client at the URL. There is nothing to install and no key to get:
     https://echorune.net/mcp        # remote MCP server, streamable HTTP
 
 One tool, `get_weather`, taking a place (any language, or `lon,lat`) and an
-optional language. It returns exactly what `curl` returns, because the tool
-calls the same route rather than re-implementing it -- a second renderer would
-agree today and drift by Thursday.
+optional language. It returns exactly what `curl` returns -- the text, and the
+radar map as an image (`/<place>/radar.png`) for a model that can see -- because
+the tool calls the same routes rather than re-implementing them: a second
+renderer would agree today and drift by Thursday. When the map is not ready yet
+the reply says so in a line instead of the image.
 
 Listed in the official MCP registry as `io.github.luoshu-echorune/echorune-radar`,
 and verified with the official `mcp` SDK, not only with hand-rolled JSON-RPC:
