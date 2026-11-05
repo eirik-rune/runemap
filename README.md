@@ -1,15 +1,26 @@
 # runemap
 
-**A weather radar you can read as text.** One HTTP request, no image, no API
-key, no account. It renders in a terminal, in a prompt, or in a log line -- so a
-person and a program read the same answer.
+**A weather radar you can read as text.** One HTTP request, no API key, no
+account. It renders in a terminal, in a prompt, or in a log line -- so a person
+and a program read the same answer. Add `.png` and a person on a phone gets the
+same weather as one picture, in their language:
+
+<p align="center">
+  <img src="docs/pictures/hero.png" width="880" alt="Three phone screens side by side, all in rain: São Paulo in English, Wuhan in Chinese, Sapporo in Japanese. Each shows the temperature and conditions, a one-line forecast, and a radar map with an arrow for where the rain is moving.">
+</p>
+
+<p align="center"><sub>
+  Frozen 2026-11-05 at 14:15 UTC, while it was raining in all three.
+  Live: <code>echorune.net/saopaulo.png</code> · <code>echorune.net/武汉.png</code> · <code>echorune.net/sapporo/ja.png</code>
+  · full length: <a href="docs/pictures/saopaulo.png">São Paulo</a> · <a href="docs/pictures/wuhan.png">武汉</a> · <a href="docs/pictures/sapporo-ja.png">札幌</a>
+</sub></p>
 
 Measured 2026-11-04, in English, with the next 24 hours and 5 days included:
 2.4 KB for Taipei under a clear sky, 5.2 KB for Shanghai in rain, and 1.3 KB
 for Reykjavik, where we have no radar and the reply says so in one line instead
 of drawing an empty grid.
 
-    curl echorune.net/taipei
+    curl echorune.net/wuhan
 
 Radar is normally a picture, and a picture is the one thing most LLM agents
 cannot see. So when an agent asks *"is it about to rain on me, and from which
@@ -19,67 +30,71 @@ the rain is, how strong it is, and which way it is moving** -- about 600 tokens
 for 48x24.
 
 ```
-# Taipei, Taipei City, Taiwan, TW weather scene
-# updated 2026-11-04 08:45 UTC+8  (lon 121.52639, lat 25.05306)
-now: CLEAR_DAY  25C  humidity 72%  wind 14km/h  precip 0.00mm/h
-feels 26C  today 23~30C  wind E 14km/h
-AQI(CN) 65 good  sunrise 06:03  sunset 17:11
-The nearest area experiencing rain is to the NE, 94 km away
+# Wuhan, Wuhan Shi, Hubei, CN weather scene
+# updated 2026-11-05 22:17 UTC+8  (lon 114.26667, lat 30.58333)
+now: MODERATE_RAIN  16C  humidity 100%  wind 3km/h  precip 3.59mm/h
+feels 18C  today 12~22C  wind NE 3km/h
+AQI(CN) 52 good  sunrise 06:40  sunset 17:32
+Rain intensity gradually increases. After 46 minute, shifts to moderate rain, but after one hour, the rain stops
 
-rain curve (next 2h): no precipitation expected
+rain curve (next 2h, 6min/bucket):
+▄▂▁▂▄▄▄▆▇▄▄▂▁ ▂▂▄█▄▁
+├────┼────┼────┼────┤
+0   30   60   90 120min
+peak 8.83mm/h in 104min  chance per 30min: 100% 97% 84% 98%
 
-radar: predict 08:40  obs age: 15min ok  obs at: 00:30Z
-~4km/char, [><]=Taipei, Taipei City, Taiwan, TW
+radar: predict 22:16  obs age: 6min ok  obs at: 14:11Z
+~6km/char, [><]=Wuhan, Wuhan Shi, Hubei, CN
                                                 
                                                 
                                                 
                                                 
                                                 
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                        ><                      
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-                                                
-= echo motion: undetermined (echo too sparse to track)
+                                       ░░░░░    
+                                 ░░░░░▒░░░░░░░░░
+                                   ░░░░░░   ░░░░
+        ░░░                                    ░
+░░░░   ░░░░░░░░░░░░░        ░░░░░░░  ░░░░░░░░░░░
+░░░░  ░░░░░░▒░░░░░░░░░░▒▒▒▓▓▒▒▒▒▒░░░░▒░░░░░░░░░░
+░░░░░░░░░░░░▒░░░░░░▒▒░▒▓▓▓▓▓▓▓▒▒▒░░░░░░░░░░▒▒░░░
+░░░░░░░░▒▒▒▒░▒░░░░░░░░░░><░░░░░░░   ░░░░░▒▒▒▒░░░
+░░░░░░░░▒▓▓▒▒░░░▓▓▒▒░░░  ░░▒░░░        ░░▒▒░░░░░
+░▒▒░▒▒░░░░▒▒▒▒░░▓▓▓▒░░░░░░░░░           ░░░░░▒▒▒
+░░▒▒▒▒▓▒▓▒░░░░░░░░░░░░░▒▒░░░░░       ░░░░░░▒▓▓▓▓
+░░▒▒▒▓██▓▓▓▓▓▓▒░░░░░             ░░░░▒▓▓▓▒░▓▓▓▓▓
+▒▒▓▒▓▒▓▓▓█▓█▓▓▓▓▒░░░░░░░░░▓▓▓▓█░░░░░▓▓▓▓▓▒▓▒▒▒▒▒
+░▒▒▒▓▓▓▓▓█▓█▓▓▓▓▓▓▒▒▓▓▓▒▓▓▓▓▓▓█▒▒░░░░░░▒░▓▓▓▓▒░░
+░░▒▒░▓▓▓▓▓▓▓▓▓██▓█▓▓▓▓▒▒░▒░░░░▒▒▒▒▒░░░░▒▒░▒▒░░░░
+░░▒▒░▒▒▒▒▓▓▓▓▒▓▓▓▓▓▓▓▓▓░▒▒░░░▒▒▓▓▒▓▓▓▒▒▒▒▒░░░▒▒▒
+░░░░░▒▓▒▒░░▒▓▓░░░░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▓▓▒░░░░░░░▒▒░░
+░░░░░░▒▓▓▓▒░░░░░░░▓▓▓▓▓███▓▓▓▓▓▓▓▓▓▓▒░░░░░░░░░░░
+░░░░░░░░░▒░    ░░░▓██▓▓███▓▓▓░░▒▓▓▓▒▒░░░░░░░░   
+→ E ~20 km/h   echo motion, upstream forecast
 legend: · drizzle  ░ light  ▒ moderate  ▓ heavy  █ storm  blank=no echo
 
 next 24h (local time, every 3h):
-08:00   25C  CLEAR_DAY
-11:00   29C  CLEAR_DAY
-14:00   30C  PARTLY_CLOUDY_DAY
-17:00   27C  CLEAR_NIGHT
-20:00   25C  CLEAR_NIGHT
-23:00   24C  CLEAR_NIGHT
-02:00   23C  CLEAR_NIGHT
-05:00   23C  CLEAR_NIGHT
-AQI forecast: the source gives none for this place
+22:00   16C  LIGHT_RAIN           rain 98% 0.6mm/h  AQI 52
+01:00   16C  PARTLY_CLOUDY_NIGHT                    AQI 55
+04:00   16C  LIGHT_RAIN           rain 60%          AQI 52
+07:00   16C  PARTLY_CLOUDY_DAY                      AQI 52
+10:00   19C  PARTLY_CLOUDY_DAY                      AQI 50
+13:00   23C  PARTLY_CLOUDY_DAY                      AQI 47
+16:00   24C  CLEAR_DAY                              AQI 47
+19:00   21C  CLEAR_NIGHT                            AQI 53
 
 next 5 days (AQI: the day's highest):
-11-04 Wed  23~30C  CLEAR_DAY             AQI 65 good
-11-05 Thu  23~28C  CLEAR_DAY
-11-06 Fri  23~26C  LIGHT_RAIN  rain 60%
-11-07 Sat  23~27C  LIGHT_RAIN  rain 60%
-11-08 Sun  23~30C  CLEAR_DAY
+11-05 Thu  12~22C  MODERATE_RAIN      rain 70%  AQI 55 good
+11-06 Fri  16~24C  PARTLY_CLOUDY_DAY            AQI 55 good
+11-07 Sat  14~19C  MODERATE_RAIN      rain 70%  AQI 53 good
+11-08 Sun  13~17C  CLOUDY                       AQI 32 excellent
+11-09 Mon  11~16C  PARTLY_CLOUDY_DAY            AQI 35 excellent
 
-picture: https://echorune.net/taipei.png
+picture: https://echorune.net/wuhan.png
 data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)
 ```
 
-*Frozen sample: Taipei, 2026-11-04 08:45 UTC+8.* Deliberately not live -- a
+*Frozen sample: Wuhan, 2026-11-05 22:17 UTC+8, in moderate rain -- two minutes
+after the Chinese picture above.* Deliberately not live -- a
 pasted "live" reading starts lying six minutes after it is pasted. What freezing
 protects is the weather, **not the format**: this sample sat unchanged from
 2026-07-29 while the header, the radar line and the legend all moved, so anyone
@@ -87,8 +102,12 @@ following it would have compared their real answer against fields we no longer
 print. It is re-frozen when the format changes. Run the curl above for today.
 
 A person on a phone gets the same weather as one picture instead:
-`echorune.net/taipei.png` (or `/taipei/zh.png`, `/taipei/ja.png`), sized for a
-phone screen, in one request like the text. A QR code at the bottom opens the
+`echorune.net/wuhan.png` (or `/wuhan/zh.png`, `/wuhan/ja.png`), sized for a
+phone screen, in one request like the text. A name written in Chinese or
+Japanese picks the language by itself: `/武汉.png` comes back in Chinese. Han
+characters alone read as Chinese unless the phone asks for Japanese, so for a
+Japanese picture write the name in kana or ask for it, as the Sapporo one above
+was: `/sapporo/ja.png`. A QR code at the bottom opens the
 latest picture for the same place, so whoever receives a forwarded copy can get
 a fresh one. Every text reply links it on its second-to-last line, so an agent
 can hand a person the picture without knowing the route.
