@@ -370,6 +370,40 @@ def _why_header(v, why):
     return ("leftover:" + why) if v == "grid" else why
 
 
+class RouteSaid(Exception):
+    """The page route answered with an error and said why, in its own words.
+
+    #248 (2026-11-06): get_weather with 故宫 came back as `could not render
+    '故宫': HTTP Error 404: Not Found`. The route had said "place not found:
+    故宫 / try a city"; the MCP wrapper threw that sentence away and kept the
+    status line, which reads like a server fault, so a model may retry the same
+    name or give up instead of sending coordinates."""
+
+    def __init__(self, code, text):
+        Exception.__init__(self, "HTTP %d: %s" % (code, text))
+        self.code, self.text = code, text
+
+
+def mcp_route_error(place, code, text):
+    """-> the isError text for a tool call whose page route refused.
+
+    Place-not-found gets its own sentence, written for a model rather than for
+    somebody at a shell: the gazetteer holds cities, towns and districts, not
+    landmarks, campuses or venues, and the way to ask about one of those is its
+    coordinates -- which a calling model usually knows. Any other refusal is
+    passed on in the route's own words, minus the `curl` hints that only make
+    sense on the web side."""
+    lines = [l for l in (text or "").strip().splitlines()
+             if l.strip() and "curl " not in l]
+    if code == 404 and lines and lines[0].startswith("place not found"):
+        return ("place not found: %r. This service finds cities, towns and "
+                "districts by name; it does not know landmarks, campuses or "
+                "venues. For one of those, call again with its coordinates as "
+                "'lon,lat', longitude first (e.g. 116.397,39.918), or with the "
+                "name of the city or district it is in." % place)
+    return "\n".join(lines) or "HTTP %d" % code
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     _head = False
@@ -532,9 +566,12 @@ class H(BaseHTTPRequestHandler):
             "type": "object",
             "properties": {
                 "place": {"type": "string",
-                          "description": "Place name (any language) or 'lon,lat' "
-                                         "with longitude first, e.g. tokyo, 清迈, "
-                                         "or 139.7,35.7"},
+                          "description": "A city, town or district name in any "
+                                         "language, e.g. tokyo, 清迈, 海淀区; or "
+                                         "'lon,lat' with longitude first, e.g. "
+                                         "139.7,35.7. Landmarks, campuses and "
+                                         "venues are not known by name: pass "
+                                         "their coordinates."},
                 "lang": {"type": "string", "enum": ["en", "zh", "ja"],
                          "description": "Language of the reply. Default en."},
             },
@@ -554,9 +591,17 @@ class H(BaseHTTPRequestHandler):
         # that link is built from Host; without it, from the #242 deploy
         # (2026-11-04) to this fix, every tool reply said
         # `picture: http://127.0.0.1:8788/...`, which opens only on this machine.
+        import urllib.error as _ue
         req = _ur.Request(url, headers={"Host": self.headers.get("Host") or "echorune.net"})
-        with _ur.urlopen(req, timeout=SCENE_BUDGET + 5) as r:
-            return r.read().decode("utf-8", "replace")
+        try:
+            with _ur.urlopen(req, timeout=SCENE_BUDGET + 5) as r:
+                return r.read().decode("utf-8", "replace")
+        except _ue.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            raise RouteSaid(e.code, body)
 
     def _mcp_radar_png(self, place):
         """-> (PNG bytes, None) or (None, reason): the radar map as a picture,
@@ -760,6 +805,9 @@ class H(BaseHTTPRequestHandler):
                            "text": "place is required, e.g. tokyo or 139.7,35.7"}]})
             try:
                 content = self._mcp_content(place, (a.get("lang") or "en").lower())
+            except RouteSaid as e:
+                return ok({"isError": True, "content": [{"type": "text",
+                           "text": mcp_route_error(place, e.code, e.text)}]})
             except Exception as e:
                 return ok({"isError": True, "content": [{"type": "text",
                            "text": "could not render %r: %s" % (place, e)}]})
