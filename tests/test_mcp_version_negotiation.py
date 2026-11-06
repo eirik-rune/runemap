@@ -277,3 +277,72 @@ class TheToolReplyCarriesThePicture(unittest.TestCase):
         self.assertIn("image", d)
         self.assertIn("model", d)
         self.assertIn("person", d)
+
+
+class APlaceItDoesNotKnowSaysWhatToSendInstead(unittest.TestCase):
+    """#248: a landmark name came back as a bare `HTTP Error 404: Not Found`,
+    which reads like a server fault. The route had said "place not found";
+    the tool now passes that on and tells the model what to send instead."""
+
+    NOT_FOUND = ("place not found: 故宫\n\n"
+                 "try  curl echorune.net/<city>/en   or  curl echorune.net/help\n")
+
+    def setUp(self):
+        import serve
+        self.serve = serve
+
+    def scene_against(self, code, body):
+        import io
+        import urllib.error as ue
+        import urllib.request as ur
+
+        class Me:
+            headers = {"Host": "echorune.net"}
+
+            class server:
+                server_address = ("127.0.0.1", 8788)
+        m = Me()
+        m._mcp_scene = self.serve.H._mcp_scene.__get__(m)
+
+        def refuse(req, timeout=None):
+            raise ue.HTTPError(req.full_url, code, "x", {}, io.BytesIO(body.encode("utf-8")))
+        orig = ur.urlopen
+        ur.urlopen = refuse
+        try:
+            m._mcp_scene("故宫", "en")
+        except self.serve.RouteSaid as e:
+            return e
+        finally:
+            ur.urlopen = orig
+        self.fail("no RouteSaid raised")
+
+    def test_the_routes_words_are_kept_not_the_status_line(self):
+        e = self.scene_against(404, self.NOT_FOUND)
+        self.assertEqual(e.code, 404)
+        self.assertIn("place not found: 故宫", e.text)
+
+    def test_not_found_tells_the_model_to_send_coordinates(self):
+        t = self.serve.mcp_route_error("故宫", 404, self.NOT_FOUND)
+        self.assertIn("place not found: '故宫'", t)
+        self.assertIn("lon,lat", t)
+        self.assertIn("landmark", t)
+        self.assertNotIn("HTTP Error", t)
+        self.assertNotIn("curl", t)
+
+    def test_another_refusal_is_passed_on_in_its_own_words(self):
+        body = ("coordinates are lon,lat -- longitude first, like Caiyun and Dark Sky.\n\n"
+                "  you sent   lon 39.9, lat 116.3   (latitude must be -90..90)\n"
+                "  did you mean  curl echorune.net/116.3,39.9\n")
+        t = self.serve.mcp_route_error("39.9,116.3", 400, body)
+        self.assertIn("longitude first", t)
+        self.assertIn("latitude must be -90..90", t)
+        self.assertNotIn("place not found", t)
+        self.assertNotIn("curl", t)
+
+    def test_an_empty_refusal_still_says_something(self):
+        self.assertEqual(self.serve.mcp_route_error("x", 502, ""), "HTTP 502")
+
+    def test_the_place_description_says_landmarks_need_coordinates(self):
+        d = self.serve.H._MCP_TOOL["inputSchema"]["properties"]["place"]["description"]
+        self.assertIn("lon,lat", d)
+        self.assertIn("Landmarks", d)
