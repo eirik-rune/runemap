@@ -393,8 +393,23 @@ def mcp_route_error(place, code, text):
     coordinates -- which a calling model usually knows. Any other refusal is
     passed on in the route's own words, minus the `curl` hints that only make
     sense on the web side."""
-    lines = [l for l in (text or "").strip().splitlines()
-             if l.strip() and "curl " not in l]
+    # Several refusals end with the whole HOME help page (a person at a shell
+    # who typed something wrong gets the manual). For a model that is ~3 KB of
+    # noise around a one-line answer -- first deploy of #249 sent it all, seen
+    # by calling the live tool with 39.9,116.3. Cut it, and turn the one curl
+    # hint that carries an answer ("did you mean curl echorune.net/X") into the
+    # tool's own terms.
+    import re as _re
+    text = (text or "").split(HOME)[0]
+    lines = []
+    for l in text.splitlines():
+        if not l.strip():
+            continue
+        m = _re.search(r"did you mean\s+curl echorune\.net/(\S+)", l)
+        if m:
+            lines.append("did you mean place=%r" % m.group(1))
+        elif "curl " not in l:
+            lines.append(l.strip())
     if code == 404 and lines and lines[0].startswith("place not found"):
         return ("place not found: %r. This service finds cities, towns and "
                 "districts by name; it does not know landmarks, campuses or "

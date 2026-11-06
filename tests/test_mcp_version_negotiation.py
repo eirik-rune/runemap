@@ -339,6 +339,17 @@ class APlaceItDoesNotKnowSaysWhatToSendInstead(unittest.TestCase):
         self.assertNotIn("place not found", t)
         self.assertNotIn("curl", t)
 
+    def test_the_help_page_a_refusal_ends_with_is_not_passed_to_the_model(self):
+        # what the live route really sends for lat,lon in the wrong order
+        body = ("coordinates are lon,lat -- longitude first, like Caiyun and Dark Sky.\n\n"
+                "  you sent   lon 39.9, lat 116.3   (latitude must be -90..90)\n"
+                "  did you mean  curl echorune.net/116.3,39.9\n\n" + self.serve.HOME)
+        t = self.serve.mcp_route_error("39.9,116.3", 400, body)
+        self.assertIn("latitude must be -90..90", t)
+        self.assertIn("did you mean place='116.3,39.9'", t)
+        self.assertNotIn(self.serve.HOME.strip().splitlines()[0], t)
+        self.assertLess(len(t), 300)
+
     def test_an_empty_refusal_still_says_something(self):
         self.assertEqual(self.serve.mcp_route_error("x", 502, ""), "HTTP 502")
 
