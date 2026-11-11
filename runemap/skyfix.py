@@ -16,7 +16,10 @@ are never touched):
       15% .. 85%                    -> partly cloudy
       >= 85% and sunlight >= 65%    -> partly cloudy (thin cloud the sun shines through)
       >= 85% otherwise              -> overcast
-  no observation (off the disk, stale, night, low sun):
+  sun low or down at the frame (below ~10 deg), observation only takes cloud away:
+      < 15%, humidity < 75%, visibility > 10 km   -> clear
+      anything else                               -> the source's word
+  no observation (off the disk, stale):
       CLOUDY and sunlight >= 65% of clear-sky  -> partly cloudy
 
 "sunlight" is kt = dswrf / Haurwitz clear-sky. The observation decides now:
@@ -39,10 +42,28 @@ hour mark (1.01/1.02/1.02/1.01/1.00) but drifts half an hour off (to 0.76 or
 dswrf is hourly[0]'s (otherwise logged SKYFIX-UNTIMED and the sunlight rule
 stays out).
 
-Low sun: the sunlight rule needs cos z >= 0.30 at its hour; the observation is
-used while the sun is above ~10 deg at the frame time (cos z >= 0.17). Below
-that, and at night, the source's word stands: the mask was only checked at
-noon, and twilight is where it is weakest.
+Low sun: the sunlight rule needs cos z >= 0.30 at its hour; the full
+observation rule is used while the sun is above ~10 deg at the frame time
+(cos z >= 0.17).
+
+Below that -- low sun, twilight, night -- only the clear half is open (11-11
+evening: Shenzhen CAVOK, share 0.05, printed overcast). The night mask works
+in the infrared, where the thin high cloud that fooled the model is cold and
+plain to see; what it misses is fog and low stratus, which are as warm as the
+ground. So:
+  * clear only when the mask sees < 15% AND the ground air is too dry for fog
+    (humidity < 0.75, visibility > 10 km). Missing either -> no change: the
+    worst case is the old behaviour.
+  * never toward overcast: Shanghai that night read 1.00 over a CAVOK sky
+    (thin cirrus); without sunlight 1.00 cannot tell cirrus from a deck.
+Counted by Qianlu on her 39 airports, 17:05-19:05 Beijing (rule_replay.py):
+17 changes, the 11 with a METAR all CAVOK/NSC, 6 without one; the 5 of those
+with the sun still above the horizon had 3 METARs, all CAVOK. Not tested:
+a fog night -- none of the 39 had fog or a low deck. 0.75 and 10 km are her
+physical estimate, not counted; her morning table is the check. Gate held
+back a clear sky -> logged SKYFIX-GATED, so we can count it too.
+Day or night in the clear word: the source's own suffix; for CLOUDY, whether
+the sun was up at the frame.
 
 Haurwitz is a sea-level model; on high ground kt reads somewhat high. Judged
 acceptable under thick cloud, not measured.
@@ -56,6 +77,8 @@ KT_MIN = 0.65
 COSZ_MIN = 0.30          # sunlight rule
 COSZ_OBS = 0.17          # observation used while the sun is above ~10 deg
 LO, HI = 0.15, 0.85      # cloud share: clear below LO, overcast from HI
+HUM_MAX = 0.75           # sun low/down: clear only in air too dry for fog ...
+VIS_MIN = 10.0           # ... and with the airport-scale view open, km
 _AT = 0.5                # W/m2: realtime dswrf "is" hourly[0]'s value within this
 
 
@@ -107,6 +130,20 @@ def decide(sky, kt=None, frac=None, day=True):
     return "CLOUDY"
 
 
+def dry_air(hum, vis):
+    """Too dry for fog or a deck on the ground; unknown is not dry."""
+    return _num(hum) and hum < HUM_MAX and _num(vis) and vis > VIS_MIN
+
+
+def decide_low(sky, frac, hum, vis, up):
+    """Sun low or down: the clear word, or None when the source's word stands."""
+    if sky not in DRY or frac >= LO or not dry_air(hum, vis):
+        return None
+    if sky.endswith("_NIGHT") or (sky == "CLOUDY" and not up):
+        return "CLEAR_NIGHT"
+    return "CLEAR_DAY"
+
+
 def _utc(iso):
     try:
         t = datetime.fromisoformat(iso)
@@ -125,12 +162,16 @@ def apply(result, lon, lat, obs=(None, None)):
     """Correct a /weather "result" in place and return it.
 
     obs: (cloud share, frame time) from cloudmask.cloud_fraction, or (None, None).
-    Sets realtime["cloudmask_at"] when the observation decided anything, so the
-    page can credit it. Applying twice changes nothing the second time."""
+    Sets realtime["cloudmask_at"] when the observation decided the word (by day
+    whenever there is one; with the sun low, only when it made the sky clear),
+    so the page can credit it. Applying twice changes nothing the second time."""
     lon, lat = float(lon), float(lat)
     frac, ft = obs if obs else (None, None)
-    if frac is not None and (ft is None or cos_zenith(lon, lat, ft) < COSZ_OBS):
-        frac = None                         # night or twilight: the mask was not checked there
+    low = None                              # the share, when the sun was low or down at the frame
+    if frac is not None and ft is None:
+        frac = None
+    elif frac is not None and cos_zenith(lon, lat, ft) < COSZ_OBS:
+        low, frac = frac, None              # there only the clear half is open
     hr = result.get("hourly") or {}
     sun = {}
     for x in hr.get("dswrf") or []:
@@ -147,14 +188,25 @@ def apply(result, lon, lat, obs=(None, None)):
         kt = sunlight(d, lon, lat, t0)
     elif _num(d) and rt.get("skycon") == "CLOUDY":
         sys.stderr.write("SKYFIX-UNTIMED realtime dswrf=%.1f hourly0=%r\n" % (d, fv))
-    now = decide(rt.get("skycon"), kt, frac)
-    if now != rt.get("skycon"):
-        rt["skycon_upstream"] = rt.get("skycon_upstream", rt.get("skycon"))
+    sky0 = rt.get("skycon")
+    now = decide(sky0, kt, frac)
+    seen = frac is not None                 # the observation decided the word
+    if low is not None:
+        hum, vis = rt.get("humidity"), rt.get("visibility")
+        clr = decide_low(sky0, low, hum, vis, cos_zenith(lon, lat, ft) > 0)
+        if clr:
+            now, seen = clr, True
+        elif sky0 in DRY and not sky0.startswith("CLEAR") and low < LO:
+            sys.stderr.write("SKYFIX-GATED %s frac=%.2f hum=%r vis=%r at %.2f,%.2f\n" % (
+                sky0, low, hum, vis, lon, lat))
+    if now != sky0:
+        rt["skycon_upstream"] = rt.get("skycon_upstream", sky0)
         rt["skycon"] = now
+        shown = frac if frac is not None else low
         sys.stderr.write("SKYFIX %s -> %s frac=%s kt=%s at %.2f,%.2f\n" % (
-            rt["skycon_upstream"], now, "-" if frac is None else "%.2f" % frac,
+            rt["skycon_upstream"], now, "-" if shown is None else "%.2f" % shown,
             "-" if kt is None else "%.2f" % kt, lon, lat))
-    if frac is not None:
+    if seen:
         rt["cloudmask_at"] = ft.strftime("%Y-%m-%dT%H:%MZ")
 
     # hourly: the current hour shows what realtime shows when observed;
@@ -162,7 +214,7 @@ def apply(result, lon, lat, obs=(None, None)):
     for i, it in enumerate(hr.get("skycon") or []):
         if not isinstance(it, dict) or it.get("value") not in DRY:
             continue
-        if i == 0 and frac is not None and now in DRY:
+        if i == 0 and seen and now in DRY:
             _set(it, "value", now)
             continue
         t = _utc(it.get("datetime"))
@@ -172,7 +224,7 @@ def apply(result, lon, lat, obs=(None, None)):
 
     # today's summary cannot be "overcast" while we observe that it is not
     dy = (result.get("daily") or {}).get("skycon") or []
-    if dy and isinstance(dy[0], dict) and frac is not None and dy[0].get("value") == "CLOUDY" \
-            and now in ("CLEAR_DAY", "PARTLY_CLOUDY_DAY"):
+    if dy and isinstance(dy[0], dict) and seen and dy[0].get("value") == "CLOUDY" \
+            and now in ("CLEAR_DAY", "CLEAR_NIGHT", "PARTLY_CLOUDY_DAY"):
         _set(dy[0], "value", "PARTLY_CLOUDY_DAY")
     return result
