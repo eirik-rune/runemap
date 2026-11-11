@@ -175,13 +175,13 @@ class TheLowSun(unittest.TestCase):
         self.assertIn("SKYFIX CLOUDY -> CLEAR_NIGHT frac=0.05", err)
 
     def test_air_that_could_hold_fog_or_unknown_air_leaves_the_word_and_says_so(self):
-        for hum, vis in ((0.80, 23.0), (0.75, 23.0), (0.49, 8.0), (0.49, 10.0),
+        for hum, vis in ((0.96, 23.0), (0.85, 23.0), (0.49, 8.0), (0.49, 10.0),
                          (None, 23.0), (0.49, None), ("0.4", 23.0), (True, 23.0)):
             r, err = tonight(hum=hum, vis=vis)
             self.assertEqual(sky(r), ("CLOUDY", ["CLOUDY", "CLOUDY"], "CLOUDY"), (hum, vis))
             self.assertNotIn("cloudmask_at", r["realtime"], (hum, vis))
             self.assertIn("SKYFIX-GATED CLOUDY frac=0.05", err, (hum, vis))
-        r, err = tonight(hum=0.749, vis=10.01)                        # just inside both
+        r, err = tonight(hum=0.849, vis=10.01)                        # just inside both
         self.assertEqual(r["realtime"]["skycon"], "CLEAR_NIGHT")
 
     def test_never_toward_overcast(self):

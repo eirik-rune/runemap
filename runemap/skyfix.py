@@ -52,16 +52,27 @@ in the infrared, where the thin high cloud that fooled the model is cold and
 plain to see; what it misses is fog and low stratus, which are as warm as the
 ground. So:
   * clear only when the mask sees < 15% AND the ground air is too dry for fog
-    (humidity < 0.75, visibility > 10 km). Missing either -> no change: the
+    (humidity < 0.85, visibility > 10 km). Missing either -> no change: the
     worst case is the old behaviour.
   * never toward overcast: Shanghai that night read 1.00 over a CAVOK sky
     (thin cirrus); without sunlight 1.00 cannot tell cirrus from a deck.
 Counted by Qianlu on her 39 airports, 17:05-19:05 Beijing (rule_replay.py):
 17 changes, the 11 with a METAR all CAVOK/NSC, 6 without one; the 5 of those
-with the sun still above the horizon had 3 METARs, all CAVOK. Not tested:
-a fog night -- none of the 39 had fog or a low deck. 0.75 and 10 km are her
-physical estimate, not counted; her morning table is the check. Gate held
-back a clear sky -> logged SKYFIX-GATED, so we can count it too.
+with the sun still above the horizon had 3 METARs, all CAVOK. The gate
+started as her physical estimate (0.75, 10 km); the night of 11-11/12 set it
+(her dawn table, 11 rounds 20:05-06:05 Beijing, METARs paired by observation
+hour; the 52 samples and the 38 passed / 14 held replay here exactly):
+  * at 0.75, 7 of the held were clear skies at the airport; at 0.85, 3. No
+    pass had mist or a deck below 3000 ft at the airport.
+  * mist hours (airport BR, share < 0.15) were 18, all called haze or fog by
+    the source, which this rule leaves alone. Its visibility read 10.4-22.7
+    km against the airports' 1.6-5 km, so the visibility gate does not see
+    mist; humidity would, if the source ever called such air cloudy: 0.75
+    holds 15 of the 18, 0.85 holds 14.
+  * what no gate catches: Zhuhai BKN046 read 0.00 twice -- a warm low deck,
+    near ground temperature in the infrared. 2 of 23 paired passes, one
+    station, one night.
+Gate held back a clear sky -> logged SKYFIX-GATED, so production counts too.
 Day or night in the clear word: the source's own suffix; for CLOUDY, whether
 the sun was up at the frame.
 
@@ -77,7 +88,7 @@ KT_MIN = 0.65
 COSZ_MIN = 0.30          # sunlight rule
 COSZ_OBS = 0.17          # observation used while the sun is above ~10 deg
 LO, HI = 0.15, 0.85      # cloud share: clear below LO, overcast from HI
-HUM_MAX = 0.75           # sun low/down: clear only in air too dry for fog ...
+HUM_MAX = 0.85           # sun low/down: clear only in air too dry for fog ...
 VIS_MIN = 10.0           # ... and with the airport-scale view open, km
 _AT = 0.5                # W/m2: realtime dswrf "is" hourly[0]'s value within this
 
