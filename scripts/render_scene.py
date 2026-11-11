@@ -8,6 +8,7 @@ import importlib, json, math, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from runemap.render import ascii_radar, ascii_radar_centered, RAMP
+from runemap import skyfix as _SKYFIX
 
 # One window for every asker, switched by env so the tree is safe to deploy.
 # RUNEMAP_SPAN_KM=0 (default, production today) keeps the upstream station's
@@ -109,6 +110,10 @@ def weather_full(lng, lat, token, lang):
     d = json.loads(_get("https://api.caiyunapp.com/v2.6/%s/%s,%s/weather?hourlysteps=24&lang=%s&unit=metric:v2" % (token, lng, lat, lang)))
     if d.get("status") != "ok":
         raise RuntimeError("weather api %s" % d.get("status"))
+    # "overcast" while the source's own sunlight says the sun is out
+    # (Shenzhen 2026-11-11): see runemap/skyfix.py. Here, so the text and the
+    # picture read the same corrected answer.
+    _SKYFIX.apply(d.get("result") or {}, lng, lat)
     return d
 
 
@@ -1587,6 +1592,8 @@ _TX = {
                hours="next 24h (local time, every 3h):", rain="rain {p}%",
                aqi_none="AQI forecast: the source gives none for this place",
                days="next {n} days:", days_aqi="next {n} days (AQI: the day's highest):",
+               sky_fix="sky: CLOUDY upstream, its own sunlight {kt}% of clear-sky: PARTLY_CLOUDY_DAY",
+               sky_fix_h="* CLOUDY upstream; its own sunlight that hour >= {m}% of clear-sky",
                broken="(the rest of the forecast could not be read from the source's answer)"),
     "zh": dict(feel="体感 {v}C", today="今日 {lo}~{hi}C", wind="{d}风 {v}km/h",
                aqi="AQI(CN) {v} {b}", sun="日出 {r}  日落 {s}",
@@ -1595,6 +1602,8 @@ _TX = {
                hours="未来24小时(当地时间, 每3小时):", rain="降水 {p}%",
                aqi_none="空气质量预报: 数据源没有给出这里的",
                days="未来{n}天:", days_aqi="未来{n}天(AQI 为当天最高):",
+               sky_fix="天空: 彩云报阴, 但它自己的地面辐射是晴空的{kt}%, 改为多云",
+               sky_fix_h="* 彩云报阴, 但该小时它自己的地面辐射 >= 晴空的{m}%, 改为多云",
                broken="(其余预报没能从数据源的回答里读出来)"),
     "ja": dict(feel="体感 {v}C", today="今日 {lo}~{hi}C", wind="{d}の風 {v}km/h",
                aqi="AQI(CN) {v} {b}", sun="日の出 {r}  日の入り {s}",
@@ -1603,6 +1612,8 @@ _TX = {
                hours="今後24時間(現地時間, 3時間ごと):", rain="降水 {p}%",
                aqi_none="大気質予報: データ元からの提供なし",
                days="今後{n}日間:", days_aqi="今後{n}日間(AQIは日最高値):",
+               sky_fix="空: 上流は曇り, だが地表日射が晴天時の{kt}%のため晴れ時々曇り",
+               sky_fix_h="* 上流は曇り, その時刻の地表日射が晴天時の{m}%以上のため訂正",
                broken="(残りの予報はデータ元の応答から読み取れませんでした)"),
 }
 
@@ -1679,7 +1690,9 @@ def forecast_lines(lang, wx):
         # a series that is mostly holes is not a forecast (same rule as the picture)
         aq_ok = bool(aq) and sum(1 for x in aq if x) * 2 >= len(aq)
         idx = list(range(0, len(T), 3))
-        skies = [_sky_word(sk[i]["value"], lang) if i < len(sk) else "" for i in idx]
+        skies = [(_sky_word(sk[i]["value"], lang) + ("*" if "upstream" in sk[i] else ""))
+                 if i < len(sk) else "" for i in idx]
+        fixed = any(s.endswith("*") for s in skies)
         sw = max(cells(x) for x in skies)
         rains = []
         for i in idx:
@@ -1698,6 +1711,8 @@ def forecast_lines(lang, wx):
             if aq_ok and i < len(aq) and aq[i]:
                 row += "  AQI %d" % aq[i]
             L.append(row.rstrip())
+        if fixed:
+            L.append(X["sky_fix_h"].format(m="%.0f" % (_SKYFIX.KT_MIN * 100)))
         if aq and not aq_ok:
             L.append(X["aqi_none"])
     days = dy.get("temperature") or []
@@ -1775,6 +1790,8 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
+    if rt.get("skycon_upstream"):
+        L.append(_TX.get(lang, _TX["en"])["sky_fix"].format(kt="%.0f" % (rt["skycon_kt"] * 100)))
     L.extend(detail_lines(lang, wx))
     if kp:
         L.append(kp)
