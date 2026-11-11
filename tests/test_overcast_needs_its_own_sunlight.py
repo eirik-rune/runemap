@@ -241,8 +241,15 @@ class TheMaskReader(unittest.TestCase):
         self.paint(3)
         self.assertEqual(self.frac()[0], 1.0)
 
+    def test_a_frame_lasts_through_the_daily_gap(self):
+        """In use up to 10 (spacing) + 28 (NOAA's lag) + 5 (the feed's look) + 10
+        (no scan at 02:40/14:40 UTC) = 53 min; at 45 the sky flipped at noon.
+        And not much past an hour: older than that it is not "now"."""
+        self.assertEqual(self.frac(now=NOON + timedelta(minutes=53)), (0.0, NOON))
+        self.assertLessEqual(CM.MAX_AGE, timedelta(minutes=90))
+
     def test_every_way_to_be_wrong_is_none(self):
-        self.assertEqual(self.frac(now=NOON + timedelta(minutes=46)), (None, None))        # stale
+        self.assertEqual(self.frac(now=NOON + CM.MAX_AGE + timedelta(minutes=1)), (None, None))  # stale
         self.assertEqual(CM.cloud_fraction(-40.0, 22.5, now=NOON, d=self.d), (None, None))  # off the disk
         self.assertEqual(CM.cloud_fraction(*SZ, now=NOON, d=self.d + "/nope"), (None, None))
         self.paint(255)                                                                     # invalid pixels

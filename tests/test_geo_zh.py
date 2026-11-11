@@ -32,7 +32,14 @@ FIXTURE = [
      ["yangzhou", "yang chou", "扬州", "扬州市", "揚州", "揚州市"]),
     (2357048, "Ouagadougou", "BF", "13", "",
      ["ouagadougou", "uagadugu"]),
+    # 宝安 and 深圳 are both two characters and 宝 sorts first: code point
+    # order named Shenzhen after its old county (2026-11-11).
+    (1795565, "Shenzhen", "CN", "30", "",
+     ["shenzhen", "宝安", "深圳", "深圳市", "Shenzhen Shi"]),
 ]
+#: Where a place has to be for Natural Earth's row to be its row (within half a
+#: degree); the rest sit at Yangzhou, as before.
+COORDS = {1795565: (22.5455, 114.0683)}
 ADMIN = [("CN.04", "Jiangsu"), ("CN.04.3210", "Yangzhou Shi"),
          ("BF.13", "Centre")]
 
@@ -45,7 +52,7 @@ def build_db(path):
     c.execute("CREATE TABLE admin (code TEXT, name TEXT)")
     for pid, name, cc, a1, a2, aliases in FIXTURE:
         c.execute("INSERT INTO place VALUES (?,?,?,?,?,?,?,?,?)",
-                  (pid, name, 32.4, 119.4, cc, a1, a2, 500000, "Asia/Shanghai"))
+                  (pid, name, *COORDS.get(pid, (32.4, 119.4)), cc, a1, a2, 500000, "Asia/Shanghai"))
         for a in aliases:
             c.execute("INSERT INTO alias VALUES (?,?,?)", (a, pid, 500000))
     c.executemany("INSERT INTO admin VALUES (?,?)", ADMIN)
@@ -76,6 +83,15 @@ class ZhAsksInChineseAndIsAnsweredInChinese(unittest.TestCase):
         """扬州 over 扬州市 -- both are present, and the city suffix is not
         what a person typed."""
         self.assertEqual(self.geo.lookup("yangzhou", lang="zh")["label"], "扬州")
+
+    def test_a_tie_goes_to_the_name_natural_earth_gives(self):
+        for q in ("shenzhen", "深圳"):
+            self.assertEqual(self.geo.lookup(q, lang="zh")["label"], "深圳", q)
+
+    def test_the_tie_break_never_beats_a_shorter_name_or_brings_a_new_one(self):
+        self.assertEqual(self.geo.cjk_name(1787227, prefer="扬州市"), "扬州")
+        self.assertEqual(self.geo.cjk_name(1795565, prefer="鹏城"), "宝安")
+        self.assertEqual(self.geo.cjk_name(1795565, prefer=None), "宝安")
 
     def test_english_is_untouched(self):
         """The romanized chain is correct for /en and must not be collateral

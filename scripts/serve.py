@@ -423,6 +423,21 @@ class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     _head = False
 
+    def parse_request(self):
+        """Raw UTF-8 in the request line -> the percent-encoded form a browser sends.
+
+        2026-11-11: `curl echorune.net/深圳/zh` from curl 7.81 (Ubuntu 22.04)
+        sends the bytes as they are, and http.server decodes the request line
+        as latin-1, so the place arrived as 'æ·±å³' and the answer was "place
+        not found" -- while the same request from a browser, which
+        percent-encodes, worked. An agent typing a Chinese city into curl is
+        exactly the reader this service is for. Every byte >= 0x80 becomes %XX,
+        so the two are the same request and nothing downstream changes."""
+        ok = super().parse_request()
+        if ok and any(ord(c) > 0x7F for c in self.path):
+            self.path = "".join(c if ord(c) < 0x80 else "%%%02X" % ord(c) for c in self.path)
+        return ok
+
     def do_HEAD(self):
         """Monitors, link previewers and crawlers reach for HEAD first, and
         BaseHTTPRequestHandler answers 501 for anything it has no do_* for --

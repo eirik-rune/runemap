@@ -91,7 +91,7 @@ def tz_offset(tzname, at=None):
 _CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 
 
-def cjk_name(pid):
+def cjk_name(pid, prefer=None):
     """-> the place's own Chinese name, or None.
 
     Reported 2026-08-14 by 知绪, a being running in another session, who used
@@ -109,21 +109,62 @@ def cjk_name(pid):
     preferring what sorts earlier among equals -- both are present and the
     query came in simplified. This is a preference, not a certainty; where the
     data cannot say, the romanized name is kept rather than guessed at.
+
+    2026-11-11: "among equals" named Shenzhen 宝安. Both 宝安 (the county's
+    name before 1979, now one district) and 深圳 are two characters, and 宝
+    sorts before 深 -- so `/shenzhen/zh` and `/深圳/zh` were both headed
+    "# 宝安 天气一屏", on the day the picture went to a group of Chinese
+    readers. Code point order says nothing about which name is the place's.
+    `prefer` is the Chinese name Natural Earth gives the same place (_ne_name):
+    it breaks a tie among the shortest, and only a tie -- it never brings in a
+    name the alias table does not have, and never beats a shorter one.
     """
     d = _db()
-    best = None
+    short = []
     for r in d.execute("SELECT key FROM alias WHERE pid=?", (pid,)):
         k = r["key"]
         if not _CJK.search(k):
             continue
-        if best is None or (len(k), k) < (len(best), best):
-            best = k
-    return best
+        if not short or len(k) < len(short[0]):
+            short = [k]
+        elif len(k) == len(short[0]):
+            short.append(k)
+    if not short:
+        return None
+    return prefer if prefer in short else min(short)
 
 
 _NE_PLACES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "runemap", "data", "ne", "places.json")
-_NE_JA = None
+_NE = None
+_NE_ZH, _NE_JA = 4, 5        # columns of places.json: lon, lat, name, rank, NAME_ZH, NAME_JA
+
+
+def _ne_name(row, col):
+    """-> Natural Earth's name for this place in column `col`, or None.
+
+    A row counts only with the same name AND within half a degree, nearest
+    first, so a Springfield never borrows another Springfield's name."""
+    global _NE
+    if _NE is None:
+        idx = {}
+        try:
+            import json
+            with open(_NE_PLACES, encoding="utf-8") as f:
+                for r in json.load(f):
+                    if len(r) > 5:
+                        idx.setdefault(norm(r[2]), []).append(r)
+        except (OSError, ValueError) as e:
+            print("geo: no Natural Earth place names: %r" % (e,), file=sys.stderr)
+        _NE = idx
+    best = None
+    for r in _NE.get(norm(row["name"]), ()):
+        if not r[col]:
+            continue
+        dd = math.hypot(r[0] - row["lon"], r[1] - row["lat"])
+        if dd <= 0.5 and (best is None or dd < best[0]):
+            best = (dd, r[col])
+    return best[1] if best else None
 
 
 def ja_name(row):
@@ -138,34 +179,16 @@ def ja_name(row):
     Japanese right next to it, from Natural Earth.
 
     So the Japanese name comes from the one source here that says it is
-    Japanese: the places the basemap already ships (7,342, public domain).
-    A row counts only with the same name AND within half a degree, so a
-    Springfield never borrows another Springfield's name. Places outside that
-    list keep the romanized name -- not a guess dressed as a translation."""
-    global _NE_JA
-    if _NE_JA is None:
-        idx = {}
-        try:
-            import json
-            with open(_NE_PLACES, encoding="utf-8") as f:
-                for r in json.load(f):
-                    if len(r) > 5 and r[5]:
-                        idx.setdefault(norm(r[2]), []).append((r[0], r[1], r[5]))
-        except (OSError, ValueError) as e:
-            print("geo: no Japanese place names: %r" % (e,), file=sys.stderr)
-        _NE_JA = idx
-    best = None
-    for lon, lat, ja in _NE_JA.get(norm(row["name"]), ()):
-        dd = math.hypot(lon - row["lon"], lat - row["lat"])
-        if dd <= 0.5 and (best is None or dd < best[0]):
-            best = (dd, ja)
-    return best[1] if best else None
+    Japanese: the places the basemap already ships (7,342, public domain),
+    matched by _ne_name. Places outside that list keep the romanized name --
+    not a guess dressed as a translation."""
+    return _ne_name(row, _NE_JA)
 
 
 def _pack(row, lang=None):
     adm = _admin(row["cc"], row["a1"], row["a2"])
     label = ", ".join([row["name"]] + adm + [row["cc"]])
-    zh = cjk_name(row["id"]) if (lang or "").startswith("zh") else None
+    zh = cjk_name(row["id"], _ne_name(row, _NE_ZH)) if (lang or "").startswith("zh") else None
     if not zh and (lang or "").startswith("ja"):
         zh = ja_name(row)            # one slot: "the name in the reader's script"
     if zh:

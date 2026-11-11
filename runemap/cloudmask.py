@@ -26,7 +26,15 @@ from datetime import datetime, timedelta, timezone
 
 N = 5500
 DIR = os.environ.get("RUNEMAP_CMSK_DIR", "/srv/notes/skyfix/cmsk")
-MAX_AGE = timedelta(minutes=45)
+# A frame is in use until the next one lands. NOAA posts a frame 22-28 min
+# after its start (cmsk/feed.log, 11-11), the feed looks every 5 min and frames
+# are 10 min apart, so the one in use is up to ~43 min old -- and Himawari
+# takes no full-disk scan at 02:40 and 14:40 UTC (housekeeping; the bucket has
+# no CMSK for those slots), which adds 10: up to ~53. The first value, 45, would
+# have dropped Shenzhen from clear to partly cloudy around 11:15 Beijing time
+# every day until the 02:50 frame arrived (Qianlu's catch). The watchdog
+# (ops/cmsk_watch.sh) reads this number, so it rings when the reader gives up.
+MAX_AGE = timedelta(minutes=60)
 HALF = 5                                   # 11x11 pixels, about 22 km
 ATTRIB = {
     "en": "cloud mask: Himawari-9 (JMA) via NOAA Open Data",
