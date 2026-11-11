@@ -48,7 +48,7 @@ TEMP = (214, 96, 52); RAIN = (36, 104, 184); RAIN_L = (186, 212, 240)
 # and the same upstream text the text map uses -- so there is no second list
 # of them here to drift.
 T = {
- "en": dict(asof="as of {t}", feel="H {hi}° · L {lo}° · feels {fl}°", feel0="feels {fl}°",
+ "en": dict(asof="as of {t}", skyfix="Caiyun: cloudy · corrected", feel="H {hi}° · L {lo}° · feels {fl}°", feel0="feels {fl}°",
             humidity="humidity", wind="wind", wind_v="{d} {v} km/h", air="air quality",
             sun="sunrise – sunset", radar="Radar", around="{km} km around you",
             seen="seen {a}", moved="seen {a}, moved on to {b}",
@@ -69,7 +69,7 @@ T = {
             qr_this="This one is from {t}.",
             foot1="weather, radar & air: caiyunapp.com",
             foot2="basemap: Natural Earth · echorune.net"),
- "zh": dict(asof="{t} 更新", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
+ "zh": dict(asof="{t} 更新", skyfix="彩云报阴 · 按它自己的辐射订正", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
             humidity="湿度", wind="风", wind_v="{d}风 {v} km/h", air="空气质量",
             sun="日出 – 日落", radar="雷达", around="周围 {km} 公里",
             seen="{a} 观测", moved="{a} 观测，外推到 {b}",
@@ -90,7 +90,7 @@ T = {
             qr_this="这一张是 {t} 的。",
             foot1="天气、雷达、空气质量：彩云天气 caiyunapp.com",
             foot2="底图：Natural Earth · echorune.net"),
- "ja": dict(asof="{t} 時点", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
+ "ja": dict(asof="{t} 時点", skyfix="上流は曇り · 日射で訂正", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
             humidity="湿度", wind="風", wind_v="{d}の風 {v} km/h", air="大気質",
             sun="日の出 – 日の入り", radar="レーダー", around="周辺 {km} km",
             seen="{a} 観測", moved="{a} 観測、{b} まで外挿",
@@ -341,6 +341,12 @@ def _layout(pg, wx_full, radar, label, motion, basis, span_km, radar_note, sky, 
     pg.text(X0 - 4, y + 6, temp, 88, INK)
     pg.icon(X1 - 40, y + 58, 76, rt.get("skycon"))
     pg.text(X0, y + 112, sky.get(rt.get("skycon"), ""), 22, INK, bold=True)
+    if rt.get("skycon_upstream"):      # our correction, not the source's word
+        # the first English wording ran off the card; only looking showed it
+        sx, spt = X0 + pg.width(sky.get(rt.get("skycon"), ""), 22, True) + 10, 15
+        while spt > 11 and sx + pg.width(L["skyfix"], spt) > X1:
+            spt -= 1
+        pg.text(sx, y + 117 + (15 - spt) / 2, L["skyfix"], spt, DIM)
     fl = "%.0f" % rt["apparent_temperature"]
     feel = (L["feel"].format(hi="%.0f" % days[0]["max"], lo="%.0f" % days[0]["min"], fl=fl) if days
             else L["feel0"].format(fl=fl))
