@@ -73,6 +73,15 @@ class ACoordinateIsAnsweredAsNearASettlement(Stubs):
         self.assertEqual(self.label("/111.10,22.17/ja.png"),
                          "Shenzhen付近, Maoming Shi, Guangdong, CN")
 
+    def test_a_point_with_no_settlement_near_it(self):
+        self.addCleanup(setattr, serve.G, "rlookup", serve.G.rlookup)
+        serve.G.rlookup = lambda *a, **k: None
+        label = self.label("/166.67,-77.85/zh.png")
+        self.assertEqual(label, "77.85\u00b0S 166.67\u00b0E")
+        # the picture keeps the part before the first comma: there must be none
+        self.assertNotIn(",", label)
+        self.assertEqual(serve.point_label(-74.0, 40.7), "40.70\u00b0N 74.00\u00b0W")
+
     def test_a_label_without_commas(self):
         self.assertEqual(serve.near_label("深镇", "zh"), "深镇附近")
 

@@ -371,6 +371,19 @@ def near_label(label, lang):
     return (_NEAR.get(lang, _NEAR["en"]) % head.strip()) + sep + rest
 
 
+def point_label(lon, lat):
+    """The label for a point with no settlement within 60 km: 77.85°S 166.67°E.
+
+    No comma. Every renderer reads a label as "name, region, country" and
+    keeps the part before the first comma when space is short, so the old
+    "166.6700,-77.8500" titled the long picture for McMurdo "166.6700" -- the
+    longitude alone, read as if it were the place (2026-11-12). Latitude first
+    because that is how a degree pair is read everywhere else; the line under
+    the title still prints "(lon 166.67, lat -77.85)", this service's order."""
+    return "%.2f\u00b0%s %.2f\u00b0%s" % (abs(lat), "N" if lat >= 0 else "S",
+                                            abs(lon), "E" if lon >= 0 else "W")
+
+
 def _sky_empty_at(lon, lat):
     """When upstream last answered this sky's frame list with nothing, else None.
 
@@ -1218,7 +1231,7 @@ class H(BaseHTTPRequestHandler):
         label = q.get("label", [None])[0]
         if not label:
             near = place or G.rlookup(lat, lon, lang=lang)
-            label = near["label"] if near else ("%.4f,%.4f" % (lon, lat))
+            label = near["label"] if near else point_label(lon, lat)
             if near and not place and not guessed:
                 label = near_label(label, lang)
         try:
