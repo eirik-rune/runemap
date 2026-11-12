@@ -354,6 +354,34 @@ def _as_coords(spec):
     return round(lat, 4), round(lon, 4)
 
 
+_NEAR = {"en": "near %s", "zh": "%s\u9644\u8fd1", "ja": "%s\u4ed8\u8fd1"}
+
+
+def near_label(label, lang):
+    """The nearest settlement's label, said as near it rather than as it.
+
+    A reader who sends coordinates named a point, not a town; the label is
+    whatever rlookup() found within 60 km. Printed bare it read as the place
+    itself: Qianlu 2026-11-12 asked for Shenzhen town in Gaozhou (111.10,22.17)
+    and the title said "Shenzhen, CN", which a reader takes for the city 300 km
+    east; Bangluo town (104.94,35.04) came back as its neighbour Yupan. Only the
+    first part changes, so the title can still drop the middle parts to fit
+    and the marker on the map still reads "near Shenzhen" / "深镇附近"."""
+    head, sep, rest = label.partition(",")
+    return (_NEAR.get(lang, _NEAR["en"]) % head.strip()) + sep + rest
+
+
+def _sky_empty_at(lon, lat):
+    """When upstream last answered this sky's frame list with nothing, else None.
+
+    render_scene writes _RA_FAIL only there and removes it the moment upstream
+    answers with frames, so a value here is the latest thing upstream said
+    about this sky. That is a fact about an answer, not about coverage (bob
+    2026-08-03: nobody will believe there is no radar because we say so)."""
+    with R._RA_LOCK:
+        return R._RA_FAIL.get(R._sky_key(lon, lat))
+
+
 def _why_header(v, why):
     """Value of X-Radar-Why, given what the reader actually received.
 
@@ -876,6 +904,17 @@ class H(BaseHTTPRequestHandler):
 
     def _send_png(self, lon, lat, label, span):
         got = self._caiyun_frame(lon, lat, wait=_PNG_WAIT)
+        empty = _sky_empty_at(lon, lat) if got is None else None
+        if empty is not None:
+            # Upstream answered, with no frames. "Ask again in ~30s" was a
+            # promise this case cannot keep: Qianlu asked McMurdo and Suva
+            # again after 35 s and got the same. Say what it answered, and when.
+            # One line, because the MCP reply carries only the first.
+            return self._send(503, "no radar frame for %s: upstream's frame list for this sky was "
+                                   "empty when we asked at %s; until it lists frames here there is "
+                                   "no radar map to draw.\n"
+                                   "The text map at the same address (without .png) has the weather.\n"
+                              % (label, time.strftime("%H:%MZ", time.gmtime(empty))))
         if got is None:
             # Not "no radar here": we have not got the frame yet, and that is
             # a claim about us. Same promise the text map makes.
@@ -923,11 +962,17 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 sys.stderr.write("PANO-MOTION %r\n" % (e,))
         else:
-            # not "no radar here": we have not got the frame yet
-            note = "pending"
+            # not "no radar here": either we have not got the frame yet, or
+            # upstream's latest answer for this sky had no frames in it
+            empty = _sky_empty_at(lon, lat)
+            note = "pending" if empty is None else "empty"
         try:
             from runemap import panorama as PN
-            if note:
+            if note == "empty":
+                tz = int(wx.get("tzshift") or 0)
+                note = PN.text(lang, "radar_empty").format(
+                    t=time.strftime("%H:%M", time.gmtime(empty + tz)))
+            elif note:
                 note = PN.text(lang, "radar_pending")
             basis = {"zh": R._MO_BASIS_ZH, "ja": R._MO_BASIS_JA}.get(lang, R._MO_BASIS_EN)
             sky = {"zh": R.SKY_ZH, "ja": R.SKY_JA}.get(lang)
@@ -1174,6 +1219,8 @@ class H(BaseHTTPRequestHandler):
         if not label:
             near = place or G.rlookup(lat, lon, lang=lang)
             label = near["label"] if near else ("%.4f,%.4f" % (lon, lat))
+            if near and not place and not guessed:
+                label = near_label(label, lang)
         try:
             tzh = float(q["tz"][0])
         except Exception:

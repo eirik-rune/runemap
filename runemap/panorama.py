@@ -30,6 +30,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from . import radar_image as RI
 from .words import AQI_BANDS, AQI_NAMES, COMPASS, aqi_band, compass, weekday as _weekday, WEEK as _WEEK
+from .words import POLAR, polar_of
 from .words import aqi_value as _aqi
 
 PT_W = 390.0                 # design width, phone points
@@ -57,6 +58,8 @@ T = {
             stationary="rain barely moving (under 5 km/h)", undetermined="rain motion undetermined",
             weakstrong="weak → strong", norain="no rain on this frame", noradar="no radar here",
             radar_pending="radar frame not fetched yet -- ask again in ~30s",
+            radar_empty="upstream listed no radar frames for this place when we asked at {t}; "
+                        "until it does, there is no radar map to draw",
             rain="Rain at your point", rain_sub="mm/h, minute by minute, next 2 hours",
             axis=("now", "+30 min", "+1 h", "+90 min", "+2 h"),
             chance="chance of rain in each half hour",
@@ -78,6 +81,7 @@ T = {
             stationary="雨区几乎不动（低于 5 km/h）", undetermined="雨区移动无法判断",
             weakstrong="弱 → 强", norain="这一帧没有降水回波", noradar="雷达覆盖不到",
             radar_pending="雷达图还没取到，约 30 秒后再试",
+            radar_empty="{t} 问上游时，它没给出这里的雷达帧；给出之前，这里画不出雷达图",
             rain="你所在位置的降水", rain_sub="未来 2 小时逐分钟，mm/h",
             axis=("现在", "30分钟", "1小时", "90分钟", "2小时"),
             chance="每半小时的降水概率",
@@ -99,6 +103,7 @@ T = {
             stationary="雨域はほぼ停滞（5 km/h 未満）", undetermined="雨域の移動は判定できず",
             weakstrong="弱 → 強", norain="このフレームに降水エコーなし", noradar="レーダー範囲外",
             radar_pending="レーダー画像を取得中、30秒ほどで再度どうぞ",
+            radar_empty="{t} の問い合わせで上流はここのレーダーフレームを返さず、返すまでレーダー図は描けません",
             rain="現在地の降水", rain_sub="今後2時間・1分ごと、mm/h",
             axis=("今", "30分", "1時間", "90分", "2時間"),
             chance="30分ごとの降水確率",
@@ -113,6 +118,17 @@ T = {
             foot2="地図：Natural Earth · echorune.net"),
 }
 LANGS = tuple(T)
+
+
+def sun_cell(astro, lat, lang):
+    """Value of the sunrise-sunset cell; None when the source gave no astro.
+    `location` in Caiyun's answer is [lat, lon]."""
+    if not astro:
+        return None
+    pol = polar_of(astro, lat)
+    if pol:
+        return POLAR.get(lang, POLAR["en"])[pol][0]
+    return "%s–%s" % (astro["sunrise"]["time"], astro["sunset"]["time"])
 
 
 def text(lang, key):
@@ -351,8 +367,9 @@ def _layout(pg, wx_full, radar, label, motion, basis, span_km, radar_note, sky, 
     cells = [(L["humidity"], "%d%%" % round(rt["humidity"] * 100)),
              (L["wind"], L["wind_v"].format(d=wdir, v="%.0f" % float(wind.get("speed", 0))))]
     cells.append((L["air"], _aqi(((rt.get("air_quality") or {}).get("aqi") or {}).get("chn"))))
-    if astro:
-        cells.append((L["sun"], "%s–%s" % (astro["sunrise"]["time"], astro["sunset"]["time"])))
+    sun = sun_cell(astro, (wx_full.get("location") or [None])[0], pg.lang)
+    if sun:
+        cells.append((L["sun"], sun))
     for i, (k, v) in enumerate(cells):
         cx, cy = X0 + (i % 2) * cw, y + 180 + (i // 2) * 54
         pg.text(cx, cy, k, 15, DIM)

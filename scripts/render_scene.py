@@ -1629,8 +1629,9 @@ def _sky_word(sky, lang):
     return sky                        # en prints the token, as `now:` does
 
 
-def detail_lines(lang, wx):
-    """Two short lines under `now:` -- what the picture's first card says."""
+def detail_lines(lang, wx, lat=None):
+    """Two short lines under `now:` -- what the picture's first card says.
+    `lat` only decides polar day from polar night (words.polar_of)."""
     X = _TX.get(lang, _TX["en"])
     rt = wx.get("realtime") or {}
     dy = wx.get("daily") or {}
@@ -1647,7 +1648,10 @@ def detail_lines(lang, wx):
     if v:
         b.append(X["aqi"].format(v=v, b=_W.aqi_band(v, lang)[0]))
     st = (dy.get("astro") or [None])[0]
-    if st:
+    pol = _W.polar_of(st, lat) if st else None
+    if pol:
+        b.append(_W.POLAR.get(lang, _W.POLAR["en"])[pol][1])
+    elif st:
         b.append(X["sun"].format(r=st["sunrise"]["time"], s=st["sunset"]["time"]))
     return ["  ".join(x) for x in (a, b) if x]
 
@@ -1780,7 +1784,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
         L.append("\u5f53\u524d: %s  %.0fC  \u6e7f\u5ea6 %.0f%%  \u98ce\u901f %.0fkm/h  \u96e8\u5f3a %.2fmm/h" % (
             sky, rt["temperature"], rt["humidity"]*100, rt["wind"]["speed"],
             rt["precipitation"]["local"]["intensity"]))
-    L.extend(detail_lines(lang, wx))
+    L.extend(detail_lines(lang, wx, lat))
     if kp:
         L.append(kp)
     mo = (rb[3] if rb and len(rb) > 3 else None) or _MOTION.get(name) or {}
