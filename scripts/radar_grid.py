@@ -51,8 +51,8 @@ Mosaic:
   than t, compared to the minute, so passing back the newest t you have
   returns nothing twice.  Asked for by the first consumer: a poller re-fetching
   3 MB to learn one new frame.  ``newest`` is always given.
-* Frames step back 6 min from the latest time the most stations have a frame
-  for (see align()); a station uses its frame nearest each target within 5 min
+* Frames step back 6 min from the latest time at least 90% of the stations
+  have a frame for (see align()); a station uses its frame nearest each target within 5 min
   (half of the slowest cadence seen, 10 min), otherwise it sits that frame out
   and is named in that frame's "gaps".
 """
@@ -77,6 +77,7 @@ MAX_FRAMES = 20                 # upstream keeps 20-26; leave a margin
 MAX_VALUES = 2_500_000          # cells x frames; keeps one answer under ~10 MB raw
 STEP_S = 360                    # target spacing between returned frames
 MATCH_S = 300                   # half of the slowest cadence seen (10 min)
+AGREE = 0.9                     # share of stations the newest frame waits for; see align()
 LATTICE = 1.0                   # degrees between probe points
 PROBE_OK_TTL = 86400            # stations do not move
 PROBE_FAIL_TTL = 3 * 3600       # "failed" is also a transient upstream answer
@@ -484,8 +485,15 @@ def align(lists):
     Not simply the newest frame anywhere: measured 2026-11-14 16:15Z over Gansu,
     that put the newest frame where one station had published and seven had not
     yet, so a quarter of the province went null in it -- null that meant "not
-    published yet", which is not what null says here. Instead: among the last
-    30 min of frame times, the latest at which the most stations have a frame."""
+    published yet", which is not what null says here.
+
+    Nor the time at which the MOST stations have a frame: measured 18:33Z the
+    same day over 101-119E 31-40N, 51 stations whose newest frames were 2..29
+    min old (median 7), and waiting for all of them put "newest" 25 min back
+    -- one late station held back the whole picture (Qianlu saw it from the
+    outside). So: the latest time at which at least AGREE of the stations have
+    a frame, or the best coverage there is when no time reaches that. The late
+    ones are named in that frame's gaps."""
     newest = [fl[-1][1] for fl in lists if fl]
     if not newest:
         return None
@@ -497,7 +505,8 @@ def align(lists):
 
     scored = [(n_cov(t), t) for t in cands]
     best = max(n for n, _ in scored)
-    return max(t for n, t in scored if n == best)
+    need = max(1, min(best, math.ceil(AGREE * len(newest))))
+    return max(t for n, t in scored if n >= need)
 
 
 def _pixel_cells(sbbox, wd, h, g, reach):
