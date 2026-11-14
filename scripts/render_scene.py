@@ -4,6 +4,7 @@ Outputs: live/<city>/en and live/<city>/zh
 Layout: headline + 2h rain curve (6min buckets) + current radar map + legend.
 Radar art fetched ONCE per city, shared across languages.
 Data source: caiyunapp.com. Token via env CAIYUN_TOKEN."""
+import re
 import importlib, json, math, os, sys, time, urllib.request, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -81,8 +82,27 @@ def _get(url, timeout=15):
     b = net_budget.get_hedged(url, budget=timeout, headers={"User-Agent": "runemap/0.1"})
     _el = time.time() - _t0
     if _el > 1.0:
-        sys.stderr.write("SLOW-GET total=%.2f bytes=%d %s\n" % (_el, len(b), url[-46:]))
+        sys.stderr.write("SLOW-GET total=%.2f bytes=%d %s\n" % (_el, len(b), _log_url(url)[-46:]))
     return b
+
+
+# scene_at replaces _get with its cache layer at import; this name keeps the
+# function that writes SLOW-GET reachable, so a test can hold that line to
+# _log_url whichever modules were imported before it.
+_get_uncached = _get
+
+
+def _log_url(url):
+    """The url as it may appear in a log: credentials replaced, then cut.
+
+    2026-11-14: this line printed url[-46:], and on a radar list url
+    (...token=<16 chars>&lon=96.0&lat=32.0) the last 46 characters include the
+    whole token -- 125 journal lines in 7.5 days, found when one of them was
+    printed into a terminal. Cutting shorter is not the fix: a shorter
+    coordinate or a new parameter moves the token back into the window.
+    Redact first, by shape: the query parameter and the v2.x path segment."""
+    url = re.sub(r"(token=)[^&]*", r"\1<redacted>", url)
+    return re.sub(r"(api\.caiyunapp\.com/v\d+(?:\.\d+)?/)[^/]+/", r"\1<redacted>/", url)
 
 def spark(vals, vmax=None):
     vmax = vmax or max(vals) or 1.0
