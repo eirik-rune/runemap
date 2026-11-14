@@ -229,6 +229,13 @@ class FramesLineUp(unittest.TestCase):
         lists = [[(None, float(t), None) for t in a.times], [(None, float(t), None) for t in b.times]]
         self.assertEqual(RG.align(lists), T_NOW - 360)
 
+    def test_one_late_station_does_not_hold_back_the_picture(self):
+        """18:33Z 2026-11-14: 51 stations, one 29 min behind, and newest came out
+        25 min old. Nineteen fresh stations and one late: newest is the fresh time."""
+        fresh = [[(None, float(T_NOW - 360 * k), None) for k in range(6)][::-1] for _ in range(19)]
+        late = [[(None, float(T_NOW - 1740 - 360 * k), None) for k in range(6)][::-1]]
+        self.assertEqual(RG.align(fresh + late), T_NOW)
+
     def test_oldest_first_six_minutes_apart_and_gaps_named(self):
         a = Station("AZ0001", AZ, times=[T_NOW - 360 * k for k in range(6)][::-1])
         b = Station("AZ0002", (30.5, 101.0, 34.5, 105.8), times=[T_NOW - 30, T_NOW - 1830])
