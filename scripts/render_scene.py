@@ -1369,7 +1369,7 @@ def build_fetching(lang, name):
             "weather: fetching -- \u8fd8\u6ca1\u53d6\u5230, \u7ea6 60 \u79d2\u540e\u518d\u95ee\n"
             "radar: fetching -- \u6b63\u5728\u627e\u8fd9\u7247\u5929, \u8fd8\u6ca1\u6709\u5e27\n"
             "\n"
-            "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 "
+            "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | \u96e8\u4e66 \u6e32\u67d3 "
             "(github.com/eirik-rune/runemap)\n") % name
 
 
@@ -1994,7 +1994,7 @@ def build(lang, name, code, zh, lng, lat, tzh, wx, rb, radar_err=None,
     _src = rb[5] if rb and len(rb) > 5 and rb[5] else None
     L.append("data: Caiyun Weather caiyunapp.com | runemap (github.com/eirik-rune/runemap)" if lang == "en"
              else "データ: 彩雲天気 caiyunapp.com | runemap で描画 (github.com/eirik-rune/runemap)" if lang == "ja"
-             else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | runemap \u6e32\u67d3 (github.com/eirik-rune/runemap)")
+             else "\u6570\u636e: \u5f69\u4e91\u5929\u6c14 caiyunapp.com | \u96e8\u4e66 \u6e32\u67d3 (github.com/eirik-rune/runemap)")
     # JMA/NOAA ask for credit wherever their cloud mask decided the sky word;
     # its own line, so the data line keeps its width and its shape
     if rt.get("cloudmask_at"):
