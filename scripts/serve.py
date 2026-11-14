@@ -135,6 +135,7 @@ USAGE
                                    lon/lat grid, row 0 north, null where no
                                    radar reaches, last n frames 6 min apart.
                                    e.g. bbox=92.3,32.5,108.7,42.8&res=6&frames=10
+                                   &since=<t> returns only frames newer than t.
 
   curl echorune.net/<place>?style   the same document rendered as a styled web
                                    page. Plain text is the default for

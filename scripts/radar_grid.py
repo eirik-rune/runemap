@@ -1,6 +1,6 @@
 """Raw radar grid for a lon/lat box: numbers instead of glyphs (issue #259).
 
-    GET /radar.json?bbox=<lon0>,<lat0>,<lon1>,<lat1>[&res=<km>][&frames=<n>]
+    GET /radar.json?bbox=<lon0>,<lat0>,<lon1>,<lat1>[&res=<km>][&frames=<n>][&since=<t>]
 
 Asked for by Qianlu: a user wanted a radar mosaic of Gansu (~1,600 km), one
 text view covers 280 km, and stitching 13 text maps back into numbers was
@@ -47,14 +47,20 @@ Mosaic:
 * Per cell: the highest step over every station that reaches it; 0 when some
   station reaches it and draws nothing; null when none of the stations we
   found reaches it.
+* ``since=<t>`` (a frame's own ``t``, or epoch seconds) keeps only frames newer
+  than t, compared to the minute, so passing back the newest t you have
+  returns nothing twice.  Asked for by the first consumer: a poller re-fetching
+  3 MB to learn one new frame.  ``newest`` is always given.
 * Frames step back 6 min from the latest time the most stations have a frame
   for (see align()); a station uses its frame nearest each target within 5 min
   (half of the slowest cadence seen, 10 min), otherwise it sits that frame out
   and is named in that frame's "gaps".
 """
+import calendar
 import io
 import json
 import math
+import re
 import os
 import threading
 import time
@@ -118,7 +124,7 @@ class Grid:
 
 
 def parse(qs):
-    """qs: parse_qs dict -> (west, south, east, north, res_km, frames). Raises BadRequest."""
+    """qs: parse_qs dict -> (west, south, east, north, res_km, frames, since). Raises BadRequest."""
     raw = (qs.get("bbox") or [""])[0]
     try:
         w, s, e, n = (float(v) for v in raw.split(","))
@@ -144,19 +150,41 @@ def parse(qs):
         raise BadRequest("res is a number of km per cell, %g..%g" % (MIN_RES_KM, MAX_RES_KM))
     if not (MIN_RES_KM <= res <= MAX_RES_KM):
         raise BadRequest("res=%s km is outside %g..%g" % (res, MIN_RES_KM, MAX_RES_KM))
-    try:
-        frames = int((qs.get("frames") or ["1"])[0])
-    except ValueError:
-        raise BadRequest("frames is a whole number, 1..%d" % MAX_FRAMES)
-    if not (1 <= frames <= MAX_FRAMES):
-        raise BadRequest("frames=%s is outside 1..%d" % (frames, MAX_FRAMES))
+    since = None
+    if qs.get("since"):
+        since = parse_since(qs["since"][0])
     g = Grid(w, s, e, n, res)
+    if qs.get("frames"):
+        try:
+            frames = int(qs["frames"][0])
+        except ValueError:
+            raise BadRequest("frames is a whole number, 1..%d" % MAX_FRAMES)
+        if not (1 <= frames <= MAX_FRAMES):
+            raise BadRequest("frames=%s is outside 1..%d" % (frames, MAX_FRAMES))
+    elif since is not None:
+        # a poller wants every new frame, not one: as many as the value cap allows
+        frames = max(1, min(MAX_FRAMES, MAX_VALUES // (g.nx * g.ny)))
+    else:
+        frames = 1
     if g.nx * g.ny * frames > MAX_VALUES:
         fit = max(1, MAX_VALUES // (g.nx * g.ny))
         raise BadRequest("%d x %d cells x %d frames = %d values; the cap is %d. "
                          "Ask for frames<=%d, or a coarser res."
                          % (g.nx, g.ny, frames, g.nx * g.ny * frames, MAX_VALUES, fit))
-    return w, s, e, n, res, frames
+    return w, s, e, n, res, frames, since
+
+
+def parse_since(raw):
+    raw = raw.strip()
+    if re.fullmatch(r"\d{9,11}", raw):
+        return float(raw)
+    for fmt in ("%Y-%m-%dT%H:%MZ", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return float(calendar.timegm(time.strptime(raw, fmt)))
+        except ValueError:
+            pass
+    raise BadRequest("since is a frame time as this endpoint writes it in t, "
+                     "e.g. since=2026-11-14T16:17Z, or epoch seconds")
 
 
 # --- colour scale -------------------------------------------------------------
@@ -270,6 +298,7 @@ class Builder:
         self.fetch, self.list_url, self.book = fetch, list_url, book
         self.deadline, self.now = deadline, now
         self.new_probes = 0
+        self.newest = None
         self.unprobed = 0
         self.lists = {}            # probe key -> parsed list payload (this request only)
         self._lock = threading.Lock()
@@ -356,7 +385,7 @@ class Builder:
         out.sort(key=lambda f: f[1])
         return out
 
-    def build(self, w, s, e, n, res, nframes):
+    def build(self, w, s, e, n, res, nframes, since=None):
         g = Grid(w, s, e, n, res)
         stations, n_lattice, skipped = self.stations(w, s, e, n)
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
@@ -364,7 +393,11 @@ class Builder:
         frames_out = []
         t0 = align(lists)
         if t0 is not None:
+            self.newest = t0
             targets = [t0 - k * STEP_S for k in range(nframes)][::-1]
+            if since is not None:
+                # to the minute: t is printed to the minute, and a poller passes it back
+                targets = [t for t in targets if int(t // 60) > int(since // 60)]
             plan = []          # per target: [(station, frame or None)]
             urls = set()
             for t in targets:
@@ -393,7 +426,7 @@ class Builder:
                     self._paint(out, g, st, fr, pngs[fr[0]], maps)
                     used.append(fr[1])
                 frames_out.append({
-                    "t": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(t)),
+                    "t": _tstr(t),
                     "kind": "obs",
                     "spread_s": int(max((abs(u_ - t) for u_ in used), default=0)),
                     "gaps": sorted(gaps),
@@ -485,7 +518,11 @@ def _rows(arr):
     return "[" + ",".join("[" + ",".join(_TOK[v + 1] for v in r.tolist()) + "]" for r in arr) + "]"
 
 
-def to_json(asked, g, stations, frames, coverage):
+def _tstr(t):
+    return time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(t))
+
+
+def to_json(asked, g, stations, frames, coverage, newest=None, since=None):
     from runemap.radar_image import CAIYUN_RAMP
     head = {
         "source": "caiyunapp.com",
@@ -501,6 +538,7 @@ def to_json(asked, g, stations, frames, coverage):
         "frames_order": "oldest first, %d min apart; each frame uses every station's "
                         "frame nearest its t (within %d min); stations with none are in gaps"
                         % (STEP_S // 60, MATCH_S // 60),
+        "newest": _tstr(newest) if newest is not None else None,
         "coverage": coverage,
         "stations": [{"id": st["id"], "bbox": st["bbox"], "reach": st["reach"]} for st in stations],
     }
@@ -510,7 +548,9 @@ def to_json(asked, g, stations, frames, coverage):
                         % coverage["unprobed"])
     if not frames:
         # "none found" is only "none reaches" when every probe point was asked
-        if stations:
+        if since is not None and newest is not None and int(newest // 60) <= int(since // 60):
+            head["note"] = "nothing newer than since=%s; the newest frame is %s" % (_tstr(since), _tstr(newest))
+        elif stations:
             head["note"] = "no frames could be fetched for the stations found; ask again in a minute"
         elif coverage["complete"]:
             head["note"] = "no radar station reaches this box"
@@ -529,7 +569,7 @@ def to_json(asked, g, stations, frames, coverage):
 def answer(qs, fetch, list_url, cache_dir, deadline=None, now=time.time, wait=10.0):
     """-> (http status, body str). The service calls this; tests call it with fakes."""
     try:
-        w, s, e, n, res, nframes = parse(qs)
+        w, s, e, n, res, nframes, since = parse(qs)
     except BadRequest as ex:
         return 400, json.dumps({"error": str(ex), "usage": USAGE}, ensure_ascii=False) + "\n"
     if not _BUILD.acquire(timeout=wait):
@@ -537,17 +577,18 @@ def answer(qs, fetch, list_url, cache_dir, deadline=None, now=time.time, wait=10
     try:
         book = ProbeBook(os.path.join(cache_dir, "radar_grid_probes.json"), now=now)
         b = Builder(fetch, list_url, book, deadline=deadline, now=now)
-        g, stations, frames, coverage = b.build(w, s, e, n, res, nframes)
+        g, stations, frames, coverage = b.build(w, s, e, n, res, nframes, since)
         try:
             book.save()
         except OSError:
             pass        # a lost probe book costs re-probing, not the answer
-        return 200, to_json((w, s, e, n), g, stations, frames, coverage)
+        return 200, to_json((w, s, e, n), g, stations, frames, coverage, b.newest, since)
     finally:
         _BUILD.release()
 
 
-USAGE = ("GET /radar.json?bbox=<lon0>,<lat0>,<lon1>,<lat1>[&res=<km>][&frames=<n>]  "
+USAGE = ("GET /radar.json?bbox=<lon0>,<lat0>,<lon1>,<lat1>[&res=<km>][&frames=<n>][&since=<t>]  "
          "bbox is west,south,east,north in degrees, at most %d km a side; "
-         "res %g..%g km per cell (default %g); frames 1..%d (default 1)"
+         "res %g..%g km per cell (default %g); frames 1..%d (default 1, or as many as fit when since is given); "
+         "since=<a frame's t> returns only newer frames"
          % (MAX_SIDE_KM, MIN_RES_KM, MAX_RES_KM, DEFAULT_RES_KM, MAX_FRAMES))

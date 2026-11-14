@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 import unittest
 
 import numpy as np
@@ -331,6 +332,64 @@ class BadQuestionsGetA400ThatSaysWhy(unittest.TestCase):
 
     def test_gansu_as_asked_fits(self):
         RG.parse({"bbox": ["92.3,32.5,108.7,42.8"], "res": ["6"], "frames": ["10"]})
+
+
+def _t(ts):
+    return time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(ts))
+
+
+class SinceReturnsOnlyNewFrames(unittest.TestCase):
+    """Qianlu's poller re-fetched 3 MB to learn one new frame (#259)."""
+
+    def setUp(self):
+        self.st = Station("AZ0001", AZ, times=[T_NOW - 360 * k for k in range(10)][::-1])
+
+    def _ask(self, **q):
+        qs = {"bbox": [",".join(str(v) for v in ASK)]}
+        qs.update({k: [v] for k, v in q.items()})
+        code, body = RG.answer(qs, Upstream(self.st).fetch, Upstream(self.st).list_url,
+                               tempfile.mkdtemp(prefix="rg-"), now=lambda: T_NOW)
+        return code, json.loads(body)
+
+    def test_only_frames_after_since(self):
+        code, d = self._ask(frames="10", since=_t(T_NOW - 3 * 360))
+        self.assertEqual([f["t"] for f in d["frames"]],
+                         [_t(T_NOW - 720), _t(T_NOW - 360), _t(T_NOW)])
+        self.assertEqual(d["newest"], _t(T_NOW))
+
+    def test_passing_back_the_newest_returns_nothing_and_says_so(self):
+        code, d = self._ask(since=_t(T_NOW))
+        self.assertEqual(code, 200)
+        self.assertEqual(d["frames"], [])
+        self.assertEqual(d["newest"], _t(T_NOW))
+        self.assertIn("nothing newer", d["note"])
+
+    def test_a_frame_off_the_minute_is_not_returned_twice(self):
+        """t is printed to the minute; upstream frames are not on the minute.
+        Passing back the newest t must not hand the same frame back again."""
+        self.st = Station("AZ0001", AZ, times=[T_NOW + 25 - 360 * k for k in range(10)][::-1])
+        code, d = self._ask(frames="3")
+        newest = d["frames"][-1]["t"]
+        code, d2 = self._ask(since=newest)
+        self.assertEqual(d2["frames"], [])
+
+    def test_since_without_frames_returns_every_new_frame(self):
+        code, d = self._ask(since=_t(T_NOW - 5 * 360))
+        self.assertEqual(len(d["frames"]), 5)
+
+    def test_epoch_seconds_work_too(self):
+        code, d = self._ask(frames="10", since=str(T_NOW - 2 * 360))
+        self.assertEqual(len(d["frames"]), 2)
+
+    def test_without_since_nothing_changes(self):
+        code, d = self._ask(frames="3")
+        self.assertEqual(len(d["frames"]), 3)
+        self.assertEqual(d["newest"], _t(T_NOW))
+
+    def test_bad_since_is_a_400_that_shows_the_format(self):
+        code, d = self._ask(since="yesterday")
+        self.assertEqual(code, 400)
+        self.assertIn("2026-11-14T16:17Z", d["error"])
 
 
 class RoutedBeforeThePlaceMatcher(unittest.TestCase):
