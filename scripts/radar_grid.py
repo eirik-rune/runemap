@@ -418,10 +418,15 @@ class Builder:
             maps = {}
             for t, row in plan:
                 out = np.full(g.nx * g.ny, -1, dtype=np.int8)
-                gaps, used = [], []
+                gaps, unfetched, used = [], [], []
                 for st, fr in row:
-                    if fr is None or pngs.get(fr[0]) is None:
+                    if fr is None:
                         gaps.append(st["id"])
+                        continue
+                    if pngs.get(fr[0]) is None:
+                        # upstream has this frame; we did not get it in time.
+                        # Not a gap: a gap says the station published nothing then.
+                        unfetched.append(st["id"])
                         continue
                     self._paint(out, g, st, fr, pngs[fr[0]], maps)
                     used.append(fr[1])
@@ -430,6 +435,7 @@ class Builder:
                     "kind": "obs",
                     "spread_s": int(max((abs(u_ - t) for u_ in used), default=0)),
                     "gaps": sorted(gaps),
+                    "unfetched": sorted(unfetched),
                     "values": out.reshape(g.ny, g.nx)})
         complete = self.unprobed == 0
         return g, stations, frames_out, {
@@ -437,6 +443,11 @@ class Builder:
             "unprobed": self.unprobed, "skipped_as_covered": skipped, "complete": complete}
 
     def _png(self, url):
+        # Never start a fetch that cannot finish: 2026-11-14 17:49Z a slow CDN
+        # held this past nginx's 25 s and the reader got an HTML 504 instead
+        # of a JSON answer that says which frames are missing.
+        if self._left() < 1.0:
+            return None
         try:
             return self._get(url, min(8.0, self._left()))
         except Exception:
@@ -536,7 +547,8 @@ def to_json(asked, g, stations, frames, coverage, newest=None, since=None):
         "bbox": list(asked),
         "grid": g.header(),
         "frames_order": "oldest first, %d min apart; each frame uses every station's "
-                        "frame nearest its t (within %d min); stations with none are in gaps"
+                        "frame nearest its t (within %d min); stations with none are in gaps, "
+                        "stations whose frame did not arrive in time are in unfetched"
                         % (STEP_S // 60, MATCH_S // 60),
         "newest": _tstr(newest) if newest is not None else None,
         "coverage": coverage,
@@ -546,6 +558,10 @@ def to_json(asked, g, stations, frames, coverage, newest=None, since=None):
         head["note"] = ("%d probe points were not asked yet (per-request limit or time); "
                         "cells only they would have found are null. Ask again in a minute."
                         % coverage["unprobed"])
+    missed = sum(len(f.get("unfetched", ())) for f in frames)
+    if missed:
+        head["note"] = ("%d station frames did not arrive from upstream in time (see unfetched); "
+                        "their cells are null in those frames. Ask again in a minute." % missed)
     if not frames:
         # "none found" is only "none reaches" when every probe point was asked
         if since is not None and newest is not None and int(newest // 60) <= int(since // 60):
@@ -566,7 +582,7 @@ def to_json(asked, g, stations, frames, coverage, newest=None, since=None):
     return body[:-1] + ',"frames":[' + ",".join(parts) + "]}\n"
 
 
-def answer(qs, fetch, list_url, cache_dir, deadline=None, now=time.time, wait=10.0):
+def answer(qs, fetch, list_url, cache_dir, deadline=None, now=time.time, wait=4.0):
     """-> (http status, body str). The service calls this; tests call it with fakes."""
     try:
         w, s, e, n, res, nframes, since = parse(qs)

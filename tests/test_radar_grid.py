@@ -392,6 +392,49 @@ class SinceReturnsOnlyNewFrames(unittest.TestCase):
         self.assertIn("2026-11-14T16:17Z", d["error"])
 
 
+class _Deadline:
+    def __init__(self, budget):
+        self.end = time.monotonic() + budget
+
+    def left(self, floor=0.0):
+        return max(floor, self.end - time.monotonic())
+
+
+class ASlowUpstreamStillGetsAnAnswer(unittest.TestCase):
+    """2026-11-14 17:49Z: the CDN stalled, the build ran past nginx's 25 s, and
+    the reader got an HTML 504. The answer must come back inside its budget,
+    and frames it could not fetch are 'unfetched', not 'gaps'."""
+
+    def test_answer_inside_budget_and_misses_named(self):
+        # 3 stations x 4 frames = 12 frames for 6 workers: the second half can
+        # only start once the budget is gone, and must not start at all.
+        times = [T_NOW - 360 * k for k in range(4)][::-1]
+        sts = [Station("AZ0001", (30.0, 100.0, 34.0, 104.8), times=times),
+               Station("AZ0002", (30.5, 101.0, 34.5, 105.8), times=times),
+               Station("AZ0003", (29.5, 99.5, 33.5, 104.3), times=times)]
+        up = Upstream(*sts)
+
+        def fetch(url, timeout):
+            if url.startswith("png:"):
+                time.sleep(min(timeout, 3.0))       # honours its timeout, like net_budget
+                raise TimeoutError("dial/ttfb")
+            return up.fetch(url, timeout)
+        qs = {"bbox": [",".join(str(v) for v in ASK)], "frames": ["4"]}
+        t0 = time.monotonic()
+        code, body = RG.answer(qs, fetch, up.list_url, tempfile.mkdtemp(prefix="rg-"),
+                               deadline=_Deadline(2.5), now=lambda: T_NOW)
+        took = time.monotonic() - t0
+        d = json.loads(body)
+        self.assertEqual(code, 200)
+        self.assertEqual(len(d["stations"]), 3)
+        self.assertLess(took, 3.5)
+        self.assertEqual(len(d["frames"]), 4)
+        for f in d["frames"]:
+            self.assertEqual(f["gaps"], [])
+            self.assertEqual(f["unfetched"], ["AZ0001", "AZ0002", "AZ0003"])
+        self.assertIn("did not arrive", d["note"])
+
+
 class RoutedBeforeThePlaceMatcher(unittest.TestCase):
     """'mcp' once fuzzy-matched Macapa and answered 200 with its weather."""
 
