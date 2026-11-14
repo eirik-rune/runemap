@@ -89,6 +89,9 @@ _MCP_LOG = os.environ.get(
 
 TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
+# /radar.json is not the 3 s text path: a cold province probes ~100 lattice
+# points and fetches a frame per station. Its own ceiling, under nginx's 60 s.
+RG_BUDGET = 25.0
 
 
 #: The Agent Skill, served verbatim at /skill.md. Derived from this file's
@@ -126,6 +129,12 @@ USAGE
                                    km/char is span/48. A '?' means outside the
                                    radar's coverage -- not that it is not raining.
   the query form keeps working: /scene?q=<place>&lang=zh
+  curl echorune.net/radar.json?bbox=<lon0>,<lat0>,<lon1>,<lat1>&res=<km>&frames=<n>
+                                   the radar as numbers for a box up to 2000 km
+                                   a side (where caiyunapp.com has radar): a
+                                   lon/lat grid, row 0 north, null where no
+                                   radar reaches, last n frames 6 min apart.
+                                   e.g. bbox=92.3,32.5,108.7,42.8&res=6&frames=10
 
   curl echorune.net/<place>?style   the same document rendered as a styled web
                                    page. Plain text is the default for
@@ -1066,6 +1075,18 @@ class H(BaseHTTPRequestHandler):
         R.set_span(_sp)
         if u.path in ("/healthz", "/health"):
                 return self._send(200, "ok n=%d err=%d\n" % (HITS["n"], HITS["err"]))
+        # /radar.json?bbox=... -- numbers for a box instead of glyphs for a point
+        # (issue #259, scripts/radar_grid.py says what upstream gives and why the
+        # answer is shaped this way). Routed before the place matcher: "radar.json"
+        # must never be fuzzy-matched into a town, the way "mcp" became Macapa.
+        if u.path.rstrip("/").lower() == "/radar.json":
+                import radar_grid as RG
+                with net_budget.request_budget(RG_BUDGET) as _dl:
+                    code, body = RG.answer(
+                        q, R._get,
+                        lambda lo, la: R._radar_list_url(TOKEN, lo, la, "images"),
+                        SA.CACHE, deadline=_dl)
+                return self._send(code, body, ctype="application/json; charset=utf-8")
         # 2026-11-02: MCP 的两个标准端点名，GET 必须在这儿结束，不许掉进地名匹配。
         #
         # 为什么加：一个外部 MCP 客户端（UA claude-code/2.1.310）10-25 到 10-28 往
