@@ -93,7 +93,7 @@ T = {
             qr_how="长按识别（或扫一扫）二维码，打开这里最新的天气图。",
             qr_this="这一张是 {t} 的。",
             foot1="天气、雷达、空气质量：彩云天气 caiyunapp.com",
-            foot2="底图：Natural Earth · echorune.net"),
+            foot2="底图：Natural Earth · 雨书 echorune.net"),
  "ja": dict(asof="{t} 時点", feel="最高 {hi}° · 最低 {lo}° · 体感 {fl}°", feel0="体感 {fl}°",
             humidity="湿度", wind="風", wind_v="{d}の風 {v} km/h", air="大気質",
             sun="日の出 – 日の入り", radar="レーダー", around="周辺 {km} km",
