@@ -90,8 +90,13 @@ _MCP_LOG = os.environ.get(
 TOKEN = os.environ.get("CAIYUN_TOKEN") or sys.exit("CAIYUN_TOKEN missing")
 HITS = {"n": 0, "err": 0}
 # /radar.json is not the 3 s text path: a cold province probes ~100 lattice
-# points and fetches a frame per station. Its own ceiling, under nginx's 60 s.
-RG_BUDGET = 25.0
+# points and fetches a frame per station. Its own ceiling -- and it must end
+# well inside nginx's proxy_read_timeout for this location (25 s): the first
+# version set 25 here too, plus up to 10 s queueing and the serialising after,
+# and a slow CDN at 17:49Z 2026-11-14 turned that into an HTML 504. 18 s covers
+# the queue wait (4 s, inside this budget) and leaves ~6 s for the JSON
+# (0.55 s measured at the size cap).
+RG_BUDGET = 18.0
 
 
 #: The Agent Skill, served verbatim at /skill.md. Derived from this file's
