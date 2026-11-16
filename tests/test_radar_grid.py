@@ -260,6 +260,37 @@ class NoRadarIsSaidNotGuessed(unittest.TestCase):
         self.assertIn("no radar station", d["note"])
 
 
+class AStationThatChangedIdIsReRegistered(unittest.TestCase):
+    """2026-11-15 (qianlu): the book keeps a point's station for a day; upstream
+    renumbered five China stations inside that day (AZ9772 -> AZ9774 ...), and
+    the old code threw the whole list away, so every frame named the station
+    in "gaps" -- which says it published nothing.  It had published."""
+
+    def setUp(self):
+        self.cache = tempfile.mkdtemp(prefix="rg-")
+        old = Station("AZ0001", AZ)
+        ask(Upstream(old), ASK, cache=self.cache)           # book learns AZ0001
+        self.new = Station("AZ0002", AZ)                    # same radar, new id
+        cx, cy = self.new.centre()
+        self.cx, self.cy = cx, cy
+        self.new.paint(T_NOW, cx, cy, 6)
+        self.up = Upstream(self.new)
+
+    def test_frames_are_drawn_and_not_called_gaps(self):
+        code, d = ask(self.up, ASK, cache=self.cache)
+        self.assertEqual(code, 200)
+        self.assertEqual(cell(d, self.cx, self.cy), 7)
+        self.assertEqual(d["frames"][-1]["gaps"], [])
+        self.assertEqual([s["id"] for s in d["stations"]], ["AZ0002"])
+        self.assertEqual(d["coverage"].get("restationed"), ["AZ0001->AZ0002"])
+
+    def test_the_book_is_corrected_for_the_next_ask(self):
+        ask(self.up, ASK, cache=self.cache)
+        code, d = ask(self.up, ASK, cache=self.cache)
+        self.assertEqual(d["coverage"].get("restationed"), [])
+        self.assertEqual(cell(d, self.cx, self.cy), 7)
+
+
 class ProbesAreRememberedAndBounded(unittest.TestCase):
 
     def test_second_ask_does_not_probe_again(self):
