@@ -246,6 +246,13 @@ class ProbeBook:
     def put(self, key, entry):
         self.d[key] = entry
 
+    def rename(self, old, new, bbox):
+        """Upstream gave a station a new id: move the points the book had on it.
+        Their "at" stays, so a renamed entry still ages out on its own day."""
+        for k, e in list(self.d.items()):
+            if isinstance(e, dict) and e.get("s") == old:
+                self.d[k] = dict(e, s=new, bbox=list(bbox))
+
     def save(self):
         with _FILE_LOCK:
             disk = self._load()
@@ -302,6 +309,7 @@ class Builder:
         self.newest = None
         self.unprobed = 0
         self.lists = {}            # probe key -> parsed list payload (this request only)
+        self.restationed = []      # "old->new" ids re-registered from a frame list
         self._lock = threading.Lock()
         self.ramp = _ramp()
 
@@ -377,13 +385,27 @@ class Builder:
                 d = json.loads(self._get(self.list_url(*st["probe"]), min(8.0, self._left())))
             except Exception:
                 return []
-        if d.get("status") != "ok" or (d.get("station") or "?") != st["id"]:
+        if d.get("status") != "ok":
             return []
         out = []
         for it in d.get("images") or []:
             if isinstance(it, (list, tuple)) and len(it) >= 3 and it[2]:
                 out.append((it[0], float(it[1]), [float(v) for v in it[2]]))
         out.sort(key=lambda f: f[1])
+        sid = d.get("station") or "?"
+        if sid != st["id"] and out:
+            # The point is now served under another id (2026-11-15: 110E24N
+            # answered AZ9774 where the book said AZ9772; four more like it).
+            # Dropping the list put all of that station's frames in "gaps",
+            # and a gap says the station published nothing -- untrue.  Take
+            # the station the list names; frames carry their own bbox.
+            with self._lock:
+                st_old = st["id"]
+                self.restationed.append("%s->%s" % (st_old, sid))
+                st["id"], st["bbox"], st["reach"] = sid, out[-1][2], _reach_kind(sid)
+                # every point the book had on the old id: same radar, new id
+                self.book.rename(st_old, sid, out[-1][2])
+                self.book.put(key, {"s": sid, "bbox": out[-1][2], "at": self.now()})
         return out
 
     def build(self, w, s, e, n, res, nframes, since=None):
@@ -391,6 +413,13 @@ class Builder:
         stations, n_lattice, skipped = self.stations(w, s, e, n)
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
             lists = list(ex.map(self.frame_list, stations))
+        # two probe points re-registered onto one station: keep it once
+        seen, keep = set(), []
+        for st, fl in zip(stations, lists):
+            if st["id"] not in seen:
+                seen.add(st["id"])
+                keep.append((st, fl))
+        stations, lists = [k[0] for k in keep], [k[1] for k in keep]
         frames_out = []
         t0 = align(lists)
         if t0 is not None:
@@ -441,7 +470,8 @@ class Builder:
         complete = self.unprobed == 0
         return g, stations, frames_out, {
             "lattice_points": n_lattice, "probed_now": self.new_probes,
-            "unprobed": self.unprobed, "skipped_as_covered": skipped, "complete": complete}
+            "unprobed": self.unprobed, "skipped_as_covered": skipped, "complete": complete,
+            "restationed": sorted(self.restationed)}
 
     def _png(self, url):
         # Never start a fetch that cannot finish: 2026-11-14 17:49Z a slow CDN
